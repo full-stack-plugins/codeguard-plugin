@@ -1,12 +1,12 @@
 ---
 name: codeguard-init
 description: |
-  一键把 codestyle-check 接入当前仓库。检测项目语言、拷贝 linter 配置文件、写 .pre-commit-config.yaml、
+  一键把 codeguard 接入当前仓库。检测项目语言、拷贝 linter 配置文件、写 .pre-commit-config.yaml、
   增量更新 AGENTS.md、生成 GitHub Actions CI 工作流。
   触发场景：用户说 "/init"、"接入规范检查"、"给项目加 pre-commit"、"加 CI 检查"。
 ---
 
-# 初始化项目接入 codestyle-check
+# 初始化项目接入 codeguard
 
 ## 工作流
 
@@ -30,7 +30,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/detect_lang.py" .
 
 如果项目根**没有** `.pre-commit-config.yaml`，从 `linters/pre-commit/.pre-commit-config.template.yaml` 拷贝并按本项目语言**裁剪**（删掉不适用的语言块）。
 
-如果**已有** `.pre-commit-config.yaml`，询问用户：「检测到已有 pre-commit 配置，是否合并 codestyle-check 项？」
+如果**已有** `.pre-commit-config.yaml`，询问用户：「检测到已有 pre-commit 配置，是否合并 codeguard 项？」
 
 ### 步骤 4：增量更新 AGENTS.md
 
@@ -39,9 +39,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/detect_lang.py" .
 ```markdown
 # AGENTS.md
 
-## 代码规范（由 codestyle-check 插件管理）
+## 代码规范（由 codeguard 插件管理）
 
-- 项目使用 [codestyle-check](https://github.com/partme-ai/codestyle-check-plugin)
+- 项目使用 [codeguard](https://github.com/partme-ai/partme-codeguard-plugin)
 - 检测到的语言：<从步骤 1 输出>
 - Linter：checkstyle (Java) / clippy (Rust) / eslint (TS) / ruff (Python)
 - **AI 写代码会被 PostToolUse 钩子强制 lint**；失败会阻塞继续

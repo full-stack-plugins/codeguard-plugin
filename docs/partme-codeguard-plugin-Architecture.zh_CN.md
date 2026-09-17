@@ -79,7 +79,7 @@ flowchart LR
 |---|---|---|---|
 | **manifest** | `.zcode-plugin/plugin.json`<br/>`.codex-plugin/plugin.json`<br/>`.mcp.json` | 插件元数据声明：名称、版本、skills/commands/hooks 路径、用户配置项 | 三端加载器 |
 | **hooks** | `hooks/hooks.json`<br/>4 个 Python 脚本 | 4 类事件触发：会话开始/用户输入/AI 写文件/会话结束 | 编程助手运行时 |
-| **skills** | `skills/codestyle-*/SKILL.md` | 按需触发的子任务工作流（含规则速查）| 用户 slash command 或 AI 自动调用 |
+| **skills** | `skills/codeguard-*/SKILL.md` | 按需触发的子任务工作流（含规则速查）| 用户 slash command 或 AI 自动调用 |
 | **commands** | `commands/{check,fix,init}.json` | 斜杠命令的 prompt 模板 | 编程助手 slash 解析器 |
 | **scripts** | `scripts/{detect_lang,run_check,fix}.py` | 跨语言调度的纯 Python 实现 | hooks + skills |
 | **linters** | `linters/{checkstyle,clippy,eslint,ruff,pre-commit}/` | 各语言的配置文件模板，拷贝即用 | `scripts/` + 用户 |
@@ -222,7 +222,7 @@ LANG_COMMANDS = {
 ### 4.2 用户配置（`~/.zcode/settings.local.yaml`）
 
 ```yaml
-codestyle-check:
+codeguard:
   enabled_languages: auto      # 或 [java, rust, typescript, python]
   strict_mode: true            # linter 失败 → exit 2 阻塞 AI
   auto_fix_on_save: true       # 先试自动修复

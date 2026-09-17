@@ -61,7 +61,7 @@ def main() -> int:
     lines.append("- AI 写完代码会被 PostToolUse 钩子强制 lint；失败会阻塞继续")
     lines.append("- 用户要求「提交/push」时，UserPromptSubmit 钩子会再次确认所有 linter 通过")
     lines.append("")
-    lines.append("**重要**：写代码前先阅读对应语言的规范（见 skills/codestyle-{language}/SKILL.md）")
+    lines.append("**重要**：写代码前先阅读对应语言的规范（见 skills/codeguard-{language}/SKILL.md）")
 
     print("\n".join(lines))
     return 0

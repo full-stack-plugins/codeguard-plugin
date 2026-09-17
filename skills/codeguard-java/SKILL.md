@@ -9,7 +9,7 @@ description: |
 
 ## 强制项（违反必须修复）
 
-### 1. javadoc（codestyle-check 插件核心约束）
+### 1. javadoc（codeguard 插件核心约束）
 
 - **public class / interface / enum**：必须 `@author` + 描述
 - **public 方法**：必须 `@param`（每个参数）+ `@return`（非 void）
@@ -56,7 +56,7 @@ public class MeituanTokenRefreshAppService {
 ### 4. 检查命令
 
 ```bash
-# javadoc 单独检查（codestyle-check 钩子默认调用）
+# javadoc 单独检查（codeguard 钩子默认调用）
 mvn -q javadoc:jar -DskipTests
 
 # checkstyle 阿里 P3C（需项目配置 checkstyle plugin）

@@ -1,5 +1,5 @@
 {
   "name": "init",
   "description": "把 codeguard 接入当前项目（写 .pre-commit-config.yaml / AGENTS.md / CI）",
-  "prompt": "运行 /init。\n\n按 `codestyle-init` skill 的步骤操作：\n1. 检测项目语言\n2. 拷贝对应 linter 配置到项目根（checkstyle.xml / clippy.toml / eslint.config.js / ruff 配置）\n3. 写 .pre-commit-config.yaml（基于插件的模板）\n4. 增量更新 AGENTS.md（追加代码规范章节，不覆盖已有内容）\n5. 询问用户是否生成 GitHub Actions 工作流\n6. 输出安装指令：`pip install pre-commit && pre-commit install`（不自动执行）\n\n边界：\n- 不删除/覆盖已有配置\n- 不覆盖 AGENTS.md 已有内容\n- 不自动执行 pre-commit install"
+  "prompt": "运行 /init。\n\n按 `codeguard-init` skill 的步骤操作：\n1. 检测项目语言\n2. 拷贝对应 linter 配置到项目根（checkstyle.xml / clippy.toml / eslint.config.js / ruff 配置）\n3. 写 .pre-commit-config.yaml（基于插件的模板）\n4. 增量更新 AGENTS.md（追加代码规范章节，不覆盖已有内容）\n5. 询问用户是否生成 GitHub Actions 工作流\n6. 输出安装指令：`pip install pre-commit && pre-commit install`（不自动执行）\n\n边界：\n- 不删除/覆盖已有配置\n- 不覆盖 AGENTS.md 已有内容\n- 不自动执行 pre-commit install"
 }
