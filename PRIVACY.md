@@ -1,6 +1,6 @@
 # Privacy Policy
 
-codestyle-check is a **client-side** plugin that runs entirely on your machine.
+**partme-codestyle-check** is a **client-side** plugin that runs entirely on your machine.
 
 ## What data we collect
 
@@ -28,4 +28,4 @@ The plugin is open source under Apache-2.0. You can audit every line.
 
 ## Contact
 
-Issues: https://github.com/partme-ai/codestyle-check-plugin/issues
+Issues: https://github.com/partme-ai/plugins/issues

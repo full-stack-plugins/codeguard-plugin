@@ -2,7 +2,7 @@
 
 ## What this plugin does
 
-codestyle-check runs code quality linters on files you (or your AI assistant) modify. It does not execute your code; it only checks your code's surface syntax, style, and documentation completeness.
+**partme-codestyle-check** runs code quality linters on files you (or your AI assistant) modify. It does not execute your code; it only checks your code's surface syntax, style, and documentation completeness.
 
 ## What this plugin does NOT do
 
@@ -23,7 +23,7 @@ The plugin is provided "AS IS" without warranty of any kind. The authors are not
 
 - Review the plugin's actions before commit
 - Keep your `~/.zcode/settings.local.yaml` configuration under your own control
-- Audit the open-source code at https://github.com/partme-ai/codestyle-check-plugin
+- Audit the open-source code at https://github.com/partme-ai/plugins
 
 ## License
 
@@ -31,4 +31,4 @@ Apache-2.0. See [LICENSE](./LICENSE).
 
 ## Contact
 
-Issues: https://github.com/partme-ai/codestyle-check-plugin/issues
+Issues: https://github.com/partme-ai/plugins/issues
