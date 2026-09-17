@@ -1,4 +1,4 @@
-// codestyle-check (codeguard): stylelint 推荐配置（CSS/SCSS/LESS）
+// codeguard: stylelint 推荐配置（CSS/SCSS/LESS）
 // 使用方法：拷贝到项目根 stylelint.config.js：
 //   npm install --save-dev stylelint stylelint-config-standard
 //   npx stylelint "**/*.css"

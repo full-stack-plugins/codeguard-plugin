@@ -1,4 +1,4 @@
-# codestyle-check (codeguard): Dockerfile 规范（hadolint）
+# codeguard: Dockerfile 规范（hadolint）
 # 使用方法：拷贝到项目根 .hadolint.yaml：
 #   brew install hadolint
 #   hadolint Dockerfile
