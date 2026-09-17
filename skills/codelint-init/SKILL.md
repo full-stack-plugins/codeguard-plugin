@@ -1,5 +1,5 @@
 ---
-name: codestyle-init
+name: codelint-init
 description: |
   一键把 codestyle-check 接入当前仓库。检测项目语言、拷贝 linter 配置文件、写 .pre-commit-config.yaml、
   增量更新 AGENTS.md、生成 GitHub Actions CI 工作流。

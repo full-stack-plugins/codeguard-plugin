@@ -1,5 +1,5 @@
 ---
-name: codestyle-typescript
+name: codelint-typescript
 description: |
   TypeScript / JavaScript 代码规范：ESLint recommended + Prettier 一致格式化。
   触发：用户说"eslint"、"ts 规范"、"prettier"、"lint"。

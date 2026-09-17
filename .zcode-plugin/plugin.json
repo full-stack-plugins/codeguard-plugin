@@ -1,22 +1,22 @@
 {
-  "name": "partme-codelint",
-  "displayName": "代码 lint 检查",
+  "name": "codelint",
+  "displayName": "代码规范检查",
   "displayName_i18n": {
     "en": "CodeLint",
-    "zh-CN": "代码 lint 检查"
+    "zh-CN": "代码规范检查"
   },
   "version": "0.1.0",
-  "description": "Cross-language code style enforcement for AI coding assistants (ZCode, Claude Code, Codex, Kimi Code). Lint on every AI-written file via PostToolUse hook; block on failure when strict mode is on.",
+  "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
   "description_i18n": {
-    "en": "Cross-language code style enforcement. PostToolUse hook auto-runs the language-specific linter on every AI-written file; failed lint blocks further writes when strict_mode is on. Ships ready-to-go .pre-commit-config.yaml templates for Java/Rust/TypeScript/Python.",
-    "zh-CN": "跨语言代码规范强制门禁插件，专为 ZCode / Claude Code / Codex / Kimi Code 等 AI 编程助手设计。PostToolUse 钩子在 AI 写完文件后自动跑对应语言 linter；严格模式下失败会阻塞 AI 继续。内含可直接接入的 .pre-commit-config.yaml 模板。"
+    "en": "Cross-language code lint enforcement. PostToolUse hook auto-runs the language-specific linter on every AI-written file; failed lint blocks further writes when strict_mode is on. Ships ready-to-go .pre-commit-config.yaml templates for Java/Rust/TypeScript/Python.",
+    "zh-CN": "跨语言代码规范强制门禁插件，专为 ZCode / Claude Code / Codex CLI / Kimi Code 等 AI 编程助手设计。PostToolUse 钩子在 AI 写完文件后自动跑对应语言 linter；严格模式下失败会阻塞 AI 继续。内含可直接接入的 .pre-commit-config.yaml 模板。"
   },
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
   },
-  "homepage": "https://github.com/partme-ai/plugins/tree/main/partme-codelint",
-  "repository": "https://github.com/partme-ai/plugins",
+  "homepage": "https://github.com/partme-ai/partme-codelint",
+  "repository": "https://github.com/partme-ai/partme-codelint",
   "license": "Apache-2.0",
   "keywords": [
     "java",
@@ -34,7 +34,7 @@
   "commands": "commands",
   "hooks": "hooks/hooks.json",
   "mcpServers": {
-    "codestyle_linter": {
+    "codelint_linter": {
       "command": "python3",
       "args": [
         "${ZCODE_PLUGIN_ROOT}/scripts/run_check.py",

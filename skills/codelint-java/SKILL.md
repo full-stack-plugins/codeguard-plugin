@@ -1,5 +1,5 @@
 ---
-name: codestyle-java
+name: codelint-java
 description: |
   Java 专项代码规范：javadoc 必须、checkstyle P3C 风格、Spotless 自动格式化。
   触发：用户说"Java 规范"、"javadoc"、"checkstyle"、"P3C"、"阿里规约"。

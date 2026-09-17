@@ -1,13 +1,13 @@
 {
-  "name": "partme-codelint",
-  "version": "0.1.0+codex.20260917000000",
-  "description": "Cross-language code style enforcement with hooks, skills, and MCP linter tools.",
+  "name": "codelint",
+  "version": "0.1.0+codex.20260918000000",
+  "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
   },
-  "homepage": "https://github.com/partme-ai/plugins/tree/main/partme-codelint",
-  "repository": "https://github.com/partme-ai/plugins",
+  "homepage": "https://github.com/partme-ai/partme-codelint",
+  "repository": "https://github.com/partme-ai/partme-codelint",
   "license": "Apache-2.0",
   "keywords": [
     "java",
@@ -24,8 +24,8 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "代码 lint 检查",
-    "shortDescription": "Cross-language code style enforcement",
+    "displayName": "代码规范检查",
+    "shortDescription": "Make AI-written code pass lint on first try",
     "longDescription": "Detects project languages, runs the appropriate linter (mvn javadoc+checkstyle, cargo clippy+fmt, npx eslint, ruff check) on every file the AI writes or edits, and blocks further writes when lints fail. Ships ready-to-use .pre-commit-config.yaml templates and AGENTS.md snippets for one-line project bootstrap. Supports ZCode, Claude Code, Codex CLI, and Kimi Code through their respective plugin manifests.",
     "developerName": "Full Stack Skills / PartMe.AI",
     "category": "Developer Tools",
@@ -33,12 +33,12 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/partme-ai/plugins/tree/main/partme-codelint",
-    "privacyPolicyURL": "https://github.com/partme-ai/plugins/blob/main/partme-codelint/PRIVACY.md",
-    "termsOfServiceURL": "https://github.com/partme-ai/plugins/blob/main/partme-codelint/TERMS.md",
+    "websiteURL": "https://github.com/partme-ai/partme-codelint",
+    "privacyPolicyURL": "https://github.com/partme-ai/partme-codelint/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/partme-ai/partme-codelint/blob/main/TERMS.md",
     "defaultPrompt": [
       "Run /check on the current project and fix what fails",
-      "Initialize partme-codelint on this repository with /init",
+      "Initialize codelint on this repository with /init",
       "Run Java javadoc + checkstyle on the current project"
     ],
     "brandColor": "#2563EB",

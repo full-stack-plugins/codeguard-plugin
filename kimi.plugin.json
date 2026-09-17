@@ -1,0 +1,62 @@
+{
+  "name": "codelint",
+  "version": "0.1.0",
+  "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
+  "author": {
+    "name": "Full Stack Skills / PartMe.AI"
+  },
+  "homepage": "https://github.com/partme-ai/partme-codelint",
+  "license": "Apache-2.0",
+  "keywords": [
+    "java",
+    "rust",
+    "typescript",
+    "python",
+    "javadoc",
+    "checkstyle",
+    "clippy",
+    "eslint",
+    "ruff",
+    "pre-commit"
+  ],
+  "interface": {
+    "displayName": "代码规范检查",
+    "shortDescription": "Make AI-written code pass lint on first try",
+    "longDescription": "Detects project languages, runs the appropriate linter (mvn javadoc+checkstyle, cargo clippy+fmt, npx eslint, ruff check) on every file the AI writes or edits, and blocks further writes when lints fail. Ships ready-to-use .pre-commit-config.yaml templates and AGENTS.md snippets for one-line project bootstrap.",
+    "developerName": "Full Stack Skills / PartMe.AI",
+    "websiteURL": "https://github.com/partme-ai/partme-codelint"
+  },
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "mcpServers": {
+    "codelint_linter": {
+      "command": "python3",
+      "args": [
+        "./scripts/run_check.py",
+        "--mcp"
+      ]
+    }
+  },
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": "python3 ./hooks/session_start.py",
+      "timeout": 30
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": "python3 ./hooks/user_prompt_validator.py",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "command": "python3 ./hooks/post_tool_lint.py",
+      "timeout": 180
+    },
+    {
+      "event": "Stop",
+      "command": "python3 ./hooks/stop_summary.py",
+      "timeout": 15
+    }
+  ]
+}
