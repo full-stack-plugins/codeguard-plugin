@@ -1,5 +1,5 @@
 ---
-name: codelint-kotlin
+name: codeguard-kotlin
 description: |
   Kotlin 代码规范：detekt 静态分析 + ktlint 格式化（Gradle 插件）。
   触发：用户说"Kotlin 规范"、"detekt"、"ktlint"。
@@ -12,7 +12,7 @@ description: |
 ### 1. lint 命令
 
 ```bash
-./gradlew detekt           # codelint 钩子默认调用（项目需配 detekt 插件）
+./gradlew detekt           # codeguard 钩子默认调用（项目需配 detekt 插件）
 ./gradlew ktlintFormat     # 自动格式化
 ./gradlew lint             # Android 项目官方 lint
 ```

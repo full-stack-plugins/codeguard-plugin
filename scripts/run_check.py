@@ -84,18 +84,18 @@ def cli_main():
         languages = [lang for lang in languages if lang in args.lang.split(",")]
 
     if not languages:
-        print("[codelint] 未识别到语言", file=sys.stderr)
+        print("[codeguard] 未识别到语言", file=sys.stderr)
         return 1
 
-    print(f"[codelint] project: {project_root}")
-    print(f"[codelint] languages: {languages}")
+    print(f"[codeguard] project: {project_root}")
+    print(f"[codeguard] languages: {languages}")
     print()
 
     results = []
     for lang in languages:
         r = check_one(lang, project_root, args.timeout)
         if not r["passed"] and args.fix:
-            print(f"[codelint] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
+            print(f"[codeguard] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
             fix = fix_one(lang, project_root, args.timeout)
             if fix["fixed"]:
                 r = check_one(lang, project_root, args.timeout)
@@ -107,9 +107,9 @@ def cli_main():
 
     print()
     if all(r["passed"] for r in results):
-        print("[codelint] \u2705 all passed")
+        print("[codeguard] \u2705 all passed")
         return 0
-    print("[codelint] \u274c some lints failed")
+    print("[codeguard] \u274c some lints failed")
     return 2
 
 
@@ -121,8 +121,8 @@ def mcp_main(project_root: Path):
     """
     # 占位实现：调用方传 {"method": "tools/call", "params": {"name": "check_code_style"}}
     # 真实落地时建议用 mcp Python SDK：https://github.com/modelcontextprotocol/python-sdk
-    print("[codelint] MCP server mode not yet wired with official SDK.", file=sys.stderr)
-    print("[codelint] Use CLI mode for now: python3 run_check.py", file=sys.stderr)
+    print("[codeguard] MCP server mode not yet wired with official SDK.", file=sys.stderr)
+    print("[codeguard] Use CLI mode for now: python3 run_check.py", file=sys.stderr)
     return 0
 
 

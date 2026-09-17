@@ -1,6 +1,6 @@
-# partme-codelint 系统架构设计
+# partme-codeguard-plugin 系统架构设计
 
-> **文档说明**：本架构文档描述 partme-codelint 插件的内部结构、模块划分、数据流与三端适配设计。
+> **文档说明**：本架构文档描述 partme-codeguard-plugin 插件的内部结构、模块划分、数据流与三端适配设计。
 >
 > **版本**：V1.0
 > **最后更新**：2026-09-17
@@ -9,7 +9,7 @@
 
 ## 1. 架构总览
 
-partme-codelint 是一类**约束型 AI 插件**——它不生产代码，而是在 AI 助手写代码的过程中**强制执行代码规范**。其核心创新点是把「linter 检查」从「提交/CI 阶段」**前移**到「AI 写完文件的瞬间」。
+partme-codeguard-plugin 是一类**约束型 AI 插件**——它不生产代码，而是在 AI 助手写代码的过程中**强制执行代码规范**。其核心创新点是把「linter 检查」从「提交/CI 阶段」**前移**到「AI 写完文件的瞬间」。
 
 ### 1.1 顶层数据流
 
@@ -52,7 +52,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph Plugin["partme-codelint 插件"]
+    subgraph Plugin["partme-codeguard-plugin 插件"]
         Manifest["双清单<br/>.zcode-plugin/<br/>.codex-plugin/"]
         Hooks["hooks/<br/>4 类钩子"]
         Skills["skills/<br/>6 个 SKILL.md"]
@@ -258,10 +258,10 @@ codestyle-check:
 
 | 平台 | 安装方式 |
 |---|---|
-| ZCode | 软链或复制 `~/.zcode/plugins/partme-codelint/` |
+| ZCode | 软链或复制 `~/.zcode/plugins/partme-codeguard-plugin/` |
 | Codex CLI | `~/.codex/plugins/` 或 marketplace install |
-| Claude Code | 软链或复制 `~/.claude/plugins/partme-codelint/` |
-| Kimi Code | 软链或复制 `~/.kimi/plugins/partme-codelint/` |
+| Claude Code | 软链或复制 `~/.claude/plugins/partme-codeguard-plugin/` |
+| Kimi Code | 软链或复制 `~/.kimi/plugins/partme-codeguard-plugin/` |
 
 ---
 

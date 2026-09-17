@@ -1,8 +1,8 @@
 {
-  "name": "codelint",
+  "name": "codeguard",
   "displayName": "代码规范检查",
   "displayName_i18n": {
-    "en": "CodeLint",
+    "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
   "version": "0.2.0",
@@ -15,8 +15,8 @@
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
   },
-  "homepage": "https://github.com/partme-ai/partme-codelint",
-  "repository": "https://github.com/partme-ai/partme-codelint",
+  "homepage": "https://github.com/partme-ai/partme-codeguard-plugin",
+  "repository": "https://github.com/partme-ai/partme-codeguard-plugin",
   "license": "Apache-2.0",
   "keywords": [
     "java",
@@ -34,7 +34,7 @@
   "commands": "commands",
   "hooks": "hooks/hooks.json",
   "mcpServers": {
-    "codelint_linter": {
+    "codeguard_linter": {
       "command": "python3",
       "args": [
         "${ZCODE_PLUGIN_ROOT}/scripts/run_check.py",

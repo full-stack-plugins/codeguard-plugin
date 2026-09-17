@@ -1,5 +1,5 @@
 ---
-name: codelint-scala
+name: codeguard-scala
 description: |
   Scala 代码规范：scalafmt 强制（--check 即门禁）+ import 排序。
   触发：用户说"Scala 规范"、"scalafmt"、"scalafix"。
@@ -13,7 +13,7 @@ description: |
 
 ```bash
 coursier install scalafmt       # 一次性安装
-scalafmt --check                # codelint 钩子默认调用
+scalafmt --check                # codeguard 钩子默认调用
 scalafmt                        # 自动格式化
 ```
 

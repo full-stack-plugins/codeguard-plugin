@@ -1,5 +1,5 @@
 ---
-name: codelint-swift
+name: codeguard-swift
 description: |
   Swift 代码规范：SwiftLint 强制（brew 安装），含 force_cast / force_try 限制。
   触发：用户说"Swift 规范"、"SwiftLint"。
@@ -13,7 +13,7 @@ description: |
 
 ```bash
 brew install swiftlint       # 一次性安装
-swiftlint                    # codelint 钩子默认调用
+swiftlint                    # codeguard 钩子默认调用
 swiftlint --fix              # 自动修复
 ```
 

@@ -1,5 +1,5 @@
 ---
-name: codelint
+name: codeguard
 description: |
   跨语言代码 lint 检查。识别项目语言、跑对应 linter（Java javadoc+checkstyle、Rust clippy+fmt、
   TypeScript eslint、Python ruff）、自动修复（spotless:apply / cargo fmt / eslint --fix / ruff --fix）、

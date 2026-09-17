@@ -1,7 +1,7 @@
-# partme-codelint Plugin
+# partme-codeguard-plugin Plugin
 
 <p align="center">
-  <img src="assets/banner.svg" alt="partme-codelint — Make AI-written code pass lint on first try. Supports ZCode, Claude Code, Codex CLI, and Kimi Code." width="100%">
+  <img src="assets/banner.svg" alt="partme-codeguard-plugin — Make AI-written code pass lint on first try. Supports ZCode, Claude Code, Codex CLI, and Kimi Code." width="100%">
 </p>
 
 <p align="center">
@@ -12,15 +12,15 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="docs/partme-codelint-Architecture.zh_CN.md">Architecture</a> ·
-  <a href="docs/5、partme-codelint-技术方案与路线.md">Technical roadmap</a>
+  <a href="docs/partme-codeguard-plugin-Architecture.zh_CN.md">Architecture</a> ·
+  <a href="docs/5、partme-codeguard-plugin-技术方案与路线.md">Technical roadmap</a>
 </p>
 
 ---
 
 ## Positioning
 
-`partme-codelint` makes AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code) produce code that **passes linters on the first attempt**. Instead of finding out at commit-time that your AI forgot a Javadoc tag or used `unwrap()`, this plugin runs the right linter the moment the AI writes a file — and blocks the AI from continuing until the lint passes.
+`partme-codeguard-plugin` makes AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code) produce code that **passes linters on the first attempt**. Instead of finding out at commit-time that your AI forgot a Javadoc tag or used `unwrap()`, this plugin runs the right linter the moment the AI writes a file — and blocks the AI from continuing until the lint passes.
 
 It is a **constraint-type plugin** for AI assistants, not a productivity-type plugin: it produces no code itself, but enforces rules on the code the AI produces.
 
@@ -36,11 +36,11 @@ It is a **constraint-type plugin** for AI assistants, not a productivity-type pl
 
 | Problem | What this plugin provides | Verifiable entry point |
 |---|---|---|
-| AI skips Javadoc tags, javadoc errors only surface on `mvn install` | PostToolUse hook auto-runs `mvn javadoc:jar` after each AI-written `.java` | `hooks/post_tool_lint.py`, [Architecture §3.2](docs/partme-codelint-Architecture.zh_CN.md) |
-| AI uses `unwrap()` in Rust business code | `cargo clippy -- -D warnings` runs on each `.rs` file | [Architecture §2.1](docs/partme-codelint-Architecture.zh_CN.md) |
+| AI skips Javadoc tags, javadoc errors only surface on `mvn install` | PostToolUse hook auto-runs `mvn javadoc:jar` after each AI-written `.java` | `hooks/post_tool_lint.py`, [Architecture §3.2](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
+| AI uses `unwrap()` in Rust business code | `cargo clippy -- -D warnings` runs on each `.rs` file | [Architecture §2.1](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
 | AI introduces `any` and unused vars in TypeScript | `eslint --max-warnings 0` blocks the AI | `linters/eslint/recommended.cjs` |
 | "did it pass lint?" is asked manually after every AI session | Stop hook summarizes lint pass/fail counts | `hooks/stop_summary.py` |
-| pre-commit and CI catch issues 30s+5min late, by then the AI has moved on | Three-layer defense: hook (<2s) → pre-commit (30s) → CI (5min) | [Technical roadmap §1](docs/5、partme-codelint-技术方案与路线.md) |
+| pre-commit and CI catch issues 30s+5min late, by then the AI has moved on | Three-layer defense: hook (<2s) → pre-commit (30s) → CI (5min) | [Technical roadmap §1](docs/5、partme-codeguard-plugin-技术方案与路线.md) |
 
 ## At a glance
 
@@ -49,7 +49,7 @@ AI writes file
       │
       ▼
 ┌──────────────────────────────────────────────────────────┐
-│ partme-codelint                                    │
+│ partme-codeguard-plugin                                    │
 │  ① detect  project language (java / rust / ts / python)  │
 │  ② lint    run native linter on the file                 │
 │  ③ auto-fix spotless / cargo fmt / eslint / ruff          │
@@ -63,7 +63,7 @@ AI code that passes lint on first try
 
 | Property | Value |
 |---|---|
-| Plugin ID | `partme-codelint` |
+| Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
 | Current version | `0.2.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
@@ -123,9 +123,9 @@ PostToolUse is the **highest-ROI** layer because it gives the AI feedback **whil
 
 ```bash
 # Step 1: install (one of these, per your host)
-ln -s $PWD ~/.zcode/plugins/partme-codelint
-ln -s $PWD ~/.codex/plugins/partme-codelint
-ln -s $PWD ~/.kimi/plugins/partme-codelint
+ln -s $PWD ~/.zcode/plugins/partme-codeguard-plugin
+ln -s $PWD ~/.codex/plugins/partme-codeguard-plugin
+ln -s $PWD ~/.kimi/plugins/partme-codeguard-plugin
 
 # Step 2: in any project, ask the AI:
 /init    # copy linter configs + .pre-commit + AGENTS.md
@@ -147,7 +147,7 @@ When this plugin is active, you do **not** need to do anything manually:
 User config in `~/.zcode/settings.local.yaml` (ZCode) or equivalent for other hosts:
 
 ```yaml
-codelint:
+codeguard:
   enabled_languages: auto      # or [java, rust, typescript, python]
   strict_mode: true            # PostToolUse exit 2 on lint fail (BLOCKS AI)
   auto_fix_on_save: true       # try spotless/cargo fmt/eslint --fix/ruff --fix first
@@ -164,7 +164,7 @@ codelint:
 ## Repository layout
 
 ```
-partme-codelint/
+partme-codeguard-plugin/
 ├── .zcode-plugin/plugin.json     # ZCode manifest (primary)
 ├── .codex-plugin/plugin.json    # Codex CLI manifest
 ├── .mcp.json                     # MCP server entry (stdio)
@@ -179,7 +179,7 @@ partme-codelint/
 │   ├── run_check.py              # main CLI: detect + run all linters + report
 │   └── fix.py                    # auto-fix CLI
 ├── skills/                       # 6 SKILL.md (主入口 + 4 语言 + init)
-│   ├── codelint/
+│   ├── codeguard/
 │   ├── codestyle-init/
 │   ├── codestyle-java/
 │   ├── codestyle-rust/
@@ -196,8 +196,8 @@ partme-codelint/
 │   ├── ruff/                     # [tool.ruff] block
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
-│   ├── partme-codelint-Architecture.zh_CN.md
-│   └── 5、partme-codelint-技术方案与路线.md
+│   ├── partme-codeguard-plugin-Architecture.zh_CN.md
+│   └── 5、partme-codeguard-plugin-技术方案与路线.md
 ├── README.md                     # this file
 ├── README.zh-CN.md               # Chinese
 ├── LICENSE                       # Apache-2.0
@@ -209,10 +209,10 @@ partme-codelint/
 
 | Host | Plugin manifest | Install path | Status |
 |---|---|---|---|
-| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/plugins/partme-codelint/` | ✅ V0.1 |
-| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/partme-codelint/` | ✅ V0.1 |
-| **Claude Code** | (uses Codex manifest via marketplace) | `~/.claude/plugins/partme-codelint/` | 🔧 V0.2 |
-| **Kimi Code** | (uses Codex manifest) | `~/.kimi/plugins/partme-codelint/` | 🔧 V0.2 |
+| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
+| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
+| **Claude Code** | (uses Codex manifest via marketplace) | `~/.claude/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
+| **Kimi Code** | (uses Codex manifest) | `~/.kimi/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
 
 The hooks, scripts, linters, and skills are **shared across all hosts** — only the manifest differs.
 
@@ -235,9 +235,9 @@ python3 scripts/fix.py             # actually change
 In any AI session, after writing a `.java` file, you should see in the AI log:
 
 ```
-[codelint] lint java: src/main/java/Foo.java
-[codelint] ❌ java lint failed for src/main/java/Foo.java
-[codelint] fix with: mvn -q spotless:apply
+[codeguard] lint java: src/main/java/Foo.java
+[codeguard] ❌ java lint failed for src/main/java/Foo.java
+[codeguard] fix with: mvn -q spotless:apply
 ```
 
 Exit code 2 if strict mode is on (the AI must fix); exit code 0 with warnings if strict mode is off.

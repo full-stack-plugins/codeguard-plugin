@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """UserPromptSubmit 钩子：用户说"提交/push/部署"时强制检查所有 linter 通过。
 
-这是 codelint 的「门禁钩子」——把规范检查从"提交后看 CI 红"前移到
+这是 codeguard 的「门禁钩子」——把规范检查从"提交后看 CI 红"前移到
 "AI 在用户说提交那一刻就拦截"。
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def main() -> int:
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    print(f"[codelint] 检测到「提交/push」意图，运行 linter 门禁检查...")
+    print(f"[codeguard] 检测到「提交/push」意图，运行 linter 门禁检查...")
     failures = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
@@ -81,13 +81,13 @@ def main() -> int:
             failures.append((lang, f"exit={proc.returncode}\n{proc.stderr[-1000:]}"))
 
     if failures:
-        print(f"\n[codelint] \u274c 门禁检查失败，请先修复:", file=sys.stderr)
+        print(f"\n[codeguard] \u274c 门禁检查失败，请先修复:", file=sys.stderr)
         for lang, info in failures:
             print(f"  - {lang}: {info}", file=sys.stderr)
-        print(f"\n[codelint] 自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py", file=sys.stderr)
+        print(f"\n[codeguard] 自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py", file=sys.stderr)
         return 2
 
-    print(f"[codelint] \u2705 所有 linter 通过，可以提交")
+    print(f"[codeguard] \u2705 所有 linter 通过，可以提交")
     return 0
 
 

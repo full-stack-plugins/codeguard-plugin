@@ -1,5 +1,5 @@
 ---
-name: codelint-php
+name: codeguard-php
 description: |
   PHP 代码规范：php -l 语法门禁 + PHP-CS-Fixer PSR-12 自动修复 + PHPStan 静态分析。
   触发：用户说"PHP 规范"、"PSR-12"、"php-cs-fixer"、"phpstan"。
@@ -12,7 +12,7 @@ description: |
 ### 1. lint 命令
 
 ```bash
-php -l <file>                                   # codelint 钩子默认调用（语法门禁，零依赖）
+php -l <file>                                   # codeguard 钩子默认调用（语法门禁，零依赖）
 vendor/bin/php-cs-fixer fix --dry-run           # 风格检查
 vendor/bin/php-cs-fixer fix                     # 自动修复
 vendor/bin/phpstan analyse                      # 静态分析（推荐另配）

@@ -32,11 +32,11 @@ def main() -> int:
         languages = [lang for lang in languages if lang == args.lang]
 
     if not languages:
-        print("[codelint] 未识别到语言")
+        print("[codeguard] 未识别到语言")
         return 1
 
-    print(f"[codelint] project: {project_root}")
-    print(f"[codelint] languages: {languages}  dry-run={args.dry_run}")
+    print(f"[codeguard] project: {project_root}")
+    print(f"[codeguard] languages: {languages}  dry-run={args.dry_run}")
     print()
 
     failed = []

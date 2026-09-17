@@ -1,5 +1,5 @@
 ---
-name: codelint-csharp
+name: codeguard-csharp
 description: |
   C# 代码规范：dotnet format 强制 + .editorconfig 风格。需要 .NET SDK 6+。
   触发：用户说"C# 规范"、"dotnet format"、"editorconfig"。
@@ -12,7 +12,7 @@ description: |
 ### 1. lint 命令
 
 ```bash
-dotnet format --verify-no-changes   # codelint 钩子默认调用（.NET SDK 6+ 内置）
+dotnet format --verify-no-changes   # codeguard 钩子默认调用（.NET SDK 6+ 内置）
 dotnet format                       # 自动修复
 dotnet build                        # 编译期警告也是门禁的一部分
 ```

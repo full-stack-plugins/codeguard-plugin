@@ -1,5 +1,5 @@
 ---
-name: codelint-rust
+name: codeguard-rust
 description: |
   Rust 专项代码规范：clippy strict + rustfmt 强制。禁止 unwrap/expect/panic 在业务代码。
   触发：用户说"clippy"、"rustfmt"、"rust 规范"、"cargo clippy"。

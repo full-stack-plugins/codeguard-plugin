@@ -1,5 +1,5 @@
 ---
-name: codelint-ruby
+name: codeguard-ruby
 description: |
   Ruby 代码规范：RuboCop 强制（单引号、行宽 160、method 长度 20）。
   触发：用户说"Ruby 规范"、"RuboCop"。
@@ -13,7 +13,7 @@ description: |
 
 ```bash
 gem install rubocop       # 一次性安装
-rubocop                   # codelint 钩子默认调用
+rubocop                   # codeguard 钩子默认调用
 rubocop -A                # 自动修复（-a 只修安全项）
 rubocop -L                # 只列违规文件
 ```

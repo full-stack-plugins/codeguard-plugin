@@ -1,7 +1,7 @@
-# partme-codelint 插件
+# partme-codeguard-plugin 插件
 
 <p align="center">
-  <img src="assets/banner.svg" alt="partme-codelint — 让 AI 写的代码一次过 lint。支持 ZCode、Claude Code、Codex CLI、Kimi Code。" width="100%">
+  <img src="assets/banner.svg" alt="partme-codeguard-plugin — 让 AI 写的代码一次过 lint。支持 ZCode、Claude Code、Codex CLI、Kimi Code。" width="100%">
 </p>
 
 <p align="center">
@@ -12,15 +12,15 @@
 <p align="center">
   <a href="README.md">English</a> ·
   <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="docs/partme-codelint-Architecture.zh_CN.md">架构文档</a> ·
-  <a href="docs/5、partme-codelint-技术方案与路线.md">技术方案</a>
+  <a href="docs/partme-codeguard-plugin-Architecture.zh_CN.md">架构文档</a> ·
+  <a href="docs/5、partme-codeguard-plugin-技术方案与路线.md">技术方案</a>
 </p>
 
 ---
 
 ## 定位
 
-`partme-codelint` 让 AI 编程助手（ZCode、Claude Code、Codex CLI、Kimi Code）**第一次写出的代码就能通过 linter**。传统模式下你只能在 commit 时才发现 AI 漏写了 Javadoc 标签或者用了 `unwrap()`；本插件在 AI 写完文件的那一刻就跑对应 linter，**不通过则阻塞 AI 继续**。
+`partme-codeguard-plugin` 让 AI 编程助手（ZCode、Claude Code、Codex CLI、Kimi Code）**第一次写出的代码就能通过 linter**。传统模式下你只能在 commit 时才发现 AI 漏写了 Javadoc 标签或者用了 `unwrap()`；本插件在 AI 写完文件的那一刻就跑对应 linter，**不通过则阻塞 AI 继续**。
 
 它不是生产力插件，是**约束型插件**——它自己不产代码，而是对 AI 产出的代码执行规范。
 
@@ -36,11 +36,11 @@
 
 | 问题 | 本插件提供 | 可验证入口 |
 |---|---|---|
-| AI 漏 Javadoc，`mvn install` 时才报 | PostToolUse 钩子在每个 `.java` 写完自动跑 `mvn javadoc:jar` | `hooks/post_tool_lint.py`，[架构文档 §3.2](docs/partme-codelint-Architecture.zh_CN.md) |
-| AI 在 Rust 业务代码用 `unwrap()` | `cargo clippy -- -D warnings` 跑每个 `.rs` 文件 | [架构文档 §2.1](docs/partme-codelint-Architecture.zh_CN.md) |
+| AI 漏 Javadoc，`mvn install` 时才报 | PostToolUse 钩子在每个 `.java` 写完自动跑 `mvn javadoc:jar` | `hooks/post_tool_lint.py`，[架构文档 §3.2](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
+| AI 在 Rust 业务代码用 `unwrap()` | `cargo clippy -- -D warnings` 跑每个 `.rs` 文件 | [架构文档 §2.1](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
 | AI 写 `any` 和未用变量 | `eslint --max-warnings 0` 阻塞 AI | `linters/eslint/recommended.cjs` |
 | 每次会话都要手工问「过 lint 了吗？」 | Stop 钩子自动总结本会话 lint 通过/失败次数 | `hooks/stop_summary.py` |
-| pre-commit / CI 发现时 AI 已切走，修复率 <30% | **三层防御**：钩子（<2s）→ pre-commit（30s）→ CI（5min） | [技术方案 §1](docs/5、partme-codelint-技术方案与路线.md) |
+| pre-commit / CI 发现时 AI 已切走，修复率 <30% | **三层防御**：钩子（<2s）→ pre-commit（30s）→ CI（5min） | [技术方案 §1](docs/5、partme-codeguard-plugin-技术方案与路线.md) |
 
 ## 一览
 
@@ -49,7 +49,7 @@ AI 写文件
    │
    ▼
 ┌──────────────────────────────────────────────────────────┐
-│ partme-codelint                                    │
+│ partme-codeguard-plugin                                    │
 │  ① detect  检测项目语言（java / rust / ts / python）     │
 │  ② lint    对文件跑对应原生 linter                       │
 │  ③ auto-fix spotless / cargo fmt / eslint --fix / ruff    │
@@ -63,7 +63,7 @@ AI 一次写出就过 lint 的代码
 
 | 属性 | 值 |
 |---|---|
-| 插件 ID | `partme-codelint` |
+| 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
 | 当前版本 | `0.2.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
@@ -123,9 +123,9 @@ PostToolUse 是 **最高 ROI** 的层，因为 AI 在它「还在乎这个问题
 
 ```bash
 # 第一步：安装（按你用的平台选其一）
-ln -s $PWD ~/.zcode/plugins/partme-codelint
-ln -s $PWD ~/.codex/plugins/partme-codelint
-ln -s $PWD ~/.kimi/plugins/partme-codelint
+ln -s $PWD ~/.zcode/plugins/partme-codeguard-plugin
+ln -s $PWD ~/.codex/plugins/partme-codeguard-plugin
+ln -s $PWD ~/.kimi/plugins/partme-codeguard-plugin
 
 # 第二步：在任何项目里对 AI 说：
 /init    # 拷贝 linter 配置 + .pre-commit + AGENTS.md
@@ -147,7 +147,7 @@ ln -s $PWD ~/.kimi/plugins/partme-codelint
 `~/.zcode/settings.local.yaml`（ZCode）或各平台对应文件：
 
 ```yaml
-codelint:
+codeguard:
   enabled_languages: auto      # 或 [java, rust, typescript, python]
   strict_mode: true            # PostToolUse 失败时退出码 2（阻塞 AI）
   auto_fix_on_save: true       # 先试 spotless/cargo fmt/eslint --fix/ruff --fix
@@ -164,7 +164,7 @@ codelint:
 ## 仓库结构
 
 ```
-partme-codelint/
+partme-codeguard-plugin/
 ├── .zcode-plugin/plugin.json     # ZCode manifest（主）
 ├── .codex-plugin/plugin.json    # Codex CLI manifest
 ├── .mcp.json                     # MCP 服务入口（stdio）
@@ -179,7 +179,7 @@ partme-codelint/
 │   ├── run_check.py              # 主 CLI：检测 + 跑全量 + 报告
 │   └── fix.py                    # 自动修复 CLI
 ├── skills/                       # 6 个 SKILL.md（主入口 + 4 语言 + init）
-│   ├── codelint/
+│   ├── codeguard/
 │   ├── codestyle-init/
 │   ├── codestyle-java/
 │   ├── codestyle-rust/
@@ -196,8 +196,8 @@ partme-codelint/
 │   ├── ruff/                     # [tool.ruff] 块
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
-│   ├── partme-codelint-Architecture.zh_CN.md
-│   └── 5、partme-codelint-技术方案与路线.md
+│   ├── partme-codeguard-plugin-Architecture.zh_CN.md
+│   └── 5、partme-codeguard-plugin-技术方案与路线.md
 ├── README.md                     # 本文件（英文）
 ├── README.zh-CN.md               # 本文件（中文）
 ├── LICENSE                       # Apache-2.0
@@ -209,10 +209,10 @@ partme-codelint/
 
 | 平台 | 插件 manifest | 安装路径 | 状态 |
 |---|---|---|---|
-| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/plugins/partme-codelint/` | ✅ V0.1 |
-| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/partme-codelint/` | ✅ V0.1 |
-| **Claude Code** | （复用 Codex manifest，经 marketplace 安装） | `~/.claude/plugins/partme-codelint/` | 🔧 V0.2 |
-| **Kimi Code** | （复用 Codex manifest） | `~/.kimi/plugins/partme-codelint/` | 🔧 V0.2 |
+| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
+| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
+| **Claude Code** | （复用 Codex manifest，经 marketplace 安装） | `~/.claude/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
+| **Kimi Code** | （复用 Codex manifest） | `~/.kimi/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
 
 钩子、脚本、linter、skills 在所有平台**共享**——只有 manifest 不同。
 
@@ -235,9 +235,9 @@ python3 scripts/fix.py             # 实际改
 在任何 AI 会话里，写完一个 `.java` 文件后，AI 日志里应看到：
 
 ```
-[codelint] lint java: src/main/java/Foo.java
-[codelint] ❌ java lint failed for src/main/java/Foo.java
-[codelint] fix with: mvn -q spotless:apply
+[codeguard] lint java: src/main/java/Foo.java
+[codeguard] ❌ java lint failed for src/main/java/Foo.java
+[codeguard] fix with: mvn -q spotless:apply
 ```
 
 严格模式下退出码 2（AI 必须修）；非严格模式下退出码 0 仅警告。

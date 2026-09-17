@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**partme-codelint** is a **client-side** plugin that runs entirely on your machine.
+**partme-codeguard-plugin** is a **client-side** plugin that runs entirely on your machine.
 
 ## What data we collect
 

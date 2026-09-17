@@ -1,5 +1,5 @@
 ---
-name: codelint-python
+name: codeguard-python
 description: |
   Python 代码规范：ruff（极速，drop-in 替代 flake8 + isort + pyupgrade + flake8-bugbear）。
   触发：用户说"ruff"、"python 规范"、"flake8"、"lint"。

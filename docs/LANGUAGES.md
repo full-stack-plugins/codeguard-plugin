@@ -1,4 +1,4 @@
-# partme-codelint 支持的语言
+# partme-codeguard-plugin 支持的语言
 
 > 与 [codegraph supported-languages](https://github.com/colbymchenry/codegraph#supported-languages) 的 32 种语言完全对齐。
 > 状态说明：**Stable** = 默认启用，随会话钩子自动 lint；**Beta** = V0.2 起启用，linter 需按安装说明准备；**Planned** = 已识别扩展名，linter 集成在路线图上（钩子检测到后安全跳过）。
@@ -64,6 +64,6 @@
 
 1. `scripts/detect_lang.py`：`EXT_LANG_MAP` 加扩展名、`LANG_COMMANDS` 加 lint/format 命令。
 2. `linters/<lang>/` 放配置模板。
-3. `skills/codelint-<lang>/SKILL.md` 写规范速查（frontmatter `name` 必须等于目录名）。
+3. `skills/codeguard-<lang>/SKILL.md` 写规范速查（frontmatter `name` 必须等于目录名）。
 4. `docs/LANGUAGES.md` 状态列更新为 Stable/Beta。
 5. 跑 `python3 scripts/detect_lang.py <项目>` 冒烟验证。

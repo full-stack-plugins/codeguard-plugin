@@ -1,5 +1,5 @@
 ---
-name: codelint-go
+name: codeguard-go
 description: |
   Go 代码规范：go vet 基线 + golangci-lint 聚合 + gofmt 强制。禁止忽略 error 返回值。
   触发：用户说"Go 规范"、"go vet"、"golangci-lint"、"gofmt"。
@@ -12,7 +12,7 @@ description: |
 ### 1. lint 命令
 
 ```bash
-go vet ./...                                    # codelint 钩子默认调用（内置）
+go vet ./...                                    # codeguard 钩子默认调用（内置）
 golangci-lint run                               # 推荐的聚合 lint（可选安装）
 gofmt -w .                                      # 自动格式化
 gofmt -l .                                      # 列出未格式化文件

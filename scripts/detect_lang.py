@@ -234,7 +234,7 @@ def load_user_config() -> dict:
     except OSError:
         return defaults
     cfg = dict(defaults)
-    m = re.search(r"codelint:\s*(\{.*?\n\})", text, re.DOTALL)
+    m = re.search(r"codeguard:\s*(\{.*?\n\})", text, re.DOTALL)
     if not m:
         return cfg
     block = m.group(1)
