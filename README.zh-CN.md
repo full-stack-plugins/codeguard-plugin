@@ -74,7 +74,7 @@ AI 一次写出就过 lint 的代码
 
 ## 支持的语言
 
-**识别 55 种语言，其中 16 种已启用 linter 强制门禁**——同类代码治理插件中最广的覆盖面。三级状态（完整逐语言表格见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）：
+**识别 55 种语言，其中 22 种已启用 linter 强制门禁（V0.3 扩充 Beta 层）**——同类代码治理插件中最广的覆盖面。三级状态（完整逐语言表格见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）：
 
 | 状态 | 语言 |
 |---|---|
@@ -215,7 +215,7 @@ partme-codeguard-plugin/
 │   ├── detect_lang.py            # 语言检测 + linter 命令表（共享）
 │   ├── run_check.py              # 主 CLI：检测 + 跑全量 + 报告
 │   └── fix.py                    # 自动修复 CLI
-├── skills/                       # 18 个 SKILL.md（主入口 + init + 11 语言 + 2 Git + 3 安全）
+├── skills/                       # 68 个 SKILL.md（主入口 + init + 22 语言强制 + 2 Git + 3 安全 + planned 语言骨架）
 │   ├── codeguard/                # 主入口
 │   ├── codeguard-init/           # 一行接入
 │   ├── codeguard-{java,rust,typescript,python}/

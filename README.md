@@ -74,13 +74,13 @@ AI code that passes lint on first try
 
 ## Supported languages
 
-**55 languages detected, 16 actively enforced** — the widest coverage of any code-governance plugin. Status tiers (full per-language table in [docs/LANGUAGES.md](docs/LANGUAGES.md)):
+**55 languages detected, 22 actively enforced (Beta tier expanded in V0.3)** — the widest coverage of any code-governance plugin. Status tiers (full per-language table in [docs/LANGUAGES.md](docs/LANGUAGES.md)):
 
 | Status | Languages |
 |---|---|
 | **Stable** (auto-enforced, V0.1) | Java, Rust, TypeScript/JavaScript, Python |
-| **Beta** (enforced, V0.2) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS |
-| **Planned** (detected, linter on roadmap) | C, C++, Objective-C, Dart, Vue, Svelte, Astro, Solidity, Terraform/OpenTofu, Nix, HTML, SQL, GraphQL, Protobuf, Markdown, TOML, Haskell, OCaml, F#, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia, Elm, Lua, Luau, Pascal/Delphi, R, CFML, COBOL, VB.NET, Erlang, ArkTS, Metal, Liquid, CUDA, Ansible |
+| **Beta** (enforced, V0.2/V0.3) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS, Markdown, SQL, TOML, HTML, Protobuf, Terraform/OpenTofu, Nix, Dart, Solidity, Ansible |
+| **Planned** (detected, linter on roadmap, 29) | C, C++, Objective-C, CUDA, Metal, Vue, Svelte, Astro, Haskell, OCaml, F#, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia, Elm, Lua, Luau, Pascal/Delphi, R, CFML, COBOL, VB.NET, Erlang, ArkTS, Liquid |
 
 ## Governance skills (Git & Security)
 
@@ -214,7 +214,7 @@ partme-codeguard-plugin/
 │   ├── detect_lang.py            # language detection + linter command table (shared)
 │   ├── run_check.py              # main CLI: detect + run all linters + report
 │   └── fix.py                    # auto-fix CLI
-├── skills/                       # 18 SKILL.md (main + init + 11 languages + 2 git + 3 security)
+├── skills/                       # 68 SKILL.md (main + init + 22 languages + 2 git + 3 security + planned-language skeletons)
 │   ├── codeguard/                # main entry
 │   ├── codeguard-init/           # one-line bootstrap
 │   ├── codeguard-{java,rust,typescript,python}/

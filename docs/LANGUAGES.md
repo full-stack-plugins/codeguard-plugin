@@ -1,6 +1,6 @@
 # partme-codeguard-plugin 支持的语言
 
-> 覆盖 **55 种编程语言**（注册表 57 条，含 Dockerfile/Ansible 等文件类型条目）。所有语言均可被 `detect_lang` 识别；其中 **16 条**已接入 linter 强制门禁（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。
+> 覆盖 **55 种编程语言**（注册表 57 条，含 Dockerfile/Ansible 等文件类型条目）。所有语言均可被 `detect_lang` 识别；其中 **26 条**已接入 linter 强制门禁（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。
 
 > 本文档由 `scripts/languages.json` 注册表自动生成（`scripts/gen_language_docs.py`）；新增/调整语言请改注册表后重新生成。
 
@@ -14,7 +14,7 @@
 | TypeScript / JavaScript | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` | `npx eslint . --max-warnings 0` | `npx eslint . --fix` | 项目需安装 eslint |
 | Python | `.py` | `ruff check .` | `ruff check . --fix` | pip install ruff |
 
-## Beta（V0.2 起）（12 种）
+## Beta（V0.2 起）（22 种）
 
 | 语言 | 扩展名 | Lint 命令 | Format 命令 | 安装说明 |
 |---|---|---|---|---|
@@ -30,27 +30,28 @@
 | YAML | `.yml` `.yaml` | `yamllint .` | `yamllint .` | pip install yamllint |
 | Elixir | `.ex` `.exs` | `mix credo --strict` | `mix format` | 项目需配置 credo 依赖 |
 | CSS / SCSS / Sass / LESS | `.css` `.scss` `.sass` `.less` | `npx stylelint **/*.css` | `npx stylelint **/*.css --fix` | npm install --save-dev stylelint stylelint-config-standard |
+| Dart / Flutter | `.dart` | `dart analyze` | `dart format .` | Dart SDK 内置 |
+| Solidity | `.sol` | `solhint **/*.sol` | `prettier --write` | npm install -g solhint prettier prettier-plugin-solidity |
+| Terraform / OpenTofu | `.tf` `.tfvars` `.tofu` | `tflint` | `terraform fmt` | brew install tflint |
+| Nix | `.nix` | `deadnix` | `nixpkgs-fmt` | nix-env -iA nixpkgs.nixpkgs-fmt nixpkgs.deadnix |
+| HTML | `.html` `.htm` | `npx htmlhint` | `prettier --write` | npm install -g htmlhint |
+| SQL | `.sql` | `sqlfluff lint` | `sqlfluff fix` | pip install sqlfluff |
+| Protobuf | `.proto` | `buf lint` | `buf format` | brew install bufbuild/buf/buf |
+| Markdown | `.md` `.markdown` | `npx markdownlint-cli2 **/*.md` | `markdownlint-cli2 --fix` | npm install -g markdownlint-cli2 |
+| TOML | `.toml` | `taplo lint` | `taplo format` | cargo install taplo-cli --locked |
+| Ansible | （文件名匹配） | `ansible-lint` | `ansible-lint --fix` | pip install ansible-lint |
 
-## Planned（已识别，linter 在路线图上）（41 种）
+## Planned（已识别，linter 在路线图上）（31 种）
 
 | 语言 | 扩展名 | 计划 Linter | 目标版本 |
 |---|---|---|---|
 | C | `.c` `.h` | clang-tidy + clang-format | V0.4 |
 | C++ | `.cpp` `.hpp` `.cc` | clang-tidy + clang-format | V0.4 |
 | Objective-C | `.m` `.mm` | clang-tidy + clang-format | V0.4 |
-| Dart / Flutter | `.dart` | Dart SDK | V0.4 |
 | Vue | `.vue` | eslint-plugin-vue | V0.4 |
 | Svelte | `.svelte` | eslint-plugin-svelte | V0.4 |
 | Astro | `.astro` | eslint-plugin-astro | V0.4 |
-| Solidity | `.sol` | npm install -g solhint | V0.4 |
-| Terraform / OpenTofu | `.tf` `.tfvars` `.tofu` | tflint + terraform fmt | V0.4 |
-| Nix | `.nix` | nixpkgs-fmt + deadnix | V0.4 |
-| HTML | `.html` `.htm` | npm install -g htmlhint | V0.4 |
-| SQL | `.sql` | pip install sqlfluff | V0.4 |
 | GraphQL | `.graphql` `.gql` | graphql-eslint | V0.4 |
-| Protobuf | `.proto` | buf CLI | V0.4 |
-| Markdown | `.md` `.markdown` | npm install -g markdownlint-cli2 | V0.4 |
-| TOML | `.toml` | taplo CLI | V0.4 |
 | Haskell | `.hs` `.lhs` | brew install hlint fourmolu | V0.5 |
 | OCaml | `.ml` `.mli` | opam install ocamlformat | V0.5 |
 | F# | `.fs` `.fsi` `.fsx` | dotnet tool install -g fantomas | V0.5 |
@@ -75,7 +76,6 @@
 | Metal | `.metal` | Xcode Metal compiler 诊断 | V0.5 |
 | Liquid (Shopify) | `.liquid` | gem install theme-check | V0.5 |
 | CUDA | `.cu` `.cuh` | CUDA Toolkit + clangd | V0.5 |
-| Ansible | — | pip install ansible-lint | V0.5 |
 
 ## 检测机制
 

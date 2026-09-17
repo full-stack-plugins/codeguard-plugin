@@ -7,62 +7,1106 @@
     "planned": "已识别扩展名，linter 集成在路线图上（安全跳过）"
   },
   "languages": [
-    { "id": "java", "name": "Java", "extensions": [".java"], "markers": ["pom.xml", "build.gradle"], "status": "stable", "since": "V0.1", "lint": ["mvn", "-q", "javadoc:jar", "-DskipTests"], "format": ["mvn", "-q", "spotless:apply"], "install_hint": null },
-    { "id": "rust", "name": "Rust", "extensions": [".rs"], "markers": ["Cargo.toml"], "status": "stable", "since": "V0.1", "lint": ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], "format": ["cargo", "fmt"], "install_hint": null },
-    { "id": "typescript", "name": "TypeScript / JavaScript", "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"], "markers": ["package.json", "deno.json"], "status": "stable", "since": "V0.1", "lint": ["npx", "eslint", ".", "--max-warnings", "0"], "format": ["npx", "eslint", ".", "--fix"], "install_hint": "项目需安装 eslint" },
-    { "id": "python", "name": "Python", "extensions": [".py"], "markers": ["pyproject.toml", "setup.py", "requirements.txt"], "status": "stable", "since": "V0.1", "lint": ["ruff", "check", "."], "format": ["ruff", "check", ".", "--fix"], "install_hint": "pip install ruff" },
-    { "id": "go", "name": "Go", "extensions": [".go"], "markers": ["go.mod"], "status": "beta", "since": "V0.2", "lint": ["go", "vet", "./..."], "format": ["gofmt", "-w", "."], "install_hint": "内置于 Go 工具链；聚合 lint 可装 golangci-lint" },
-    { "id": "csharp", "name": "C#", "extensions": [".cs"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["dotnet", "format", "--verify-no-changes"], "format": ["dotnet", "format"], "install_hint": ".NET SDK 6+" },
-    { "id": "kotlin", "name": "Kotlin", "extensions": [".kt", ".kts"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["./gradlew", "detekt"], "format": ["./gradlew", "ktlintFormat"], "install_hint": "项目需配置 detekt / ktlint 插件" },
-    { "id": "swift", "name": "Swift", "extensions": [".swift"], "markers": ["Package.swift"], "status": "beta", "since": "V0.2", "lint": ["swiftlint"], "format": ["swiftlint", "--fix"], "install_hint": "brew install swiftlint" },
-    { "id": "php", "name": "PHP", "extensions": [".php"], "markers": ["composer.json"], "status": "beta", "since": "V0.2", "lint": ["php", "-l"], "format": ["php-cs-fixer", "fix"], "install_hint": "composer require --dev php-cs-fixer" },
-    { "id": "ruby", "name": "Ruby", "extensions": [".rb"], "markers": ["Gemfile"], "status": "beta", "since": "V0.2", "lint": ["rubocop"], "format": ["rubocop", "-A"], "install_hint": "gem install rubocop" },
-    { "id": "scala", "name": "Scala", "extensions": [".scala", ".sc"], "markers": ["build.sbt"], "status": "beta", "since": "V0.2", "lint": ["scalafmt", "--check"], "format": ["scalafmt"], "install_hint": "coursier install scalafmt" },
-    { "id": "shell", "name": "Shell", "extensions": [".sh", ".bash", ".zsh"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["shellcheck"], "format": ["shfmt", "-w", "."], "install_hint": "brew install shellcheck shfmt" },
-    { "id": "dockerfile", "name": "Dockerfile", "extensions": [], "file_names": ["Dockerfile"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["hadolint"], "format": ["hadolint"], "install_hint": "brew install hadolint" },
-    { "id": "yaml", "name": "YAML", "extensions": [".yml", ".yaml"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["yamllint", "."], "format": ["yamllint", "."], "install_hint": "pip install yamllint" },
-    { "id": "elixir", "name": "Elixir", "extensions": [".ex", ".exs"], "markers": ["mix.exs"], "status": "beta", "since": "V0.2", "lint": ["mix", "credo", "--strict"], "format": ["mix", "format"], "install_hint": "项目需配置 credo 依赖" },
-    { "id": "css", "name": "CSS / SCSS / Sass / LESS", "extensions": [".css", ".scss", ".sass", ".less"], "markers": [], "status": "beta", "since": "V0.2", "lint": ["npx", "stylelint", "**/*.css"], "format": ["npx", "stylelint", "**/*.css", "--fix"], "install_hint": "npm install --save-dev stylelint stylelint-config-standard" },
-    { "id": "c", "name": "C", "extensions": [".c", ".h"], "markers": [], "status": "planned", "since": "V0.4", "lint": null, "format": null, "install_hint": "clang-tidy + clang-format" },
-    { "id": "cpp", "name": "C++", "extensions": [".cpp", ".hpp", ".cc"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["clang-tidy"], "format": ["clang-format"], "install_hint": "clang-tidy + clang-format" },
-    { "id": "objc", "name": "Objective-C", "extensions": [".m", ".mm"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["clang-tidy"], "format": ["clang-format"], "install_hint": "clang-tidy + clang-format" },
-    { "id": "dart", "name": "Dart / Flutter", "extensions": [".dart"], "markers": ["pubspec.yaml"], "status": "planned", "since": "V0.4", "lint": ["dart", "analyze"], "format": ["dart", "format"], "install_hint": "Dart SDK" },
-    { "id": "vue", "name": "Vue", "extensions": [".vue"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["npx", "eslint", "--ext", ".vue", "."], "format": null, "install_hint": "eslint-plugin-vue" },
-    { "id": "svelte", "name": "Svelte", "extensions": [".svelte"], "markers": [], "status": "planned", "since": "V0.4", "lint": null, "format": null, "install_hint": "eslint-plugin-svelte" },
-    { "id": "astro", "name": "Astro", "extensions": [".astro"], "markers": [], "status": "planned", "since": "V0.4", "lint": null, "format": null, "install_hint": "eslint-plugin-astro" },
-    { "id": "solidity", "name": "Solidity", "extensions": [".sol"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["solhint"], "format": ["prettier", "--plugin", "prettier-plugin-solidity", "--write"], "install_hint": "npm install -g solhint" },
-    { "id": "terraform", "name": "Terraform / OpenTofu", "extensions": [".tf", ".tfvars", ".tofu"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["tflint"], "format": ["terraform", "fmt"], "install_hint": "tflint + terraform fmt" },
-    { "id": "nix", "name": "Nix", "extensions": [".nix"], "markers": ["flake.nix"], "status": "planned", "since": "V0.4", "lint": ["deadnix"], "format": ["nixpkgs-fmt"], "install_hint": "nixpkgs-fmt + deadnix" },
-    { "id": "html", "name": "HTML", "extensions": [".html", ".htm"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["htmlhint"], "format": ["prettier", "--write"], "install_hint": "npm install -g htmlhint" },
-    { "id": "sql", "name": "SQL", "extensions": [".sql"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["sqlfluff", "lint"], "format": ["sqlfluff", "fix"], "install_hint": "pip install sqlfluff" },
-    { "id": "graphql", "name": "GraphQL", "extensions": [".graphql", ".gql"], "markers": [], "status": "planned", "since": "V0.4", "lint": null, "format": null, "install_hint": "graphql-eslint" },
-    { "id": "protobuf", "name": "Protobuf", "extensions": [".proto"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["buf", "lint"], "format": ["buf", "format"], "install_hint": "buf CLI" },
-    { "id": "markdown", "name": "Markdown", "extensions": [".md", ".markdown"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["markdownlint-cli2"], "format": ["markdownlint-cli2", "--fix"], "install_hint": "npm install -g markdownlint-cli2" },
-    { "id": "toml", "name": "TOML", "extensions": [".toml"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["taplo", "lint"], "format": ["taplo", "format"], "install_hint": "taplo CLI" },
-    { "id": "haskell", "name": "Haskell", "extensions": [".hs", ".lhs"], "markers": ["stack.yaml", "cabal.project"], "status": "planned", "since": "V0.5", "lint": ["hlint"], "format": ["fourmolu", "-i"], "install_hint": "brew install hlint fourmolu" },
-    { "id": "ocaml", "name": "OCaml", "extensions": [".ml", ".mli"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": ["ocamlformat", "-i"], "install_hint": "opam install ocamlformat" },
-    { "id": "fsharp", "name": "F#", "extensions": [".fs", ".fsi", ".fsx"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": ["fantomas"], "install_hint": "dotnet tool install -g fantomas" },
-    { "id": "perl", "name": "Perl", "extensions": [".pl", ".pm", ".t"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["perlcritic"], "format": ["perltidy", "-b"], "install_hint": "cpanm Perl::Critic Perl::Tidy" },
-    { "id": "groovy", "name": "Groovy", "extensions": [".groovy"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["npm-groovy-lint"], "format": null, "install_hint": "npm install -g npm-groovy-lint" },
-    { "id": "clojure", "name": "Clojure", "extensions": [".clj", ".cljs", ".cljc", ".edn"], "markers": ["deps.edn", "project.clj"], "status": "planned", "since": "V0.5", "lint": ["clj-kondo", "--lint"], "format": ["cljstyle"], "install_hint": "brew install clj-kondo cljstyle" },
-    { "id": "powershell", "name": "PowerShell", "extensions": [".ps1", ".psm1"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["Invoke-ScriptAnalyzer"], "format": null, "install_hint": "Install-Module PSScriptAnalyzer" },
-    { "id": "zig", "name": "Zig", "extensions": [".zig"], "markers": ["build.zig"], "status": "planned", "since": "V0.5", "lint": ["zig", "fmt", "--check"], "format": ["zig", "fmt"], "install_hint": "内置于 Zig 工具链" },
-    { "id": "nim", "name": "Nim", "extensions": [".nim"], "markers": [".nimble"], "status": "planned", "since": "V0.5", "lint": null, "format": ["nimpretty", "-r"], "install_hint": "nimpretty 内置于 Nim" },
-    { "id": "crystal", "name": "Crystal", "extensions": [".cr"], "markers": ["shard.yml"], "status": "planned", "since": "V0.5", "lint": ["ameba"], "format": null, "install_hint": "brew install crystal-ameba" },
-    { "id": "julia", "name": "Julia", "extensions": [".jl"], "markers": ["Project.toml"], "status": "planned", "since": "V0.5", "lint": null, "format": ["julia", "-e", "using JuliaFormatter; format(.)"], "install_hint": "julia -e 'using Pkg; Pkg.add(\"JuliaFormatter\")'" },
-    { "id": "elm", "name": "Elm", "extensions": [".elm"], "markers": ["elm.json"], "status": "planned", "since": "V0.5", "lint": ["elm-review"], "format": ["elm-format", "--yes"], "install_hint": "npm install -g elm-review elm-format" },
-    { "id": "lua", "name": "Lua", "extensions": [".lua"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["luacheck", "."], "format": ["stylua", "."], "install_hint": "luarocks install luacheck; cargo install stylua" },
-    { "id": "luau", "name": "Luau", "extensions": [".luau"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["luau-lint"], "format": ["stylua", "."], "install_hint": "luau-lint" },
-    { "id": "pascal", "name": "Pascal / Delphi", "extensions": [".pas", ".dpr", ".dpk", ".lpr"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": ["pasfmt"], "install_hint": "pasfmt" },
-    { "id": "r", "name": "R", "extensions": [".r"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["R", "--slave", "-e", "lintr::lint('.')"], "format": ["styler"], "install_hint": "Rscript -e 'install.packages(\"lintr\")'" },
-    { "id": "cfml", "name": "CFML (ColdFusion)", "extensions": [".cfc", ".cfm", ".cfs"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["cflint"], "format": null, "install_hint": "brew install cflint" },
-    { "id": "cobol", "name": "COBOL", "extensions": [".cbl", ".cob", ".cpy"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": null, "install_hint": "IBM COBOL Checker" },
-    { "id": "vbnet", "name": "Visual Basic .NET", "extensions": [".vb"], "markers": [], "status": "planned", "since": "V0.4", "lint": ["dotnet", "format"], "format": ["dotnet", "format"], "install_hint": ".NET SDK 6+" },
-    { "id": "erlang", "name": "Erlang", "extensions": [".erl", ".hrl"], "markers": ["rebar.config"], "status": "planned", "since": "V0.5", "lint": ["elvis", "rock"], "format": ["erlfmt"], "install_hint": "rebar3 plugins 或 brew install elvis" },
-    { "id": "arkts", "name": "ArkTS (HarmonyOS)", "extensions": [".ets"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": null, "install_hint": "DevEco Studio ArkTS Linter" },
-    { "id": "metal", "name": "Metal", "extensions": [".metal"], "markers": [], "status": "planned", "since": "V0.5", "lint": null, "format": null, "install_hint": "Xcode Metal compiler 诊断" },
-    { "id": "liquid", "name": "Liquid (Shopify)", "extensions": [".liquid"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["theme-check"], "format": null, "install_hint": "gem install theme-check" },
-    { "id": "cuda", "name": "CUDA", "extensions": [".cu", ".cuh"], "markers": [], "status": "planned", "since": "V0.5", "lint": ["clang-tidy", "--cuda"], "format": ["clang-format"], "install_hint": "CUDA Toolkit + clangd" },
-    { "id": "ansible", "name": "Ansible", "extensions": [], "markers": ["ansible.cfg", "playbook.yml"], "status": "planned", "since": "V0.5", "lint": ["ansible-lint"], "format": null, "install_hint": "pip install ansible-lint" }
+    {
+      "id": "java",
+      "name": "Java",
+      "extensions": [
+        ".java"
+      ],
+      "markers": [
+        "pom.xml",
+        "build.gradle"
+      ],
+      "status": "stable",
+      "since": "V0.1",
+      "lint": [
+        "mvn",
+        "-q",
+        "javadoc:jar",
+        "-DskipTests"
+      ],
+      "format": [
+        "mvn",
+        "-q",
+        "spotless:apply"
+      ],
+      "install_hint": null
+    },
+    {
+      "id": "rust",
+      "name": "Rust",
+      "extensions": [
+        ".rs"
+      ],
+      "markers": [
+        "Cargo.toml"
+      ],
+      "status": "stable",
+      "since": "V0.1",
+      "lint": [
+        "cargo",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "format": [
+        "cargo",
+        "fmt"
+      ],
+      "install_hint": null
+    },
+    {
+      "id": "typescript",
+      "name": "TypeScript / JavaScript",
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs"
+      ],
+      "markers": [
+        "package.json",
+        "deno.json"
+      ],
+      "status": "stable",
+      "since": "V0.1",
+      "lint": [
+        "npx",
+        "eslint",
+        ".",
+        "--max-warnings",
+        "0"
+      ],
+      "format": [
+        "npx",
+        "eslint",
+        ".",
+        "--fix"
+      ],
+      "install_hint": "项目需安装 eslint"
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "extensions": [
+        ".py"
+      ],
+      "markers": [
+        "pyproject.toml",
+        "setup.py",
+        "requirements.txt"
+      ],
+      "status": "stable",
+      "since": "V0.1",
+      "lint": [
+        "ruff",
+        "check",
+        "."
+      ],
+      "format": [
+        "ruff",
+        "check",
+        ".",
+        "--fix"
+      ],
+      "install_hint": "pip install ruff"
+    },
+    {
+      "id": "go",
+      "name": "Go",
+      "extensions": [
+        ".go"
+      ],
+      "markers": [
+        "go.mod"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "format": [
+        "gofmt",
+        "-w",
+        "."
+      ],
+      "install_hint": "内置于 Go 工具链；聚合 lint 可装 golangci-lint"
+    },
+    {
+      "id": "csharp",
+      "name": "C#",
+      "extensions": [
+        ".cs"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "dotnet",
+        "format",
+        "--verify-no-changes"
+      ],
+      "format": [
+        "dotnet",
+        "format"
+      ],
+      "install_hint": ".NET SDK 6+"
+    },
+    {
+      "id": "kotlin",
+      "name": "Kotlin",
+      "extensions": [
+        ".kt",
+        ".kts"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "./gradlew",
+        "detekt"
+      ],
+      "format": [
+        "./gradlew",
+        "ktlintFormat"
+      ],
+      "install_hint": "项目需配置 detekt / ktlint 插件"
+    },
+    {
+      "id": "swift",
+      "name": "Swift",
+      "extensions": [
+        ".swift"
+      ],
+      "markers": [
+        "Package.swift"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "swiftlint"
+      ],
+      "format": [
+        "swiftlint",
+        "--fix"
+      ],
+      "install_hint": "brew install swiftlint"
+    },
+    {
+      "id": "php",
+      "name": "PHP",
+      "extensions": [
+        ".php"
+      ],
+      "markers": [
+        "composer.json"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "php",
+        "-l"
+      ],
+      "format": [
+        "php-cs-fixer",
+        "fix"
+      ],
+      "install_hint": "composer require --dev php-cs-fixer"
+    },
+    {
+      "id": "ruby",
+      "name": "Ruby",
+      "extensions": [
+        ".rb"
+      ],
+      "markers": [
+        "Gemfile"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "rubocop"
+      ],
+      "format": [
+        "rubocop",
+        "-A"
+      ],
+      "install_hint": "gem install rubocop"
+    },
+    {
+      "id": "scala",
+      "name": "Scala",
+      "extensions": [
+        ".scala",
+        ".sc"
+      ],
+      "markers": [
+        "build.sbt"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "scalafmt",
+        "--check"
+      ],
+      "format": [
+        "scalafmt"
+      ],
+      "install_hint": "coursier install scalafmt"
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "extensions": [
+        ".sh",
+        ".bash",
+        ".zsh"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "shellcheck"
+      ],
+      "format": [
+        "shfmt",
+        "-w",
+        "."
+      ],
+      "install_hint": "brew install shellcheck shfmt"
+    },
+    {
+      "id": "dockerfile",
+      "name": "Dockerfile",
+      "extensions": [],
+      "file_names": [
+        "Dockerfile"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "hadolint"
+      ],
+      "format": [
+        "hadolint"
+      ],
+      "install_hint": "brew install hadolint"
+    },
+    {
+      "id": "yaml",
+      "name": "YAML",
+      "extensions": [
+        ".yml",
+        ".yaml"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "yamllint",
+        "."
+      ],
+      "format": [
+        "yamllint",
+        "."
+      ],
+      "install_hint": "pip install yamllint"
+    },
+    {
+      "id": "elixir",
+      "name": "Elixir",
+      "extensions": [
+        ".ex",
+        ".exs"
+      ],
+      "markers": [
+        "mix.exs"
+      ],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "mix",
+        "credo",
+        "--strict"
+      ],
+      "format": [
+        "mix",
+        "format"
+      ],
+      "install_hint": "项目需配置 credo 依赖"
+    },
+    {
+      "id": "css",
+      "name": "CSS / SCSS / Sass / LESS",
+      "extensions": [
+        ".css",
+        ".scss",
+        ".sass",
+        ".less"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.2",
+      "lint": [
+        "npx",
+        "stylelint",
+        "**/*.css"
+      ],
+      "format": [
+        "npx",
+        "stylelint",
+        "**/*.css",
+        "--fix"
+      ],
+      "install_hint": "npm install --save-dev stylelint stylelint-config-standard"
+    },
+    {
+      "id": "c",
+      "name": "C",
+      "extensions": [
+        ".c",
+        ".h"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": null,
+      "format": null,
+      "install_hint": "clang-tidy + clang-format"
+    },
+    {
+      "id": "cpp",
+      "name": "C++",
+      "extensions": [
+        ".cpp",
+        ".hpp",
+        ".cc"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": [
+        "clang-tidy"
+      ],
+      "format": [
+        "clang-format"
+      ],
+      "install_hint": "clang-tidy + clang-format"
+    },
+    {
+      "id": "objc",
+      "name": "Objective-C",
+      "extensions": [
+        ".m",
+        ".mm"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": [
+        "clang-tidy"
+      ],
+      "format": [
+        "clang-format"
+      ],
+      "install_hint": "clang-tidy + clang-format"
+    },
+    {
+      "id": "dart",
+      "name": "Dart / Flutter",
+      "extensions": [
+        ".dart"
+      ],
+      "markers": [
+        "pubspec.yaml"
+      ],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "dart",
+        "analyze"
+      ],
+      "format": [
+        "dart",
+        "format",
+        "."
+      ],
+      "install_hint": "Dart SDK 内置"
+    },
+    {
+      "id": "vue",
+      "name": "Vue",
+      "extensions": [
+        ".vue"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": [
+        "npx",
+        "eslint",
+        "--ext",
+        ".vue",
+        "."
+      ],
+      "format": null,
+      "install_hint": "eslint-plugin-vue"
+    },
+    {
+      "id": "svelte",
+      "name": "Svelte",
+      "extensions": [
+        ".svelte"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": null,
+      "format": null,
+      "install_hint": "eslint-plugin-svelte"
+    },
+    {
+      "id": "astro",
+      "name": "Astro",
+      "extensions": [
+        ".astro"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": null,
+      "format": null,
+      "install_hint": "eslint-plugin-astro"
+    },
+    {
+      "id": "solidity",
+      "name": "Solidity",
+      "extensions": [
+        ".sol"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "solhint",
+        "**/*.sol"
+      ],
+      "format": [
+        "prettier",
+        "--write"
+      ],
+      "install_hint": "npm install -g solhint prettier prettier-plugin-solidity"
+    },
+    {
+      "id": "terraform",
+      "name": "Terraform / OpenTofu",
+      "extensions": [
+        ".tf",
+        ".tfvars",
+        ".tofu"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "tflint"
+      ],
+      "format": [
+        "terraform",
+        "fmt"
+      ],
+      "install_hint": "brew install tflint"
+    },
+    {
+      "id": "nix",
+      "name": "Nix",
+      "extensions": [
+        ".nix"
+      ],
+      "markers": [
+        "flake.nix"
+      ],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "deadnix"
+      ],
+      "format": [
+        "nixpkgs-fmt"
+      ],
+      "install_hint": "nix-env -iA nixpkgs.nixpkgs-fmt nixpkgs.deadnix"
+    },
+    {
+      "id": "html",
+      "name": "HTML",
+      "extensions": [
+        ".html",
+        ".htm"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "npx",
+        "htmlhint"
+      ],
+      "format": [
+        "prettier",
+        "--write"
+      ],
+      "install_hint": "npm install -g htmlhint"
+    },
+    {
+      "id": "sql",
+      "name": "SQL",
+      "extensions": [
+        ".sql"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "sqlfluff",
+        "lint"
+      ],
+      "format": [
+        "sqlfluff",
+        "fix"
+      ],
+      "install_hint": "pip install sqlfluff"
+    },
+    {
+      "id": "graphql",
+      "name": "GraphQL",
+      "extensions": [
+        ".graphql",
+        ".gql"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": null,
+      "format": null,
+      "install_hint": "graphql-eslint"
+    },
+    {
+      "id": "protobuf",
+      "name": "Protobuf",
+      "extensions": [
+        ".proto"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "buf",
+        "lint"
+      ],
+      "format": [
+        "buf",
+        "format"
+      ],
+      "install_hint": "brew install bufbuild/buf/buf"
+    },
+    {
+      "id": "markdown",
+      "name": "Markdown",
+      "extensions": [
+        ".md",
+        ".markdown"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "npx",
+        "markdownlint-cli2",
+        "**/*.md"
+      ],
+      "format": [
+        "markdownlint-cli2",
+        "--fix"
+      ],
+      "install_hint": "npm install -g markdownlint-cli2"
+    },
+    {
+      "id": "toml",
+      "name": "TOML",
+      "extensions": [
+        ".toml"
+      ],
+      "markers": [],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "taplo",
+        "lint"
+      ],
+      "format": [
+        "taplo",
+        "format"
+      ],
+      "install_hint": "cargo install taplo-cli --locked"
+    },
+    {
+      "id": "haskell",
+      "name": "Haskell",
+      "extensions": [
+        ".hs",
+        ".lhs"
+      ],
+      "markers": [
+        "stack.yaml",
+        "cabal.project"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "hlint"
+      ],
+      "format": [
+        "fourmolu",
+        "-i"
+      ],
+      "install_hint": "brew install hlint fourmolu"
+    },
+    {
+      "id": "ocaml",
+      "name": "OCaml",
+      "extensions": [
+        ".ml",
+        ".mli"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": [
+        "ocamlformat",
+        "-i"
+      ],
+      "install_hint": "opam install ocamlformat"
+    },
+    {
+      "id": "fsharp",
+      "name": "F#",
+      "extensions": [
+        ".fs",
+        ".fsi",
+        ".fsx"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": [
+        "fantomas"
+      ],
+      "install_hint": "dotnet tool install -g fantomas"
+    },
+    {
+      "id": "perl",
+      "name": "Perl",
+      "extensions": [
+        ".pl",
+        ".pm",
+        ".t"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "perlcritic"
+      ],
+      "format": [
+        "perltidy",
+        "-b"
+      ],
+      "install_hint": "cpanm Perl::Critic Perl::Tidy"
+    },
+    {
+      "id": "groovy",
+      "name": "Groovy",
+      "extensions": [
+        ".groovy"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "npm-groovy-lint"
+      ],
+      "format": null,
+      "install_hint": "npm install -g npm-groovy-lint"
+    },
+    {
+      "id": "clojure",
+      "name": "Clojure",
+      "extensions": [
+        ".clj",
+        ".cljs",
+        ".cljc",
+        ".edn"
+      ],
+      "markers": [
+        "deps.edn",
+        "project.clj"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "clj-kondo",
+        "--lint"
+      ],
+      "format": [
+        "cljstyle"
+      ],
+      "install_hint": "brew install clj-kondo cljstyle"
+    },
+    {
+      "id": "powershell",
+      "name": "PowerShell",
+      "extensions": [
+        ".ps1",
+        ".psm1"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "Invoke-ScriptAnalyzer"
+      ],
+      "format": null,
+      "install_hint": "Install-Module PSScriptAnalyzer"
+    },
+    {
+      "id": "zig",
+      "name": "Zig",
+      "extensions": [
+        ".zig"
+      ],
+      "markers": [
+        "build.zig"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "zig",
+        "fmt",
+        "--check"
+      ],
+      "format": [
+        "zig",
+        "fmt"
+      ],
+      "install_hint": "内置于 Zig 工具链"
+    },
+    {
+      "id": "nim",
+      "name": "Nim",
+      "extensions": [
+        ".nim"
+      ],
+      "markers": [
+        ".nimble"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": [
+        "nimpretty",
+        "-r"
+      ],
+      "install_hint": "nimpretty 内置于 Nim"
+    },
+    {
+      "id": "crystal",
+      "name": "Crystal",
+      "extensions": [
+        ".cr"
+      ],
+      "markers": [
+        "shard.yml"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "ameba"
+      ],
+      "format": null,
+      "install_hint": "brew install crystal-ameba"
+    },
+    {
+      "id": "julia",
+      "name": "Julia",
+      "extensions": [
+        ".jl"
+      ],
+      "markers": [
+        "Project.toml"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": [
+        "julia",
+        "-e",
+        "using JuliaFormatter; format(.)"
+      ],
+      "install_hint": "julia -e 'using Pkg; Pkg.add(\"JuliaFormatter\")'"
+    },
+    {
+      "id": "elm",
+      "name": "Elm",
+      "extensions": [
+        ".elm"
+      ],
+      "markers": [
+        "elm.json"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "elm-review"
+      ],
+      "format": [
+        "elm-format",
+        "--yes"
+      ],
+      "install_hint": "npm install -g elm-review elm-format"
+    },
+    {
+      "id": "lua",
+      "name": "Lua",
+      "extensions": [
+        ".lua"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "luacheck",
+        "."
+      ],
+      "format": [
+        "stylua",
+        "."
+      ],
+      "install_hint": "luarocks install luacheck; cargo install stylua"
+    },
+    {
+      "id": "luau",
+      "name": "Luau",
+      "extensions": [
+        ".luau"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "luau-lint"
+      ],
+      "format": [
+        "stylua",
+        "."
+      ],
+      "install_hint": "luau-lint"
+    },
+    {
+      "id": "pascal",
+      "name": "Pascal / Delphi",
+      "extensions": [
+        ".pas",
+        ".dpr",
+        ".dpk",
+        ".lpr"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": [
+        "pasfmt"
+      ],
+      "install_hint": "pasfmt"
+    },
+    {
+      "id": "r",
+      "name": "R",
+      "extensions": [
+        ".r"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "R",
+        "--slave",
+        "-e",
+        "lintr::lint('.')"
+      ],
+      "format": [
+        "styler"
+      ],
+      "install_hint": "Rscript -e 'install.packages(\"lintr\")'"
+    },
+    {
+      "id": "cfml",
+      "name": "CFML (ColdFusion)",
+      "extensions": [
+        ".cfc",
+        ".cfm",
+        ".cfs"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "cflint"
+      ],
+      "format": null,
+      "install_hint": "brew install cflint"
+    },
+    {
+      "id": "cobol",
+      "name": "COBOL",
+      "extensions": [
+        ".cbl",
+        ".cob",
+        ".cpy"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": null,
+      "install_hint": "IBM COBOL Checker"
+    },
+    {
+      "id": "vbnet",
+      "name": "Visual Basic .NET",
+      "extensions": [
+        ".vb"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.4",
+      "lint": [
+        "dotnet",
+        "format"
+      ],
+      "format": [
+        "dotnet",
+        "format"
+      ],
+      "install_hint": ".NET SDK 6+"
+    },
+    {
+      "id": "erlang",
+      "name": "Erlang",
+      "extensions": [
+        ".erl",
+        ".hrl"
+      ],
+      "markers": [
+        "rebar.config"
+      ],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "elvis",
+        "rock"
+      ],
+      "format": [
+        "erlfmt"
+      ],
+      "install_hint": "rebar3 plugins 或 brew install elvis"
+    },
+    {
+      "id": "arkts",
+      "name": "ArkTS (HarmonyOS)",
+      "extensions": [
+        ".ets"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": null,
+      "install_hint": "DevEco Studio ArkTS Linter"
+    },
+    {
+      "id": "metal",
+      "name": "Metal",
+      "extensions": [
+        ".metal"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": null,
+      "format": null,
+      "install_hint": "Xcode Metal compiler 诊断"
+    },
+    {
+      "id": "liquid",
+      "name": "Liquid (Shopify)",
+      "extensions": [
+        ".liquid"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "theme-check"
+      ],
+      "format": null,
+      "install_hint": "gem install theme-check"
+    },
+    {
+      "id": "cuda",
+      "name": "CUDA",
+      "extensions": [
+        ".cu",
+        ".cuh"
+      ],
+      "markers": [],
+      "status": "planned",
+      "since": "V0.5",
+      "lint": [
+        "clang-tidy",
+        "--cuda"
+      ],
+      "format": [
+        "clang-format"
+      ],
+      "install_hint": "CUDA Toolkit + clangd"
+    },
+    {
+      "id": "ansible",
+      "name": "Ansible",
+      "extensions": [],
+      "markers": [
+        "ansible.cfg",
+        "playbook.yml"
+      ],
+      "status": "beta",
+      "since": "V0.3",
+      "lint": [
+        "ansible-lint"
+      ],
+      "format": [
+        "ansible-lint",
+        "--fix"
+      ],
+      "install_hint": "pip install ansible-lint"
+    }
   ]
 }
