@@ -74,15 +74,13 @@ AI code that passes lint on first try
 
 ## Supported languages
 
-Language coverage is **aligned with [codegraph supported-languages](https://github.com/colbymchenry/codegraph#supported-languages)** — all 32 languages are detected; 11 have active linter enforcement (more per release, see [docs/LANGUAGES.md](docs/LANGUAGES.md)).
+**55 languages detected, 16 actively enforced** — the widest coverage of any code-governance plugin. Status tiers (full per-language table in [docs/LANGUAGES.md](docs/LANGUAGES.md)):
 
 | Status | Languages |
 |---|---|
 | **Stable** (auto-enforced, V0.1) | Java, Rust, TypeScript/JavaScript, Python |
-| **Beta** (enforced, V0.2) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala |
-| **Planned** (detected, linter on roadmap) | C, C++, Objective-C, Dart, Vue, Svelte, Astro, Solidity, Terraform/OpenTofu, Nix, Lua, Luau, CFML, COBOL, VB.NET, Erlang, Pascal/Delphi, R, ArkTS, Metal, Liquid, CUDA |
-
-Full table with per-language lint/format commands: [docs/LANGUAGES.md](docs/LANGUAGES.md).
+| **Beta** (enforced, V0.2) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS |
+| **Planned** (detected, linter on roadmap) | C, C++, Objective-C, Dart, Vue, Svelte, Astro, Solidity, Terraform/OpenTofu, Nix, HTML, SQL, GraphQL, Protobuf, Markdown, TOML, Haskell, OCaml, F#, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia, Elm, Lua, Luau, Pascal/Delphi, R, CFML, COBOL, VB.NET, Erlang, ArkTS, Metal, Liquid, CUDA, Ansible |
 
 ## Governance skills (Git & Security)
 

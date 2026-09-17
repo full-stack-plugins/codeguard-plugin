@@ -1,0 +1,14 @@
+# codestyle-check (codeguard): Shell 脚本规范
+# 工具：shellcheck（检查）+ shfmt（格式化）
+#   brew install shellcheck shfmt
+#   shellcheck script.sh && shfmt -d .
+
+# shellcheck 源码级配置（可放脚本内指令替代）
+disable=SC1090,SC1091   # 动态 source 文件告警默认关闭
+
+# shfmt 风格（二进制参数）：
+#   shfmt -i 2 -ci -bn -sr .
+#   -i 2   缩进 2 空格
+#   -ci    switch/case 缩进
+#   -bn    二元运算符行首
+#   -sr    重定向空格

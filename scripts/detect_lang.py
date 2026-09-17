@@ -1,8 +1,7 @@
 """detect_lang.py：项目语言检测 + 用户配置加载 + linter 命令表。
 
-语言支持与 codegraph（https://github.com/colbymchenry/codegraph#supported-languages）对齐：
-扩展名识别覆盖全部 32 种语言；linter 命令覆盖 11 种主流语言（其余随版本路线逐步启用，
-见 docs/LANGUAGES.md 的状态列）。
+语言覆盖 54 种（详见 docs/LANGUAGES.md）：扩展名识别全部可用，
+linter 强制按状态分级启用——Stable/Beta 已接入命令表，Planned 随版本路线逐步启用。
 
 被 hooks/、commands/、skills/ 共享。
 """
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 
-# === 文件扩展名 → 语言（与 codegraph supported-languages 对齐，32 种） ===
+# === 文件扩展名 → 语言（55 种，覆盖主流编程语言与资产文件） ===
 EXT_LANG_MAP = {
     # TypeScript / JavaScript 生态
     ".ts": "typescript",
@@ -84,6 +83,52 @@ EXT_LANG_MAP = {
     ".tfvars": "terraform",
     ".tofu": "terraform",
     ".nix": "nix",
+    # ==== 函数式 ====
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".hs": "haskell",
+    ".lhs": "haskell",
+    ".ml": "ocaml",
+    ".mli": "ocaml",
+    ".fs": "fsharp",
+    ".fsi": "fsharp",
+    ".fsx": "fsharp",
+    ".clj": "clojure",
+    ".cljs": "clojure",
+    ".cljc": "clojure",
+    ".edn": "clojure",
+    ".elm": "elm",
+    ".cr": "crystal",
+    ".jl": "julia",
+    # ==== 脚本 / 系统 ====
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".t": "perl",
+    ".ps1": "powershell",
+    ".psm1": "powershell",
+    ".zig": "zig",
+    ".nim": "nim",
+    # ==== 前端资产 ====
+    ".css": "css",
+    ".scss": "css",
+    ".sass": "css",
+    ".less": "css",
+    ".html": "html",
+    ".htm": "html",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    # ==== 查询 / 接口描述 / 构建 ====
+    ".sql": "sql",
+    ".graphql": "graphql",
+    ".gql": "graphql",
+    ".proto": "protobuf",
+    ".toml": "toml",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".groovy": "groovy",
 }
 
 
@@ -101,6 +146,13 @@ PROJECT_MARKERS = {
     "Gemfile": "ruby",
     "build.sbt": "scala",
     "Package.swift": "swift",
+    "mix.exs": "elixir",
+    "stack.yaml": "haskell",
+    "cabal.project": "haskell",
+    "shard.yml": "crystal",
+    "Project.toml": "julia",
+    "elm.json": "elm",
+    "deno.json": "typescript",
 }
 
 
@@ -152,6 +204,26 @@ LANG_COMMANDS = {
     "scala": {
         "lint": ["scalafmt", "--check"],
         "format": ["scalafmt"],
+    },
+    "shell": {
+        "lint": ["shellcheck"],
+        "format": ["shfmt", "-w", "."],
+    },
+    "dockerfile": {
+        "lint": ["hadolint"],
+        "format": ["hadolint"],
+    },
+    "yaml": {
+        "lint": ["yamllint", "."],
+        "format": ["yamllint", "."],
+    },
+    "elixir": {
+        "lint": ["mix", "credo", "--strict"],
+        "format": ["mix", "format"],
+    },
+    "css": {
+        "lint": ["npx", "stylelint", "**/*.css"],
+        "format": ["npx", "stylelint", "**/*.css", "--fix"],
     },
 }
 

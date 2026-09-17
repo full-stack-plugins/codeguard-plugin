@@ -1,0 +1,23 @@
+# codestyle-check (codeguard): YAML 规范（yamllint）
+# 使用方法：拷贝到项目根 .yamllint.yml（或 .yamllint）：
+#   pip install yamllint
+#   yamllint .
+
+extends: default
+
+rules:
+  line-length:
+    max: 160
+    level: warning
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    check-keys: false      # 允许 on/off 作键（GitHub Actions 需要）
+  document-start:
+    present: false          # 不强制文件首 ---
+  empty-lines:
+    max: 2
+    max-end: 1

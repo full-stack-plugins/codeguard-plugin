@@ -1,0 +1,18 @@
+# codestyle-check (codeguard): Dockerfile 规范（hadolint）
+# 使用方法：拷贝到项目根 .hadolint.yaml：
+#   brew install hadolint
+#   hadolint Dockerfile
+
+failure-threshold: warning    # warning 及以上即失败
+
+ignored:
+  # DL3008: apt-get 版本锁定（基础镜像更新会破坏构建，团队选择不锁）
+  - DL3008
+  # DL3013: pip 版本锁定（同上）
+  - DL3013
+
+override:
+  error:
+    # 保持强制：禁止 latest 标签、禁止 sudo
+    - DL3007
+    - DL3004

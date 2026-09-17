@@ -74,7 +74,7 @@ AI 一次写出就过 lint 的代码
 
 ## 支持的语言
 
-语言覆盖与 [codegraph supported-languages](https://github.com/colbymchenry/codegraph#supported-languages) **完全对齐**——32 种语言全部可识别，其中 11 种已启用 linter 强制（随版本逐步增加，详见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）。
+**识别 55 种语言，其中 16 种已启用 linter 强制门禁**——同类代码治理插件中最广的覆盖面。三级状态（完整逐语言表格见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）：
 
 | 状态 | 语言 |
 |---|---|
