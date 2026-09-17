@@ -84,6 +84,20 @@ AI 一次写出就过 lint 的代码
 
 完整表格（每种语言的 lint/format 命令）：[docs/LANGUAGES.md](docs/LANGUAGES.md)。
 
+## 规范治理技能（Git 与安全）
+
+除 lint 之外，codeguard 内置来自团队工程规范 Wiki 的独立治理技能：
+
+| 技能 | 覆盖内容 |
+|---|---|
+| `codeguard-git-branch` | Gitflow / Gitflow+ / GitLab 三类分支模型、分支命名（`feature/{版本}_{功能}_{作者}_{日期}`）、合并方向门禁 |
+| `codeguard-git-commit` | Angular 风格提交格式 `type(scope): subject`，附正则门禁脚本（`linters/git/commit-msg`） |
+| `codeguard-security-code` | 代码与配置泄露防范、CVE 依赖漏洞扫描（dependency-check / trivy / npm audit / MurphySec） |
+| `codeguard-security-api` | 越权防护（Shiro / Spring Security 注解）、数据权限校验、文件上传三层控制、apikey+timestamp+signature 签名 |
+| `codeguard-security-data` | 敏感字段加密存储（国密 SM2/SM3/SM4）、返回脱敏、单设备登录、等保与密评合规要点 |
+
+提交门禁已预置在 pre-commit 模板（`stages: [commit-msg]`）；分支与安全技能会在 AI 建分支、写接口、合并前 review 时自动生效。
+
 ## 能力与边界
 
 ### 已支持
@@ -178,13 +192,13 @@ partme-codeguard-plugin/
 │   ├── detect_lang.py            # 语言检测 + linter 命令表（共享）
 │   ├── run_check.py              # 主 CLI：检测 + 跑全量 + 报告
 │   └── fix.py                    # 自动修复 CLI
-├── skills/                       # 6 个 SKILL.md（主入口 + 4 语言 + init）
-│   ├── codeguard/
-│   ├── codestyle-init/
-│   ├── codestyle-java/
-│   ├── codestyle-rust/
-│   ├── codestyle-typescript/
-│   └── codestyle-python/
+├── skills/                       # 18 个 SKILL.md（主入口 + init + 11 语言 + 2 Git + 3 安全）
+│   ├── codeguard/                # 主入口
+│   ├── codeguard-init/           # 一行接入
+│   ├── codeguard-{java,rust,typescript,python}/
+│   ├── codeguard-{go,csharp,kotlin,swift,php,ruby,scala}/   # V0.2 语言
+│   ├── codeguard-git-{branch,commit}/                      # 分支与提交规范
+│   └── codeguard-security-{code,api,data}/                 # 安全规范
 ├── commands/                     # 3 个斜杠命令（/check /fix /init）
 │   ├── check.json
 │   ├── fix.json

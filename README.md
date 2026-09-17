@@ -84,6 +84,20 @@ Language coverage is **aligned with [codegraph supported-languages](https://gith
 
 Full table with per-language lint/format commands: [docs/LANGUAGES.md](docs/LANGUAGES.md).
 
+## Governance skills (Git & Security)
+
+Beyond linting, codeguard ships standalone governance skills sourced from the team's engineering-standards wiki:
+
+| Skill | Covers |
+|---|---|
+| `codeguard-git-branch` | Gitflow / Gitflow+ / GitLab branch models, branch naming (`feature/{version}_{function}_{author}_{datetime}`), merge-direction gates |
+| `codeguard-git-commit` | Angular-style commit format `type(scope): subject` with regex gate (`linters/git/commit-msg`) |
+| `codeguard-security-code` | Source & config leakage prevention, CVE dependency scanning (dependency-check / trivy / npm audit / MurphySec) |
+| `codeguard-security-api` | Privilege-escalation guards (Shiro / Spring Security annotations), data-permission checks, 3-layer file-upload control, apikey+timestamp+signature |
+| `codeguard-security-data` | Encrypted-at-rest fields (SM2/SM3/SM4 国密), response masking, single-device login, MLPS (等保) & commercial-crypto evaluation (密评) notes |
+
+The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`); branch and security skills guide the AI during branch creation, interface development, and pre-merge review.
+
 ## Capabilities and boundaries
 
 ### Supported
@@ -178,13 +192,13 @@ partme-codeguard-plugin/
 │   ├── detect_lang.py            # language detection + linter command table (shared)
 │   ├── run_check.py              # main CLI: detect + run all linters + report
 │   └── fix.py                    # auto-fix CLI
-├── skills/                       # 6 SKILL.md (主入口 + 4 语言 + init)
-│   ├── codeguard/
-│   ├── codestyle-init/
-│   ├── codestyle-java/
-│   ├── codestyle-rust/
-│   ├── codestyle-typescript/
-│   └── codestyle-python/
+├── skills/                       # 18 SKILL.md (main + init + 11 languages + 2 git + 3 security)
+│   ├── codeguard/                # main entry
+│   ├── codeguard-init/           # one-line bootstrap
+│   ├── codeguard-{java,rust,typescript,python}/
+│   ├── codeguard-{go,csharp,kotlin,swift,php,ruby,scala}/   # V0.2 languages
+│   ├── codeguard-git-{branch,commit}/                      # branch & commit governance
+│   └── codeguard-security-{code,api,data}/                 # security governance
 ├── commands/                     # 3 slash commands (/check /fix /init)
 │   ├── check.json
 │   ├── fix.json

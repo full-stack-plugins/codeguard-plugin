@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# codeguard: Conventional Commit message 门禁（依据团队 Commit 日志规范）
+# 用法（pre-commit 框架，stages: [commit-msg]）：自动接收 commit msg 文件路径
+# 手动安装：cp linters/git/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+
+set -eu
+
+msg_file="${1:-.git/COMMIT_EDITMSG}"
+[ -f "$msg_file" ] || msg_file="$(git rev-parse --git-dir)/COMMIT_EDITMSG"
+[ -f "$msg_file" ] || { echo "[codeguard] 未找到 commit message 文件"; exit 1; }
+
+# 取第一个非注释行
+line=$(grep -m1 -v '^#' "$msg_file" || true)
+[ -n "${line:-}" ] || { echo "[codeguard] commit message 为空"; exit 1; }
+
+# Merge / Revert / fixup 开头的自动提交放行
+case "$line" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+
+# 团队规范正则（Angular 风格）：
+#   ^(feat|fix|docs|style|refactor|test|chore|ci)((.+))?: .{1,100}
+# 兼容：半角/全角冒号、冒号后有无空格
+pattern='^(feat|fix|docs|style|refactor|perf|test|chore|ci|revert)(\(.+\))?[:：][[:space:]]*.+$'
+
+if echo "$line" | grep -qE "$pattern"; then
+  # subject 长度 <= 100 字符（按字符计，兼容中文）
+  subject=$(echo "$line" | sed -E 's/^[^:：]*[:：][[:space:]]*//' | wc -m | tr -d ' ')
+  [ "$subject" -le 101 ] && exit 0
+  echo "[codeguard] subject 超过 100 字符" >&2
+  exit 1
+fi
+
+cat >&2 <<EOF
+[codeguard] commit message 不符合规范：
+  \"$line\"
+
+要求格式：type(scope): subject
+  type:   feat | fix | docs | style | refactor | perf | test | chore | ci | revert
+  scope:  可选，模块/功能名，如 (美团对接)
+  subject: 空格后简短描述，1-100 字符
+
+示例：fix(首页模块)：修复弹窗 JS Bug
+EOF
+exit 1
