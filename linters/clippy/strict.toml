@@ -1,0 +1,32 @@
+# codestyle-check: 严格级别 clippy 配置
+# 使用方法：拷贝到项目根的 clippy.toml（或 .clippy.toml）
+
+# 拒绝所有警告（最高严格度）
+deny(warnings)
+
+# pedantic 级别（全部视为 warning）
+warn(
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+)
+
+# 常见 footgun：禁止
+deny(
+    clippy::unwrap_used,           # 不要用 unwrap()
+    clippy::expect_used,          # 不要用 expect()
+    clippy::panic,                 # 不要用 panic!()
+    clippy::unimplemented,
+    clippy::todo,
+    clippy::dbg_macro,            # 不要留 dbg!() 调试代码
+)
+
+# 注释与可读性
+allow(
+    clippy::module_name_repetitions,    # 模块名重复在 rust 生态常见
+    clippy::missing_errors_doc,           # 公共 API 必须文档化错误（按需开启）
+    clippy::must_use_candidate,          # 必须使用的候选
+)
+
+# 测试代码放宽
+allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::dbg_macro)

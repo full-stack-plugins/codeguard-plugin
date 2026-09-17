@@ -1,0 +1,71 @@
+{
+  "name": "codestyle-check",
+  "displayName": "Code Style Check",
+  "displayName_i18n": {
+    "en": "Code Style Check",
+    "zh-CN": "代码规范检查"
+  },
+  "version": "0.1.0",
+  "description": "Cross-language code style enforcement: javadoc, checkstyle, clippy, eslint, ruff — with hooks, skills, slash commands, and MCP.",
+  "description_i18n": {
+    "en": "Cross-language code style enforcement. PostToolUse hook auto-runs the language-specific linter on every AI-written file; failed lint blocks further writes when strict_mode is on. Ships ready-to-go .pre-commit-config.yaml templates for Java/Rust/TypeScript/Python.",
+    "zh-CN": "跨语言代码规范强制门禁：Java（javadoc/checkstyle/P3C）、Rust（clippy/fmt）、TS（eslint/prettier）、Python（ruff）。PostToolUse 钩子在 AI 写完文件后自动跑 linter；严格模式下失败会阻塞 AI 继续。内含可直接接入的 .pre-commit-config.yaml 模板。"
+  },
+  "author": {
+    "name": "Full Stack Skills / PartMe.AI",
+    "url": "https://github.com/partme-ai"
+  },
+  "homepage": "https://github.com/partme-ai/codestyle-check-plugin",
+  "repository": "https://github.com/partme-ai/codestyle-check-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "java",
+    "rust",
+    "typescript",
+    "python",
+    "javadoc",
+    "checkstyle",
+    "clippy",
+    "eslint",
+    "ruff",
+    "pre-commit"
+  ],
+  "skills": "skills",
+  "commands": "commands",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": {
+    "codestyle_linter": {
+      "command": "python3",
+      "args": [
+        "${ZCODE_PLUGIN_ROOT}/scripts/run_check.py",
+        "--mcp"
+      ]
+    }
+  },
+  "userConfig": {
+    "enabled_languages": {
+      "type": "string",
+      "title": "启用的语言",
+      "description": "逗号分隔，支持 java/rust/typescript/python，留空 (auto) 自动检测项目语言",
+      "default": "auto"
+    },
+    "strict_mode": {
+      "type": "boolean",
+      "title": "严格模式",
+      "description": "启用后 PostToolUse 钩子会在 linter 失败时返回非 0 退出码，AI 必须修复后才能继续",
+      "default": true
+    },
+    "auto_fix_on_save": {
+      "type": "boolean",
+      "title": "自动修复",
+      "description": "linter 失败时先尝试自动修复（spotless:apply / cargo fmt / eslint --fix / ruff --fix），再重跑 lint",
+      "default": true
+    },
+    "lint_timeout_seconds": {
+      "type": "number",
+      "title": "单次 linter 超时（秒）",
+      "description": "PostToolUse 钩子每次调 linter 的最长等待时间",
+      "default": 120
+    }
+  }
+}

@@ -1,0 +1,24 @@
+# Build artifacts
+dist/
+build/
+*.pyc
+__pycache__/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Plugin runtime state (per-session)
+.session_state.json

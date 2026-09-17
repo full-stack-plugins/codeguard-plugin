@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Puppy Crawl//DTD Suppressions 1.1//EN"
+    "https://www.puppycrawl.com/dtds/suppressions_1_1.dtd">
+
+<!--
+  codestyle-check: Checkstyle 抑制规则。
+  拷贝到项目根，并在 checkstyle.xml 中通过 SuppressionFilter 引用。
+-->
+<suppressions>
+    <!-- 测试类允许缺失 javadoc -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="JavadocMethod|JavadocType|JavadocVariable"/>
+    <!-- 生成代码（如 DTO、enum）允许缺失 javadoc -->
+    <suppress files="[\\/]target[\\/]" checks=".*"/>
+    <!-- main 方法作为入口无需 javadoc -->
+    <suppress files=".*" checks="JavadocMethod" lines="0-9" message="Missing a Javadoc comment"/>
+</suppressions>

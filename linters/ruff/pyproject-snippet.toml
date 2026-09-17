@@ -1,0 +1,30 @@
+# codestyle-check: ruff 推荐配置
+# 使用方法：把 [tool.ruff] 块追加到项目根的 pyproject.toml，或创建独立的 ruff.toml
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# 启用规则集（按严格度从低到高）
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort（import 排序）
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade（建议的现代化写法）
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line-too-long（与 line-length 一致即可）
+    "B008",  # function call in default argument（pydantic 等框架常用）
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

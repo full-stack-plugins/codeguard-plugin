@@ -1,0 +1,78 @@
+# codestyle-check: pre-commit 模板
+# 使用方法：拷贝到项目根的 .pre-commit-config.yaml，然后运行：
+#   pip install pre-commit
+#   pre-commit install
+
+# 通用文件检查（所有项目都适用）
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # Shell 脚本
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  # ===== Java（启用 checkstyle + javadoc 检查）=====
+  - repo: local
+    hooks:
+      - id: maven-javadoc
+        name: Maven javadoc (codestyle-check)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && mvn -q javadoc:jar -DskipTests'
+        language: system
+        files: '\.java$'
+        pass_filenames: false
+      - id: maven-checkstyle
+        name: Maven checkstyle P3C + javadoc (codestyle-check)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && mvn -q checkstyle:check'
+        language: system
+        files: '\.java$'
+        pass_filenames: false
+
+  # ===== Rust =====
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: cargo clippy strict (codestyle-check)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && cargo clippy --all-targets -- -D warnings'
+        language: system
+        files: '\.rs$'
+        pass_filenames: false
+      - id: cargo-fmt
+        name: cargo fmt --check (codestyle-check)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && cargo fmt --all -- --check'
+        language: system
+        files: '\.rs$'
+        pass_filenames: false
+
+  # ===== TypeScript / JavaScript =====
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint recommended (codestyle-check)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && npx eslint . --max-warnings 0'
+        language: system
+        files: '\.(ts|tsx|js|jsx|mjs|cjs)$'
+        pass_filenames: false
+
+  # ===== Python =====
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+# 提交时同时跑这套 hook（提交信息检查）
+# default_language_version 与项目实际 jdk/node/python 版本对齐
+# default_install_hook_type: pre-commit（仅客户端）/ fail（服务端 CI）

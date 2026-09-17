@@ -1,0 +1,50 @@
+{
+  "name": "codestyle-check",
+  "version": "0.1.0+codex.20260917000000",
+  "description": "Cross-language code style enforcement with hooks, skills, and MCP linter tools.",
+  "author": {
+    "name": "Full Stack Skills / PartMe.AI",
+    "url": "https://github.com/partme-ai"
+  },
+  "homepage": "https://github.com/partme-ai/codestyle-check-plugin",
+  "repository": "https://github.com/partme-ai/codestyle-check-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "java",
+    "rust",
+    "typescript",
+    "python",
+    "javadoc",
+    "checkstyle",
+    "clippy",
+    "eslint",
+    "ruff",
+    "pre-commit"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Code Style Check",
+    "shortDescription": "Cross-language code style enforcement",
+    "longDescription": "Detects project languages, runs the appropriate linter (mvn javadoc+checkstyle, cargo clippy+fmt, npx eslint, ruff check) on every file the AI writes or edits, and blocks further writes when lints fail. Ships ready-to-use .pre-commit-config.yaml templates and AGENTS.md snippets for one-line project bootstrap.",
+    "developerName": "Full Stack Skills / PartMe.AI",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/partme-ai/codestyle-check-plugin",
+    "privacyPolicyURL": "https://github.com/partme-ai/codestyle-check-plugin/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/partme-ai/codestyle-check-plugin/blob/main/TERMS.md",
+    "defaultPrompt": [
+      "Run /check on the current project and fix what fails",
+      "Initialize codestyle-check on this repository with /init",
+      "Run Java javadoc + checkstyle on the current project"
+    ],
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/official-logo.png",
+    "logoDark": "./assets/official-logo-dark.png",
+    "screenshots": []
+  }
+}
