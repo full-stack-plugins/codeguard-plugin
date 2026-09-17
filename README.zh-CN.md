@@ -95,6 +95,7 @@ AI 一次写出就过 lint 的代码
 | `codeguard-security-code` | 代码与配置泄露防范、CVE 依赖漏洞扫描（dependency-check / trivy / npm audit / MurphySec） |
 | `codeguard-security-api` | 越权防护（Shiro / Spring Security 注解）、数据权限校验、文件上传三层控制、apikey+timestamp+signature 签名 |
 | `codeguard-security-data` | 敏感字段加密存储（国密 SM2/SM3/SM4）、返回脱敏、单设备登录、等保与密评合规要点 |
+| `codeguard-dockerfile` | Dockerfile 安全风险——root 运行、latest 标签、ADD 滥用、sudo、secrets 进层、HEALTHCHECK 缺失（hadolint + trivy config） |
 
 提交门禁已预置在 pre-commit 模板（`stages: [commit-msg]`）；分支与安全技能会在 AI 建分支、写接口、合并前 review 时自动生效。
 

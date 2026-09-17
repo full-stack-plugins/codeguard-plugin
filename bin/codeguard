@@ -2,10 +2,11 @@
 # codeguard —— PartMe.AI 代码规范守卫 CLI
 #
 # 用法:
-#   codeguard check [--lang LANG] [--timeout N] [path]   # 跑代码规范 lint（多语言）
-#   codeguard fix   [--lang LANG] [path]                 # 自动修复 lint 问题
-#   codeguard cve   [--json] [path]                      # CVE 依赖漏洞扫描（多生态编排）
-#   codeguard detect [path]                              # 检测项目语言
+#   codeguard check      [--lang LANG] [--timeout N] [path]   # 跑代码规范 lint（多语言）
+#   codeguard fix        [--lang LANG] [path]                 # 自动修复 lint 问题
+#   codeguard cve        [--json] [--severity S] [path]       # CVE 依赖漏洞扫描（多生态编排）
+#   codeguard dockerfile [--json] [path]                      # Dockerfile 安全风险检查（hadolint + trivy config）
+#   codeguard detect     [path]                               # 检测项目语言
 #
 # 安装到 PATH:
 #   ln -s "$(pwd)/bin/codeguard" /usr/local/bin/codeguard
@@ -26,6 +27,9 @@ case "$cmd" in
   cve)
     exec python3 "$ROOT/scripts/cve_check.py" "$@"
     ;;
+  dockerfile)
+    exec python3 "$ROOT/scripts/dockerfile_security.py" "$@"
+    ;;
   detect)
     exec python3 "$ROOT/scripts/detect_lang.py" "${1:-.}"
     ;;
@@ -42,7 +46,7 @@ EOF
     ;;
   *)
     echo "codeguard: 未知子命令 '$cmd'" >&2
-    echo "可用: check | fix | cve | detect | init" >&2
+    echo "可用: check | fix | cve | dockerfile | detect | init" >&2
     exit 1
     ;;
 esac

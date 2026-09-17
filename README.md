@@ -93,6 +93,7 @@ Beyond linting, codeguard ships standalone governance skills sourced from the te
 | `codeguard-security-code` | Source & config leakage prevention, CVE dependency scanning (dependency-check / trivy / npm audit / MurphySec) |
 | `codeguard-security-api` | Privilege-escalation guards (Shiro / Spring Security annotations), data-permission checks, 3-layer file-upload control, apikey+timestamp+signature |
 | `codeguard-security-data` | Encrypted-at-rest fields (SM2/SM3/SM4 国密), response masking, single-device login, MLPS (等保) & commercial-crypto evaluation (密评) notes |
+| `codeguard-dockerfile` | Dockerfile security risks — root user, latest tag, ADD abuse, sudo, secrets in layers, missing HEALTHCHECK (hadolint + trivy config) |
 
 The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`); branch and security skills guide the AI during branch creation, interface development, and pre-merge review.
 

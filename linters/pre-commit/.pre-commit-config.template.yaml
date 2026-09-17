@@ -23,6 +23,13 @@ repos:
     hooks:
       - id: shellcheck
 
+  # ===== Dockerfile 安全检查（hadolint：root/latest/ADD/sudo 等 DL 安全规则）=====
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--failure-threshold, warning]
+
   # ===== Commit 日志规范（codeguard：Angular 风格 type(scope): subject）=====
   - repo: local
     hooks:
