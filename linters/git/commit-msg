@@ -18,6 +18,11 @@ case "$line" in
   Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
 esac
 
+# Gitmoji 前缀剥离（如 "✨ feat(x): ..." 或 ":sparkles: feat(x): ..."）：
+# 剥离开头的 emoji（非 ASCII 字符）与 :emoji: 标记后再按 Conventional 校验
+line=$(echo "$line" | sed -E 's/^(:[a-z_+-]+:)?[[:space:]]*//; s/^[^a-zA-Z]+//')
+[ -n "${line:-}" ] || { echo "[codeguard] commit message 为空（仅 emoji？）"; exit 1; }
+
 # 团队规范正则（Angular 风格）：
 #   ^(feat|fix|docs|style|refactor|test|chore|ci)((.+))?: .{1,100}
 # 兼容：半角/全角冒号、冒号后有无空格

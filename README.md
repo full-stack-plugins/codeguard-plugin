@@ -90,8 +90,8 @@ Beyond linting, codeguard ships standalone governance skills sourced from the te
 
 | Skill | Covers |
 |---|---|
-| `codeguard-git-branch` | Gitflow / Gitflow+ / GitLab branch models, branch naming (`feature/{version}_{function}_{author}_{datetime}`), merge-direction gates |
-| `codeguard-git-commit` | Angular-style commit format `type(scope): subject` with regex gate (`linters/git/commit-msg`) |
+| `codeguard-git-branch` | 7 mainstream models — Gitflow, Gitflow+ (team), GitLab branch rules, GitHub Flow, GitLab Flow, Trunk-Based Development, OneFlow, Release Flow — with model detection, branch naming gates (`feature/{version}_{function}_{author}_{datetime}`), merge-direction gates, merge strategy (merge/squash/rebase) |
+| `codeguard-git-commit` | Conventional Commits (Angular regex gate `linters/git/commit-msg`), Gitmoji prefixes, Udacity long-form, commitlint tooling |
 | `codeguard-security-code` | Source & config leakage prevention, CVE dependency scanning (dependency-check / trivy / npm audit / MurphySec) |
 | `codeguard-security-api` | Privilege-escalation guards (Shiro / Spring Security annotations), data-permission checks, 3-layer file-upload control, apikey+timestamp+signature |
 | `codeguard-security-data` | Encrypted-at-rest fields (SM2/SM3/SM4 国密), response masking, single-device login, MLPS (等保) & commercial-crypto evaluation (密评) notes |

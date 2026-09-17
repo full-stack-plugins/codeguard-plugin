@@ -90,8 +90,8 @@ AI 一次写出就过 lint 的代码
 
 | 技能 | 覆盖内容 |
 |---|---|
-| `codeguard-git-branch` | Gitflow / Gitflow+ / GitLab 三类分支模型、分支命名（`feature/{版本}_{功能}_{作者}_{日期}`）、合并方向门禁 |
-| `codeguard-git-commit` | Angular 风格提交格式 `type(scope): subject`，附正则门禁脚本（`linters/git/commit-msg`） |
+| `codeguard-git-branch` | 7 种主流分支模型——Gitflow、Gitflow+（团队）、GitLab 分支规范、GitHub Flow、GitLab Flow、Trunk-Based Development、OneFlow、Release Flow——含模型识别、分支命名门禁（`feature/{版本}_{功能}_{作者}_{日期}`）、合并方向门禁、合并策略（merge/squash/rebase） |
+| `codeguard-git-commit` | Conventional Commits（Angular 正则门禁 `linters/git/commit-msg`）、Gitmoji 前缀、Udacity 长描述风格、commitlint 工具化 |
 | `codeguard-security-code` | 代码与配置泄露防范、CVE 依赖漏洞扫描（dependency-check / trivy / npm audit / MurphySec） |
 | `codeguard-security-api` | 越权防护（Shiro / Spring Security 注解）、数据权限校验、文件上传三层控制、apikey+timestamp+signature 签名 |
 | `codeguard-security-data` | 敏感字段加密存储（国密 SM2/SM3/SM4）、返回脱敏、单设备登录、等保与密评合规要点 |
