@@ -1,0 +1,41 @@
+# codestyle-check (codelint): Kotlin detekt 推荐配置
+# 使用方法：拷贝到项目根目录 config/detekt.yml，并在 build.gradle.kts 配置 detekt 插件后：
+#   ./gradlew detekt
+# 配套 ktlint（格式化）：./gradlew ktlintFormat
+
+build:
+  maxIssues: 0
+
+complexity:
+  LongMethod:
+    threshold: 120
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 7
+  TooManyFunctions:
+    thresholdInFiles: 15
+    thresholdInClasses: 15
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']   # Jetpack Compose 函数允许大写
+  MatchingDeclarationName:
+    active: true
+
+style:
+  MagicNumber:
+    ignoreNumbers: ['-1', '0', '1', '2', '100', '1000']
+    ignorePropertyDeclaration: true
+  MaxLineLength:
+    maxLineLength: 160
+  ReturnCount:
+    max: 3
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']       # Compose @Preview 允许未使用
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true

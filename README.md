@@ -65,12 +65,24 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codelint` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.1.0` |
+| Current version | `0.2.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | `python3 scripts/run_check.py --mcp` (stdio JSON-RPC) |
 | Primary language | Python 3.10+ (hooks), YAML/JSON (config) |
 | License | Apache-2.0 |
+
+## Supported languages
+
+Language coverage is **aligned with [codegraph supported-languages](https://github.com/colbymchenry/codegraph#supported-languages)** — all 32 languages are detected; 11 have active linter enforcement (more per release, see [docs/LANGUAGES.md](docs/LANGUAGES.md)).
+
+| Status | Languages |
+|---|---|
+| **Stable** (auto-enforced, V0.1) | Java, Rust, TypeScript/JavaScript, Python |
+| **Beta** (enforced, V0.2) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala |
+| **Planned** (detected, linter on roadmap) | C, C++, Objective-C, Dart, Vue, Svelte, Astro, Solidity, Terraform/OpenTofu, Nix, Lua, Luau, CFML, COBOL, VB.NET, Erlang, Pascal/Delphi, R, ArkTS, Metal, Liquid, CUDA |
+
+Full table with per-language lint/format commands: [docs/LANGUAGES.md](docs/LANGUAGES.md).
 
 ## Capabilities and boundaries
 
@@ -103,7 +115,7 @@ PostToolUse is the **highest-ROI** layer because it gives the AI feedback **whil
 - Generating code. This plugin enforces rules on what AI generates.
 - Replacing peer review. Linters catch mechanical errors; humans catch design errors.
 - Cloud / SaaS linter services. This plugin is **strictly client-side** (see [PRIVACY.md](./PRIVACY.md)).
-- Languages other than Java / Rust / TypeScript / Python in this version. (V0.3 will add Go / Kotlin / Swift / PHP — see [technical roadmap §4.3](docs/5、partme-codelint-技术方案与路线.md).)
+- Languages without an active linter yet (Planned tier above — their files are detected but safely skipped by the hook).
 
 ## Quick start
 

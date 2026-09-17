@@ -1,0 +1,25 @@
+# codestyle-check (codelint): Go 推荐配置
+# 使用方法：拷贝到项目根目录。golangci-lint 会自动读取 .golangci.yml
+
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - govet        # go vet 官方检查
+    - staticcheck  # 静态分析
+    - errcheck     # 未检查的 error 返回值
+    - gosimple     # 简化写法建议
+    - ineffassign  # 无效赋值
+    - unused       # 未使用的代码
+  exclusions:
+    rules:
+      # 测试代码放宽
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

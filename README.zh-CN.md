@@ -65,12 +65,24 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codelint` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.1.0` |
+| 当前版本 | `0.2.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | `python3 scripts/run_check.py --mcp`（stdio JSON-RPC） |
 | 主要语言 | Python 3.10+（钩子）、YAML/JSON（配置） |
 | 协议 | Apache-2.0 |
+
+## 支持的语言
+
+语言覆盖与 [codegraph supported-languages](https://github.com/colbymchenry/codegraph#supported-languages) **完全对齐**——32 种语言全部可识别，其中 11 种已启用 linter 强制（随版本逐步增加，详见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）。
+
+| 状态 | 语言 |
+|---|---|
+| **Stable**（默认强制，V0.1） | Java、Rust、TypeScript/JavaScript、Python |
+| **Beta**（强制，V0.2） | Go、C#、Kotlin、Swift、PHP、Ruby、Scala |
+| **Planned**（已识别，linter 在路线图） | C、C++、Objective-C、Dart、Vue、Svelte、Astro、Solidity、Terraform/OpenTofu、Nix、Lua、Luau、CFML、COBOL、VB.NET、Erlang、Pascal/Delphi、R、ArkTS、Metal、Liquid、CUDA |
+
+完整表格（每种语言的 lint/format 命令）：[docs/LANGUAGES.md](docs/LANGUAGES.md)。
 
 ## 能力与边界
 
@@ -103,7 +115,7 @@ PostToolUse 是 **最高 ROI** 的层，因为 AI 在它「还在乎这个问题
 - **不生产**代码。本插件强制 AI 产出的代码遵守规范。
 - **不取代** code review。linter 抓机械错误，code review 抓设计错误。
 - **不接**云端 linter 服务。本插件**严格客户端运行**（见 [PRIVACY.md](./PRIVACY.md)）。
-- **V0.1 只支持 Java / Rust / TypeScript / Python**。V0.3 会加 Go / Kotlin / Swift / PHP（见 [技术方案 §4.3](docs/5、partme-codelint-技术方案与路线.md)）。
+- **尚未启用 linter 的语言**（Planned 层，见上文——文件可被识别，但钩子会安全跳过）。
 
 ## 快速开始
 

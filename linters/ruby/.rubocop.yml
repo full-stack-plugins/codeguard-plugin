@@ -1,0 +1,33 @@
+# codestyle-check (codelint): Ruby RuboCop 推荐配置
+# 使用方法：拷贝到项目根目录 .rubocop.yml：
+#   gem install rubocop
+#   rubocop               # 检查
+#   rubocop -A            # 自动修复
+
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  Exclude:
+    - 'vendor/**/*'
+    - 'node_modules/**/*'
+    - 'db/schema.rb'
+
+Style/Documentation:
+  Enabled: false        # 模块顶层注释强制关闭（Ruby 社区惯例）；业务类注释靠 review
+
+Layout/LineLength:
+  Max: 160
+
+Metrics/MethodLength:
+  Max: 20
+  Exclude:
+    - 'test/**/*'
+
+Metrics/AbcSize:
+  Max: 20
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes
+
+Lint/SuppressedException:
+  Enabled: true
