@@ -9,6 +9,19 @@ description: |
 
 依据：PartMe.AI 开发安全规范「代码安全规范」。核心原则：**源码与配置不得暴露到公共网络**。
 
+## Capability Boundaries
+
+### ✅ Strengths
+1. 三大检查项（代码泄露/配置泄露/CVE）各自有工具化命令与门禁阈值
+2. 统一入口 `codeguard cve` 编排多生态扫描
+
+### ⚠️ Prerequisites
+1. 扫描工具：mvn + dependency-check / npm / pip-audit / cargo audit / trivy（缺失的生态按提示安装）
+
+### ❌ Out of Scope
+1. 越权/鉴权/文件上传 → codeguard-security-api
+2. 加密存储/脱敏/等保密评 → codeguard-security-data
+
 ## 一、代码泄露检查
 
 | 检查项 | 要求 |
@@ -32,6 +45,8 @@ AI 行为：**禁止**把密钥/密码写死进代码或提交；发现已泄露
 ## 三、安全漏洞（CVE）检查
 
 要求：前后端定期做依赖组件漏洞扫描，**无中等风险以上漏洞**。
+
+工具选型与门禁阈值对照见 [references/cve-tools-matrix.md](references/cve-tools-matrix.md)。
 
 ### 统一入口（推荐）
 

@@ -8,7 +8,21 @@ description: |
 
 # Commit 日志规范（三种主流风格整合）
 
-依据：PartMe.AI Commit 日志规范（Angular 正则）+ 业界主流实践。
+## Capability Boundaries
+
+### ✅ Strengths
+1. 团队 wiki 规范落地为可执行门禁（正则/命令）
+2. 主流风格全覆盖，AI 代写有据可依
+3. 与 pre-commit / CI 集成路径明确
+
+### ⚠️ Prerequisites
+1. git；部分工具需按安装说明准备（commitlint / pre-commit 框架）
+
+### ❌ Out of Scope
+1. 代码内容评审（lint 层面归对应语言技能）
+2. 分支命名与合并方向 → codeguard-git-branch
+
+依据：PartMe.AI Commit 日志规范（Angular 正则）+ 业界主流实践。深度对比见 [references/commit-style-comparison.md](references/commit-style-comparison.md)。
 
 ## 一、先识别项目现有风格
 
@@ -90,7 +104,15 @@ docs(readme)：补充三端安装说明
 
 适合：复杂重构、架构变更等需要向未来读者解释决策的提交。团队日常迭代不强制。
 
-## 五、工具化
+## 五、Workflow（AI 代写提交的标准顺序）
+
+1. `git diff --cached` 看实际改动
+2. 按 `git log --oneline -20` 识别团队风格
+3. 起草 message（type + scope + subject）
+4. 过 `linters/git/commit-msg` 门禁
+5. 提交
+
+## 六、工具化
 
 - 门禁脚本：`linters/git/commit-msg`（pre-commit 模板已预置 `stages: [commit-msg]`）
 - commitlint（Node 项目）：

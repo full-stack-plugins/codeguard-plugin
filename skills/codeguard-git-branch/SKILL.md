@@ -9,7 +9,21 @@ description: |
 
 # Git 分支规范（7 种主流模型整合）
 
-依据：PartMe.AI Git 规范 wiki（GitLab 分支规范 / Git 工作流程 / Gitflow / Gitflow+）+ 业界主流实践。
+## Capability Boundaries
+
+### ✅ Strengths
+1. 团队 wiki 规范落地为可执行门禁（正则/命令）
+2. 主流风格全覆盖，AI 代写有据可依
+3. 与 pre-commit / CI 集成路径明确
+
+### ⚠️ Prerequisites
+1. git；部分工具需按安装说明准备（commitlint / pre-commit 框架）
+
+### ❌ Out of Scope
+1. 代码内容评审（lint 层面归对应语言技能）
+2. commit message 格式 → codeguard-git-commit
+
+依据：PartMe.AI Git 规范 wiki（GitLab 分支规范 / Git 工作流程 / Gitflow / Gitflow+）+ 业界主流实践。七模型总对照见 [references/branch-models-comparison.md](references/branch-models-comparison.md)。
 
 ## 一、先识别当前项目用哪种模型
 

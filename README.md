@@ -96,6 +96,10 @@ Beyond linting, codeguard ships standalone governance skills sourced from the te
 
 The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`); branch and security skills guide the AI during branch creation, interface development, and pre-merge review.
 
+### Skill architecture
+
+All 18 skills follow a unified authoring standard abstracted from [rust-skills](https://github.com/full-stack-skills/rust-skills): a lean `SKILL.md` (trigger metadata, capability boundaries, workflow, gotchas) plus `references/` for progressive disclosure of deep material. The standard is documented in [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md). Skills cross-route to each other (e.g. the main entry routes deep Java questions to the java-skills repository, commit format to codeguard-git-commit).
+
 ## Capabilities and boundaries
 
 ### Supported

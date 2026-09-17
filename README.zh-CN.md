@@ -98,6 +98,10 @@ AI 一次写出就过 lint 的代码
 
 提交门禁已预置在 pre-commit 模板（`stages: [commit-msg]`）；分支与安全技能会在 AI 建分支、写接口、合并前 review 时自动生效。
 
+### 技能架构
+
+全部 18 个技能遵循从 [rust-skills](https://github.com/full-stack-skills/rust-skills) 抽象的统一编写标准：精瘦的 `SKILL.md`（触发元数据、能力边界、工作流、坑点）+ `references/` 渐进披露深度资料。标准全文见 [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md)。技能之间互相路由（如主入口把 Java 深度问题路由到 java-skills 仓库、把提交格式路由到 codeguard-git-commit）。
+
 ## 能力与边界
 
 ### 已支持
