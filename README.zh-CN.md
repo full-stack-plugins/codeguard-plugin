@@ -133,6 +133,24 @@ PostToolUse 是 **最高 ROI** 的层，因为 AI 在它「还在乎这个问题
 
 ## 快速开始
 
+### CLI（codeguard）
+
+```bash
+# 安装 CLI（可选）：放到 PATH 后任意目录直接用
+ln -s $PWD/bin/codeguard /usr/local/bin/codeguard
+
+codeguard check                     # 跑多语言 lint 门禁
+codeguard fix                       # 自动修复 lint 问题
+codeguard cve                       # CVE 依赖漏洞扫描（Maven/npm/Python/Rust 编排）
+codeguard cve --fix                 # 扫描并自动修复（npm audit fix）
+codeguard cve --severity MEDIUM     # 门禁阈值调到中危
+codeguard detect                    # 检测项目语言
+```
+
+Maven 项目 CVE 扫描使用 OWASP dependency-check（pom 配置模板见
+`linters/maven/dependency-check-pom-snippet.xml`；`CVSS>=7 构建失败`）。
+**检查出来了得修**：报告会附带每个生态的修复命令（升级依赖 / 登记误报），npm 支持 `audit fix` 自动修复。
+
 ### 作为用户
 
 ```bash
@@ -203,11 +221,14 @@ partme-codeguard-plugin/
 │   ├── check.json
 │   ├── fix.json
 │   └── init.json
+├── bin/codeguard                 # CLI 入口（check / fix / cve / detect / init）
 ├── linters/                      # 各语言配置模板（拷贝即用）
 │   ├── checkstyle/               # 阿里 P3C + 强制 javadoc
 │   ├── clippy/                   # deny warnings + 禁 unwrap/expect/panic
 │   ├── eslint/                   # recommended + TS 规则
 │   ├── ruff/                     # [tool.ruff] 块
+│   ├── maven/                     # OWASP dependency-check pom 片段
+│   └── git/                        # commit-msg 门禁脚本
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
 │   ├── partme-codeguard-plugin-Architecture.zh_CN.md

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# codeguard —— PartMe.AI 代码规范守卫 CLI
+#
+# 用法:
+#   codeguard check [--lang LANG] [--timeout N] [path]   # 跑代码规范 lint（多语言）
+#   codeguard fix   [--lang LANG] [path]                 # 自动修复 lint 问题
+#   codeguard cve   [--json] [path]                      # CVE 依赖漏洞扫描（多生态编排）
+#   codeguard detect [path]                              # 检测项目语言
+#
+# 安装到 PATH:
+#   ln -s "$(pwd)/bin/codeguard" /usr/local/bin/codeguard
+
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cmd="${1:-check}"
+[ $# -gt 0 ] && shift || true
+
+case "$cmd" in
+  check)
+    exec python3 "$ROOT/scripts/run_check.py" "$@"
+    ;;
+  fix)
+    exec python3 "$ROOT/scripts/fix.py" "$@"
+    ;;
+  cve)
+    exec python3 "$ROOT/scripts/cve_check.py" "$@"
+    ;;
+  detect)
+    exec python3 "$ROOT/scripts/detect_lang.py" "${1:-.}"
+    ;;
+  init)
+    cat >&2 <<'EOF'
+[codeguard] 项目初始化引导：
+  1. python3 scripts/detect_lang.py .           # 检测语言
+  2. 从 linters/<语言>/ 拷贝对应配置到项目根
+  3. 从 linters/pre-commit/.pre-commit-config.template.yaml 拷贝并裁剪
+  4. pip install pre-commit && pre-commit install
+或直接对 AI 说 /init，由 AI 按步骤完成。
+EOF
+    exit 1
+    ;;
+  *)
+    echo "codeguard: 未知子命令 '$cmd'" >&2
+    echo "可用: check | fix | cve | detect | init" >&2
+    exit 1
+    ;;
+esac

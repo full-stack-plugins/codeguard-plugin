@@ -33,30 +33,40 @@ AI 行为：**禁止**把密钥/密码写死进代码或提交；发现已泄露
 
 要求：前后端定期做依赖组件漏洞扫描，**无中等风险以上漏洞**。
 
-### 后端
+### 统一入口（推荐）
 
 ```bash
-# Maven 项目：OWASP dependency-check
-mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
+codeguard cve                    # 自动检测生态并扫描（maven/node/python/rust）
+codeguard cve --fix              # 允许自动修复（npm audit fix）
+codeguard cve --severity MEDIUM  # 失败阈值调到中危
+```
 
-# 或 trivy（多语言通用，扫锁文件与镜像）
+### 各生态原生命令
+
+```bash
+# Maven 项目：OWASP dependency-check（pom 配置模板见 linters/maven/dependency-check-pom-snippet.xml）
+mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
+# 检查出漏洞后的修复：
+mvn versions:display-dependency-updates       # 查看可升级依赖
+mvn versions:use-latest-versions              # 批量升级到最新（谨慎，需回归）
+
+# 前端
+npm audit --audit-level=high        # 或 pnpm audit / yarn audit
+npm audit fix                        # 自动修复可修复项
+# VS Code 安全检查插件定期检查依赖组件
+
+# 通用兜底：trivy（扫一切锁文件与镜像）
 trivy fs --scanners vuln --severity HIGH,CRITICAL .
 
 # JetBrains IDE 插件：MurphySec Code Scan（团队推荐）
 ```
 
-### 前端
-
-```bash
-npm audit --audit-level=high        # 或 pnpm audit / yarn audit
-npm audit fix                        # 自动修复可修复项
-# VS Code 安全检查插件定期检查依赖组件
-```
-
 ### AI 行为
 
+- **检查出来了得修**：CVE 扫描发现 HIGH/CRITICAL 必须给出修复动作（升级版本/替换组件/登记误报），不得只报告不处理
 - 升级依赖前先确认 CVE 受影响版本范围，避免为修 CVE 引入不兼容变更
-- 发现 CRITICAL/HIGH 漏洞：提示升级路径；无法升级时给出缓解措施（如 WAF 规则、关闭暴露面）
+- 无法升级时给出缓解措施（如 WAF 规则、关闭暴露面）并在依赖抑制文件登记理由
+- 误报走 `dependency-check-suppressions.xml` 登记并注明依据，**禁止**为过门禁而静默调高阈值
 - 扫描报告要求：无中等风险以上漏洞才算通过
 
 ## 四、检查清单（AI 会话结束时自查）

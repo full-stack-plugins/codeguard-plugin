@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!--
+  codeguard: Maven CVE 依赖漏洞检查插件配置（OWASP dependency-check-maven）
+
+  使用方式（二选一）：
+
+  方式 A（推荐，零改动临时扫描）：
+      mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
+      报告输出：target/dependency-check-report.html
+
+  方式 B（固化到 pom.xml，把本片段粘贴到 <build><plugins> 内）：
+      mvn org.owasp:dependency-check-maven:check
+      CI 中可直接作为门禁（failBuildOnCVSS=7 表示 CVSS>=7 即 HIGH 及以上失败）
+-->
+<project>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.owasp</groupId>
+        <artifactId>dependency-check-maven</artifactId>
+        <version>10.0.3</version>
+        <configuration>
+          <!-- CVSS >= 7（HIGH/CRITICAL）即构建失败：团队门禁要求无中等风险以上漏洞 -->
+          <failBuildOnCVSS>7</failBuildOnCVSS>
+          <formats>
+            <format>HTML</format>
+            <format>JSON</format>
+          </formats>
+          <!-- 误报登记文件（相对项目根，可自行维护） -->
+          <suppressionFiles>
+            <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+          </suppressionFiles>
+          <!-- NVD API Key（免费申请；无 key 也可跑，仅限流） -->
+          <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

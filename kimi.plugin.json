@@ -20,7 +20,7 @@
     "pre-commit"
   ],
   "interface": {
-    "displayName": "代码规范检查",
+    "displayName": "代码规范守卫",
     "shortDescription": "Make AI-written code pass lint on first try",
     "longDescription": "Detects project languages, runs the appropriate linter (mvn javadoc+checkstyle, cargo clippy+fmt, npx eslint, ruff check) on every file the AI writes or edits, and blocks further writes when lints fail. Ships ready-to-use .pre-commit-config.yaml templates and AGENTS.md snippets for one-line project bootstrap.",
     "developerName": "Full Stack Skills / PartMe.AI",

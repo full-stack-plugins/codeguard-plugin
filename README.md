@@ -133,6 +133,25 @@ PostToolUse is the **highest-ROI** layer because it gives the AI feedback **whil
 
 ## Quick start
 
+### CLI (codeguard)
+
+```bash
+# Optional one-time setup: put the CLI on PATH
+ln -s $PWD/bin/codeguard /usr/local/bin/codeguard
+
+codeguard check                     # multi-language lint gate
+codeguard fix                       # auto-fix lint issues
+codeguard cve                       # CVE dependency scan (Maven/npm/Python/Rust orchestration)
+codeguard cve --fix                 # scan + auto-fix (npm audit fix)
+codeguard cve --severity MEDIUM     # gate threshold down to medium
+codeguard detect                    # detect project languages
+```
+
+Maven CVE scanning uses OWASP dependency-check (pom snippet in
+`linters/maven/dependency-check-pom-snippet.xml`; build fails at `CVSS>=7`).
+**A finding must be fixed, not filed away**: every report ships with the fix command
+per ecosystem (upgrade paths / suppression filing); npm supports `audit fix` auto-repair.
+
 ### As a user
 
 ```bash
@@ -203,11 +222,14 @@ partme-codeguard-plugin/
 │   ├── check.json
 │   ├── fix.json
 │   └── init.json
+├── bin/codeguard                 # CLI entry (check / fix / cve / detect / init)
 ├── linters/                      # copy-paste templates per language
 │   ├── checkstyle/               # Alibaba P3C + javadoc enforced
 │   ├── clippy/                   # deny warnings + unwrap/expect/panic
 │   ├── eslint/                   # recommended + TS rules
 │   ├── ruff/                     # [tool.ruff] block
+│   ├── maven/                     # OWASP dependency-check pom snippet
+│   └── git/                        # commit-msg gate script
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
 │   ├── partme-codeguard-plugin-Architecture.zh_CN.md
