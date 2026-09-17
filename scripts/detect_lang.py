@@ -1,7 +1,12 @@
 """detect_lang.py：项目语言检测 + 用户配置加载 + linter 命令表。
 
-语言覆盖 54 种（详见 docs/LANGUAGES.md）：扩展名识别全部可用，
-linter 强制按状态分级启用——Stable/Beta 已接入命令表，Planned 随版本路线逐步启用。
+实现逻辑（借鉴 codegraph 的统一注册表管线）：
+1. **单一事实源** `scripts/languages.json`：每语言一条注册（id/name/extensions/
+   markers/lint/format/status/install_hint/since），识别与命令表全部由它构建；
+2. **扩展名自动识别，零配置**：内置映射表覆盖全部注册语言；
+3. **项目级自定义映射**：项目根 `codeguard.json` 的 `extensions` 可合并/覆盖内置
+   默认（如 `{ "extensions": { ".dota_lua": "lua" } }`），`exclude` 数组排除文件模式；
+4. **安全降级**：注册表中 lint/format 为 null 的语言（Planned 状态）安全跳过。
 
 被 hooks/、commands/、skills/ 共享。
 """
@@ -10,239 +15,82 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+REGISTRY_PATH = Path(__file__).resolve().parent / "languages.json"
 
 
-# === 文件扩展名 → 语言（55 种，覆盖主流编程语言与资产文件） ===
-EXT_LANG_MAP = {
-    # TypeScript / JavaScript 生态
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".js": "typescript",
-    ".jsx": "typescript",
-    ".mjs": "typescript",
-    ".cjs": "typescript",
-    ".ets": "arkts",
-    # Python
-    ".py": "python",
-    # Go
-    ".go": "go",
-    # Rust
-    ".rs": "rust",
-    # JVM
-    ".java": "java",
-    ".kt": "kotlin",
-    ".kts": "kotlin",
-    ".scala": "scala",
-    ".sc": "scala",
-    # .NET
-    ".cs": "csharp",
-    ".vb": "vbnet",
-    # PHP / Ruby
-    ".php": "php",
-    ".rb": "ruby",
-    # C 家族
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".hpp": "cpp",
-    ".cc": "cpp",
-    ".m": "objc",
-    ".mm": "objc",
-    ".metal": "metal",
-    ".cu": "cuda",
-    ".cuh": "cuda",
-    # Swift / Dart
-    ".swift": "swift",
-    ".dart": "dart",
-    # 前端框架
-    ".svelte": "svelte",
-    ".vue": "vue",
-    ".astro": "astro",
-    ".liquid": "liquid",
-    # Pascal / Lua / R
-    ".pas": "pascal",
-    ".dpr": "pascal",
-    ".dpk": "pascal",
-    ".lpr": "pascal",
-    ".lua": "lua",
-    ".luau": "luau",
-    ".r": "r",
-    # 冷门企业语言
-    ".cfc": "cfml",
-    ".cfm": "cfml",
-    ".cfs": "cfml",
-    ".cbl": "cobol",
-    ".cob": "cobol",
-    ".cpy": "cobol",
-    ".erl": "erlang",
-    ".hrl": "erlang",
-    # Web3 / IaC / Nix
-    ".sol": "solidity",
-    ".tf": "terraform",
-    ".tfvars": "terraform",
-    ".tofu": "terraform",
-    ".nix": "nix",
-    # ==== 函数式 ====
-    ".ex": "elixir",
-    ".exs": "elixir",
-    ".hs": "haskell",
-    ".lhs": "haskell",
-    ".ml": "ocaml",
-    ".mli": "ocaml",
-    ".fs": "fsharp",
-    ".fsi": "fsharp",
-    ".fsx": "fsharp",
-    ".clj": "clojure",
-    ".cljs": "clojure",
-    ".cljc": "clojure",
-    ".edn": "clojure",
-    ".elm": "elm",
-    ".cr": "crystal",
-    ".jl": "julia",
-    # ==== 脚本 / 系统 ====
-    ".sh": "shell",
-    ".bash": "shell",
-    ".zsh": "shell",
-    ".pl": "perl",
-    ".pm": "perl",
-    ".t": "perl",
-    ".ps1": "powershell",
-    ".psm1": "powershell",
-    ".zig": "zig",
-    ".nim": "nim",
-    # ==== 前端资产 ====
-    ".css": "css",
-    ".scss": "css",
-    ".sass": "css",
-    ".less": "css",
-    ".html": "html",
-    ".htm": "html",
-    ".md": "markdown",
-    ".markdown": "markdown",
-    # ==== 查询 / 接口描述 / 构建 ====
-    ".sql": "sql",
-    ".graphql": "graphql",
-    ".gql": "graphql",
-    ".proto": "protobuf",
-    ".toml": "toml",
-    ".yml": "yaml",
-    ".yaml": "yaml",
-    ".groovy": "groovy",
-}
+def _load_registry() -> dict[str, dict[str, Any]]:
+    """加载语言注册表：id -> language 定义"""
+    with REGISTRY_PATH.open(encoding="utf-8") as f:
+        data = json.load(f)
+    return {lang["id"]: lang for lang in data["languages"]}
 
 
-# === 项目标识文件 → 语言（固定文件名，可靠标记） ===
-PROJECT_MARKERS = {
-    "pom.xml": "java",
-    "build.gradle": "java",
-    "Cargo.toml": "rust",
-    "package.json": "typescript",
-    "pyproject.toml": "python",
-    "setup.py": "python",
-    "requirements.txt": "python",
-    "go.mod": "go",
-    "composer.json": "php",
-    "Gemfile": "ruby",
-    "build.sbt": "scala",
-    "Package.swift": "swift",
-    "mix.exs": "elixir",
-    "stack.yaml": "haskell",
-    "cabal.project": "haskell",
-    "shard.yml": "crystal",
-    "Project.toml": "julia",
-    "elm.json": "elm",
-    "deno.json": "typescript",
-}
+REGISTRY = _load_registry()
 
 
-# === 每种语言的 linter 命令（lint=检查，format=自动修复） ===
-# 未列入的语言处于 planned 状态：钩子检测到后会安全跳过（LANGUAGES.md 状态列）。
-LANG_COMMANDS = {
-    # ---- Stable（V0.1 起） ----
-    "java": {
-        "lint": ["mvn", "-q", "javadoc:jar", "-DskipTests"],
-        "format": ["mvn", "-q", "spotless:apply"],
-    },
-    "rust": {
-        "lint": ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
-        "format": ["cargo", "fmt"],
-    },
-    "typescript": {
-        "lint": ["npx", "eslint", ".", "--max-warnings", "0"],
-        "format": ["npx", "eslint", ".", "--fix"],
-    },
-    "python": {
-        "lint": ["ruff", "check", "."],
-        "format": ["ruff", "check", ".", "--fix"],
-    },
-    # ---- Beta（V0.2 起） ----
-    "go": {
-        "lint": ["go", "vet", "./..."],
-        "format": ["gofmt", "-w", "."],
-    },
-    "csharp": {
-        "lint": ["dotnet", "format", "--verify-no-changes"],
-        "format": ["dotnet", "format"],
-    },
-    "kotlin": {
-        "lint": ["./gradlew", "detekt"],
-        "format": ["./gradlew", "ktlintFormat"],
-    },
-    "swift": {
-        "lint": ["swiftlint"],
-        "format": ["swiftlint", "--fix"],
-    },
-    "php": {
-        "lint": ["php", "-l"],
-        "format": ["php-cs-fixer", "fix"],
-    },
-    "ruby": {
-        "lint": ["rubocop"],
-        "format": ["rubocop", "-A"],
-    },
-    "scala": {
-        "lint": ["scalafmt", "--check"],
-        "format": ["scalafmt"],
-    },
-    "shell": {
-        "lint": ["shellcheck"],
-        "format": ["shfmt", "-w", "."],
-    },
-    "dockerfile": {
-        "lint": ["hadolint"],
-        "format": ["hadolint"],
-    },
-    "yaml": {
-        "lint": ["yamllint", "."],
-        "format": ["yamllint", "."],
-    },
-    "elixir": {
-        "lint": ["mix", "credo", "--strict"],
-        "format": ["mix", "format"],
-    },
-    "css": {
-        "lint": ["npx", "stylelint", "**/*.css"],
-        "format": ["npx", "stylelint", "**/*.css", "--fix"],
-    },
-}
+# === 派生表（由注册表构建，保持与旧 API 兼容） ===
+EXT_LANG_MAP: dict[str, str] = {}
+FILE_LANG_MAP: dict[str, str] = {}
+PROJECT_MARKERS: dict[str, str] = {}
+LANG_COMMANDS: dict[str, dict[str, list[str]]] = {}
+LANG_INSTALL_HINTS: dict[str, str] = {}
+LANG_STATUS: dict[str, str] = {}
 
-# Beta 语言的辅助说明（写入失败提示，帮助用户安装缺失工具）
-LANG_INSTALL_HINTS = {
-    "go": "go vet 内置于 Go 工具链；更强的聚合 lint 可安装 golangci-lint",
-    "csharp": "需要 .NET SDK 6+（dotnet format 内置）",
-    "kotlin": "项目需配置 detekt / ktlint Gradle 插件",
-    "swift": "brew install swiftlint",
-    "php": "composer require --dev phpstan/phpstan friendsofphp/php-cs-fixer",
-    "ruby": "gem install rubocop",
-    "scala": "coursier install scalafmt",
-}
+for _id, _lang in REGISTRY.items():
+    for _ext in _lang.get("extensions", []):
+        EXT_LANG_MAP[_ext.lower()] = _id
+    for _fname in _lang.get("file_names", []):
+        FILE_LANG_MAP[_fname] = _id
+    for _marker in _lang.get("markers", []):
+        PROJECT_MARKERS[_marker] = _id
+    LANG_STATUS[_id] = _lang.get("status", "planned")
+    # 门禁命令表只收 Stable/Beta；Planned 语言安全跳过（命令留作路线图参考）
+    if _lang.get("status") in ("stable", "beta"):
+        _lint, _fmt = _lang.get("lint"), _lang.get("format")
+        if _lint or _fmt:
+            LANG_COMMANDS[_id] = {"lint": _lint, "format": _fmt}
+    if _lang.get("install_hint"):
+        LANG_INSTALL_HINTS[_id] = _lang["install_hint"]
 
 
-def detect_language(file_path: str | Path) -> Optional[str]:
-    """根据文件扩展名判断语言；非代码文件返回 None"""
-    suffix = Path(file_path).suffix.lower()
-    return EXT_LANG_MAP.get(suffix)
+# === 项目根 codeguard.json 自定义扩展映射（借鉴 codegraph.json 设计） ===
+_OVERRIDES_CACHE: dict[str, dict] = {}
+
+
+def load_project_overrides(project_root: str | Path) -> dict:
+    """读取项目根 codeguard.json 的 extensions/exclude 自定义映射"""
+    cfg = Path(project_root) / "codeguard.json"
+    if not cfg.exists():
+        return {}
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {
+        "extensions": {k.lower(): v for k, v in (data.get("extensions") or {}).items()},
+        "exclude": list(data.get("exclude") or []),
+    }
+
+
+def get_overrides(project_root: str | Path) -> dict:
+    key = str(Path(project_root).resolve())
+    if key not in _OVERRIDES_CACHE:
+        _OVERRIDES_CACHE[key] = load_project_overrides(project_root)
+    return _OVERRIDES_CACHE[key]
+
+
+def detect_language(file_path: str | Path, project_root: Path | None = None) -> Optional[str]:
+    """按扩展名/文件名判断语言；支持 codeguard.json 自定义映射；非代码文件返回 None"""
+    p = Path(file_path)
+    overrides = get_overrides(project_root) if project_root else {}
+    ext_map = {**EXT_LANG_MAP, **overrides.get("extensions", {})}
+    lang = ext_map.get(p.suffix.lower())
+    if lang:
+        return lang
+    # 文件名级识别（Dockerfile 等）
+    return FILE_LANG_MAP.get(p.name)
 
 
 def find_project_root(start: str | Path) -> Optional[Path]:
@@ -262,9 +110,18 @@ def find_project_root(start: str | Path) -> Optional[Path]:
     return None
 
 
+def _excluded(f: Path, exclude_patterns: list[str]) -> bool:
+    return any(re.search(pat, str(f)) for pat in exclude_patterns)
+
+
 def detect_languages(project_root: str | Path) -> list[str]:
-    """检测项目根中存在的语言：标记文件 + 常见源码目录浅扫描 + 根目录一层"""
+    """检测项目根中存在的语言：标记文件 + 常见源码目录浅扫描 + 根目录一层；
+    支持 codeguard.json 的 exclude 排除"""
     project_root = Path(project_root)
+    overrides = get_overrides(project_root)
+    exclude = overrides.get("exclude", [])
+    ext_map = {**EXT_LANG_MAP, **overrides.get("extensions", {})}
+
     langs: set[str] = set()
     # 1) 标记文件
     for marker, lang in PROJECT_MARKERS.items():
@@ -277,13 +134,13 @@ def detect_languages(project_root: str | Path) -> list[str]:
         if not base.is_dir():
             continue
         for f in base.rglob("*"):
-            if f.is_file():
+            if f.is_file() and not _excluded(f, exclude):
                 lang = detect_language(f)
                 if lang:
                     langs.add(lang)
     # 3) 根目录一层（小脚本项目）
     for f in project_root.iterdir():
-        if f.is_file():
+        if f.is_file() and not _excluded(f, exclude):
             lang = detect_language(f)
             if lang:
                 langs.add(lang)
