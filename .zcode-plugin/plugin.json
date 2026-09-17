@@ -1,9 +1,9 @@
 {
-  "name": "partme-codestyle-check",
-  "displayName": "代码规范检查",
+  "name": "partme-codelint",
+  "displayName": "代码 lint 检查",
   "displayName_i18n": {
-    "en": "Code Style Check",
-    "zh-CN": "代码规范检查"
+    "en": "CodeLint",
+    "zh-CN": "代码 lint 检查"
   },
   "version": "0.1.0",
   "description": "Cross-language code style enforcement for AI coding assistants (ZCode, Claude Code, Codex, Kimi Code). Lint on every AI-written file via PostToolUse hook; block on failure when strict mode is on.",
@@ -15,7 +15,7 @@
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
   },
-  "homepage": "https://github.com/partme-ai/plugins/tree/main/partme-codestyle-check",
+  "homepage": "https://github.com/partme-ai/plugins/tree/main/partme-codelint",
   "repository": "https://github.com/partme-ai/plugins",
   "license": "Apache-2.0",
   "keywords": [

@@ -2,7 +2,7 @@
 
 ## What this plugin does
 
-**partme-codestyle-check** runs code quality linters on files you (or your AI assistant) modify. It does not execute your code; it only checks your code's surface syntax, style, and documentation completeness.
+**partme-codelint** runs code quality linters on files you (or your AI assistant) modify. It does not execute your code; it only checks your code's surface syntax, style, and documentation completeness.
 
 ## What this plugin does NOT do
 

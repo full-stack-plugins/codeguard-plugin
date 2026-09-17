@@ -31,8 +31,8 @@ def load_state() -> dict:
 
 def summarize(state: dict) -> str:
     if not state:
-        return "[codestyle-check] 本次会话无 linter 记录（可能没有改代码文件）"
-    lines = ["[codestyle-check] 本次会话代码规范检查总结", ""]
+        return "[codelint] 本次会话无 linter 记录（可能没有改代码文件）"
+    lines = ["[codelint] 本次会话代码 lint 检查总结", ""]
     for lang, info in state.items():
         total = info.get("total", 0)
         passed = info.get("passed", 0)

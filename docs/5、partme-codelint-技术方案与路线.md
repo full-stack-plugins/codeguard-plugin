@@ -1,6 +1,6 @@
-# 5、partme-codestyle-check 技术方案与路线
+# 5、partme-codelint 技术方案与路线
 
-> **文档说明**：本文档描述 partme-codestyle-check 插件的技术选型、关键决策、ADR（架构决策记录）和版本路线图。
+> **文档说明**：本文档描述 partme-codelint 插件的技术选型、关键决策、ADR（架构决策记录）和版本路线图。
 >
 > **版本**：V1.0
 > **最后更新**：2026-09-17
@@ -185,7 +185,7 @@
 
 ```mermaid
 gantt
-    title partme-codestyle-check 版本路线
+    title partme-codelint 版本路线
     dateFormat YYYY-MM-DD
     section V0.1
     MVP（当前）       :done, mvp, 2026-09-15, 7d
@@ -226,9 +226,9 @@ echo '{"file_path":"cloud-meituan-common/.../MeituanCallbackMsgType.java"}' \
 
 ```bash
 # 三端各装一次
-ln -s $PWD ~/.zcode/plugins/partme-codestyle-check
-ln -s $PWD ~/.codex/plugins/partme-codestyle-check
-ln -s $PWD ~/.kimi/plugins/partme-codestyle-check
+ln -s $PWD ~/.zcode/plugins/partme-codelint
+ln -s $PWD ~/.codex/plugins/partme-codelint
+ln -s $PWD ~/.kimi/plugins/partme-codelint
 
 # 在每个平台打开项目，问 AI「写个 Hello.java」
 # 期望: AI 写完后被 PostToolUse 钩子拦下 javadoc 警告，必须补 javadoc 才能继续

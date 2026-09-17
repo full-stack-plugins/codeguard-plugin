@@ -4,7 +4,7 @@
 行为：
 1. detect_lang 找到项目语言
 2. 检查是否已有 linter 配置（.pre-commit-config.yaml、checkstyle.xml、.clippy.toml、eslint.config.js、ruff.toml）
-3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codestyle-check 管理的项目里
+3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codelint 管理的项目里
 """
 import json
 import os
@@ -48,7 +48,7 @@ def main() -> int:
 
     # 输出注入到 AI 上下文的内容（追加模式）
     lines = []
-    lines.append("# codestyle-check 项目记忆")
+    lines.append("# codelint 项目记忆")
     lines.append("")
     lines.append(f"- 项目根: `{project_root}`")
     lines.append(f"- 检测到语言: {', '.join(languages)}")
@@ -56,7 +56,7 @@ def main() -> int:
     if linter_cfg:
         lines.append(f"- 已有的 linter 配置: {linter_cfg}")
     else:
-        lines.append("- 未配置任何 linter（建议运行 /init 接入 codestyle-check）")
+        lines.append("- 未配置任何 linter（建议运行 /init 接入 codelint）")
 
     lines.append("- AI 写完代码会被 PostToolUse 钩子强制 lint；失败会阻塞继续")
     lines.append("- 用户要求「提交/push」时，UserPromptSubmit 钩子会再次确认所有 linter 通过")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse 钩子：AI 写完文件后自动跑对应语言的 linter。
 
-这是 codestyle-check 插件的核心钩子——把规范检查从「提交前」前移到「写完即检」。
+这是 codelint 插件的核心钩子——把规范检查从「提交前」前移到「写完即检」。
 
 退出码：
 - 0：通过（或非代码文件）
@@ -100,28 +100,28 @@ def main() -> int:
         return 0
 
     timeout = cfg.get("lint_timeout_seconds", 120)
-    print(f"[codestyle-check] lint {lang}: {file_path}")
+    print(f"[codelint] lint {lang}: {file_path}")
 
     rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
     if rc == 0:
-        print(f"[codestyle-check] \u2705 {lang} lint passed: {file_path}")
+        print(f"[codelint] \u2705 {lang} lint passed: {file_path}")
         return 0
 
     # linter 失败 → 尝试自动修复
     if cfg.get("auto_fix_on_save", True):
-        print(f"[codestyle-check] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
+        print(f"[codelint] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
         frc, fs, fe = run(cmd_def["format"], cwd=project_root, timeout=timeout + 60)
         if frc == 0:
-            print(f"[codestyle-check] \u2705 auto-fix succeeded, re-running lint...")
+            print(f"[codelint] \u2705 auto-fix succeeded, re-running lint...")
             rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
 
     # 报告失败
-    print(f"\n[codestyle-check] \u274c {lang} lint failed for {file_path}", file=sys.stderr)
+    print(f"\n[codelint] \u274c {lang} lint failed for {file_path}", file=sys.stderr)
     if stdout:
         print(stdout[-3000:], file=sys.stderr)
     if stderr:
         print(stderr[-3000:], file=sys.stderr)
-    print(f"\n[codestyle-check] fix with: {' '.join(cmd_def['format'])}", file=sys.stderr)
+    print(f"\n[codelint] fix with: {' '.join(cmd_def['format'])}", file=sys.stderr)
 
     return 2 if cfg.get("strict_mode", True) else 0
 

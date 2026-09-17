@@ -32,11 +32,11 @@ def main() -> int:
         languages = [lang for lang in languages if lang == args.lang]
 
     if not languages:
-        print("[codestyle-check] 未识别到语言")
+        print("[codelint] 未识别到语言")
         return 1
 
-    print(f"[codestyle-check] project: {project_root}")
-    print(f"[codestyle-check] languages: {languages}  dry-run={args.dry_run}")
+    print(f"[codelint] project: {project_root}")
+    print(f"[codelint] languages: {languages}  dry-run={args.dry_run}")
     print()
 
     failed = []

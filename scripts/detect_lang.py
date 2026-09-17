@@ -118,14 +118,14 @@ def load_user_config() -> dict:
             "auto_fix_on_save": True,
             "lint_timeout_seconds": 120,
         }
-    # 简化：用正则抠 codestyle-check 块，避免依赖 yaml 库
+    # 简化：用正则抠 codelint 块，避免依赖 yaml 库
     try:
         text = cfg_path.read_text()
     except OSError:
         return _defaults()
     cfg = _defaults()
-    # 抓 codestyle-check: {...} 块
-    m = re.search(r"codestyle-check:\s*(\{.*?\n\})", text, re.DOTALL)
+    # 抓 codelint: {...} 块
+    m = re.search(r"codelint:\s*(\{.*?\n\})", text, re.DOTALL)
     if not m:
         return cfg
     block = m.group(1)

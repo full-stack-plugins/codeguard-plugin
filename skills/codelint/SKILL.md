@@ -1,14 +1,14 @@
 ---
-name: codestyle-check
+name: codelint
 description: |
-  跨语言代码规范检查。识别项目语言、跑对应 linter（Java javadoc+checkstyle、Rust clippy+fmt、
+  跨语言代码 lint 检查。识别项目语言、跑对应 linter（Java javadoc+checkstyle、Rust clippy+fmt、
   TypeScript eslint、Python ruff）、自动修复（spotless:apply / cargo fmt / eslint --fix / ruff --fix）、
   输出报告。
   触发场景：用户说 "/check"、"代码规范"、"linter"、"checkstyle"、"clippy"、"eslint"、
   "javadoc"、"代码风格" 任意关键词；或 AI 准备提交/push 前的最后一步。
 ---
 
-# 跨语言代码规范检查
+# 跨语言代码 lint 检查
 
 ## 工作流（严格按顺序）
 
