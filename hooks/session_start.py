@@ -15,7 +15,13 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import LANG_COMMANDS, detect_languages, find_project_root, load_user_config
+from detect_lang import (
+    LANG_COMMANDS,
+    detect_languages,
+    ensure_user_path,
+    find_project_root,
+    load_user_config,
+)
 
 LINTER_CONFIG_FILES = [
     ("java", [".pre-commit-config.yaml", "checkstyle.xml", "pmd.xml"]),
@@ -72,6 +78,7 @@ def detect_linter_config(project_root: Path) -> dict:
 
 
 def main() -> int:
+    ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录，先补齐再盘点
     project_root = find_project_root(os.getcwd())
     if project_root is None:
         project_root = Path(os.getcwd())

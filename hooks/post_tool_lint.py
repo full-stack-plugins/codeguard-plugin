@@ -21,6 +21,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 from detect_lang import (
     LANG_COMMANDS,
     detect_language,
+    ensure_user_path,
     find_project_root,
     load_user_config,
 )
@@ -101,6 +102,7 @@ def should_skip(file_path: str, languages: list[str]) -> tuple[bool, str]:
 
 
 def main() -> int:
+    ensure_user_path()   # 高频钩子：仅补静态目录（零开销），linter 找得到才跑得起来
     payload = read_payload()
     file_path = extract_file_path(payload)
     if not file_path:

@@ -13,11 +13,53 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
 REGISTRY_PATH = Path(__file__).resolve().parent / "languages.json"
+
+
+def ensure_user_path(from_login_shell: bool = False) -> None:
+    """补齐 hook 进程的 PATH。
+
+    ZCode 等桌面宿主以 GUI 方式启动，hook 子进程继承的 PATH 往往缺少
+    用户级工具目录（pip --user → ~/.local/bin、cargo → ~/.cargo/bin、
+    nvm/fnm 的 node、homebrew），导致已安装的 linter 被误报「未安装」。
+
+    始终补充常见静态目录；from_login_shell=True 时额外从用户登录 shell
+    继承完整 PATH（覆盖 nvm 等动态目录，约 100-300ms，只适合低频钩子）。
+    """
+    static_dirs = [
+        "/opt/homebrew/bin", "/usr/local/bin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".cargo" / "bin"),
+        str(Path.home() / "go" / "bin"),
+        str(Path.home() / ".local" / "pipx" / "bin"),
+    ]
+    cur = os.environ.get("PATH", "")
+    parts = cur.split(":")
+    for d in reversed(static_dirs):
+        if Path(d).exists() and d not in parts:
+            parts.insert(0, d)
+    os.environ["PATH"] = ":".join(parts)
+
+    if not from_login_shell:
+        return
+    try:
+        shell = os.environ.get("SHELL") or "/bin/zsh"
+        proc = subprocess.run(
+            [shell, "-lc", "printf '%s' \"$PATH\""],
+            capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode == 0:
+            inherited = proc.stdout.strip().splitlines()
+            if inherited and inherited[-1].count(":") > cur.count(":"):
+                os.environ["PATH"] = inherited[-1]
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def _load_registry() -> dict[str, dict[str, Any]]:

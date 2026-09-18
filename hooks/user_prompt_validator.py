@@ -18,6 +18,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 from detect_lang import (
     LANG_COMMANDS,
     detect_languages,
+    ensure_user_path,
     find_project_root,
     load_user_config,
 )
@@ -46,6 +47,7 @@ def read_user_text() -> str:
 
 
 def main() -> int:
+    ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录
     # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
     if os.environ.get("CODEGUARD_SKIP_GATE"):
         print("[codeguard] CODEGUARD_SKIP_GATE 已设置，跳过提交门禁")
