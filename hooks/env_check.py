@@ -19,6 +19,7 @@ from detect_lang import (
     LANG_COMMANDS,
     detect_languages,
     ensure_user_path,
+    extract_tool_binaries,
     find_project_root,
     load_user_config,
 )
@@ -30,34 +31,10 @@ LINTER_CONFIG_FILES = [
     ("python", [".pre-commit-config.yaml", "ruff.toml", ".ruff.toml", "pyproject.toml"]),
 ]
 
-# 管道胶水命令不算 linter 本体（gate 命令形如 find ... | xargs -0 shellcheck）
-PIPE_GLUE = {"find", "xargs", "grep", "sort", "sh", "bash", "echo"}
-
-# 运行时依赖：wrapper 命令存在不代表能用（npx 自身是 #!/usr/bin/env node 脚本）
-BINARY_DEPENDENCIES = {
-    "npx": ["node"],
-}
-
 
 def required_binaries(cmd_def: dict) -> set[str]:
-    """从 lint/gate 命令提取必须存在于 PATH 的可执行名"""
-    bins: set[str] = set()
-    for key in ("lint", "gate"):
-        cmd = cmd_def.get(key)
-        if not cmd:
-            continue
-        if cmd[0] in ("bash", "sh") and len(cmd) >= 3 and cmd[1] == "-c":
-            for segment in cmd[2].split("|"):
-                token = segment.strip().split()
-                if token and token[0] not in PIPE_GLUE:
-                    bins.add(token[0])
-        else:
-            bins.add(cmd[0])
-    expanded: set[str] = set()
-    for b in bins:
-        expanded.add(b)
-        expanded.update(BINARY_DEPENDENCIES.get(b, []))
-    return {b for b in expanded if b}
+    """从 lint/gate 命令提取必须存在的可执行名（统一走 detect_lang，含运行时依赖）"""
+    return set(extract_tool_binaries(cmd_def))
 
 
 def notify(title: str, message: str) -> None:

@@ -15,22 +15,9 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import LANG_COMMANDS, detect_languages, load_user_config  # noqa: E402
-
-
-# 工具链/环境故障特征：这类失败是「没法检查」，不是「代码有问题」，
-# 必须归 skipped，否则会误拦提交（实测：npx 存在但 node 缺失 → env: node 失败）
-ENV_FAILURE_MARKERS = (
-    "command not found",
-    "No such file or directory",
-    "npm error",
-    "npm ERR!",
-    "not found in PATH",
+from detect_lang import (  # noqa: E402
+    LANG_COMMANDS, detect_languages, load_user_config, probe_toolchain,
 )
-
-
-def looks_like_env_failure(output: str) -> bool:
-    return any(m in output for m in ENV_FAILURE_MARKERS)
 
 
 def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
@@ -60,6 +47,15 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
             continue
         timeout = cfg.get("lint_timeout_seconds", 120)
         hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
+
+        # pre-flight 探活：工具链跑不起来（运行时缺失/命令损坏）≠ 代码问题。
+        # 探活失败归 skipped；通过后 lint 的非零退出一律按真实检查失败处理，
+        # 不再做输出文本猜测（"No such file or directory" 也可能是 lint 报的内容）。
+        ok, reason = probe_toolchain(cmd_def)
+        if not ok:
+            skipped.append(f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
+            continue
+
         try:
             proc = subprocess.run(
                 gate_cmd, cwd=project_root, capture_output=True, text=True, timeout=timeout
@@ -76,16 +72,14 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
             # 文档类风格问题不阻塞提交
             skipped.append("markdown 风格告警（不阻塞提交）")
             continue
+        if proc.returncode == 127:
+            # POSIX 语义明确的 command not found（探活后的运行中缺失，如 npx 内部调 node）
+            skipped.append(f"{lang} 工具链异常未验证：命令不存在（exit 127）")
+            continue
+        # 真实 lint 失败：问题摘要取输出头部（最具体的问题在前）
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()
-        combined = f"{out}\n{err}"
-        if proc.returncode == 127 or looks_like_env_failure(combined):
-            # 工具链故障（运行时缺失/命令损坏）≠ 代码问题，不拦提交
-            first_line = next((ln for ln in (err or out).splitlines() if ln.strip()), "")
-            skipped.append(f"{lang} 工具链异常未验证：{first_line[:120] or f'exit {proc.returncode}'}")
-            continue
-        # 问题摘要：linter 输出头部是最具体的问题
-        detail = "\n".join(ln for ln in combined.splitlines() if ln.strip())[:600]
+        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:600]
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
         failures.append((lang, detail, fix, hint))
     return failures, skipped

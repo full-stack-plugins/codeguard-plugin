@@ -102,6 +102,64 @@ for _id, _lang in REGISTRY.items():
         LANG_INSTALL_HINTS[_id] = _lang["install_hint"]
 
 
+# 运行时依赖：wrapper 命令存在不代表能用（npx 自身是 #!/usr/bin/env node 脚本）
+BINARY_DEPENDENCIES = {
+    "npx": ["node"],
+}
+
+# 管道胶水命令不算 linter 本体（gate 命令形如 find ... | xargs -0 shellcheck）
+_PIPE_GLUE = {"find", "xargs", "grep", "sort", "sh", "bash", "echo"}
+
+
+def extract_tool_binaries(cmd_def: dict) -> list[str]:
+    """提取 lint/gate 命令真正依赖的可执行名（展开运行时依赖，去胶水命令）。
+
+    供门禁 pre-flight 探活与 SessionStart 盘点共用。
+    """
+    bins: set[str] = set()
+    for key in ("lint", "gate"):
+        cmd = cmd_def.get(key)
+        if not cmd:
+            continue
+        if cmd[0] in ("bash", "sh") and len(cmd) >= 3 and cmd[1] == "-c":
+            for segment in cmd[2].split("|"):
+                token = segment.strip().split()
+                if token and token[0] not in _PIPE_GLUE:
+                    bins.add(token[0])
+        else:
+            bins.add(cmd[0])
+    expanded: set[str] = set()
+    for b in bins:
+        expanded.add(b)
+        expanded.update(BINARY_DEPENDENCIES.get(b, []))
+    return sorted(b for b in expanded if b)
+
+
+def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
+    """pre-flight 探活：逐个主工具跑 `--version`，验证工具链真的能启动。
+
+    返回 (ok, 失败原因)。失败即工具链问题（运行时缺失/命令损坏），
+    该语言本轮无法检查——归 skipped，绝不能算 lint 失败拦提交。
+    """
+    import shutil
+    import subprocess
+    for b in extract_tool_binaries(cmd_def):
+        if shutil.which(b) is None:
+            return False, f"{b} 不在 PATH"
+        try:
+            proc = subprocess.run(
+                [b, "--version"], capture_output=True, text=True, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"{b} --version 超时"
+        except OSError as exc:
+            return False, f"{b} 无法执行: {exc}"
+        if proc.returncode != 0:
+            first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
+            return False, f"{b} --version 退出 {proc.returncode}: {first[:100]}"
+    return True, ""
+
+
 # === 项目根 codeguard.json 自定义扩展映射（借鉴 codegraph.json 设计） ===
 _OVERRIDES_CACHE: dict[str, dict] = {}
 
