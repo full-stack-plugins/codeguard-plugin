@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import os
 import sys
 from pathlib import Path
@@ -54,12 +55,41 @@ def resolve_project_root(command: str) -> Path:
         target = m.group(1).strip("\"'")
         if Path(target).is_dir():
             return Path(target)
-    return find_project_root(os.getcwd()) or Path(os.getcwd())
+    # 无法确定仓库根（cwd 不在任何项目内）时放弃拦截——
+    # 若兜底用 cwd，会话 cwd 漂移会让门禁把无关目录/仓库全部连坐。
+    return find_project_root(os.getcwd()) or None
 
 
 def is_guarded(command: str) -> bool:
-    low = command.lower()
-    return any(p in low for p in GUARDED_PATTERNS)
+    """精确匹配 git commit/push：子串匹配会误伤命令文本里的数据。
+
+    例如 payload JSON、调试脚本内容含 "git push" 字面量时，子串匹配会
+    把 echo/debug 命令也拦下并触发全仓 lint（实测踩坑）。
+    匹配规则：git 是管道/分隔符后的命令词，且子命令为 commit/push。
+    """
+    import re
+    for seg in re.split(r"&&|\|\||;|\n", command):
+        tokens = seg.strip().split()
+        if len(tokens) >= 2 and tokens[0] == "git" and tokens[1] in ("commit", "push"):
+            return True
+    return False
+
+
+def skip_gate_via_git_config(project_root: Path) -> bool:
+    """仓库级豁免：git config codeguard.skipGate true。
+
+    CODEGUARD_SKIP_GATE 环境变量设在用户 shell，传不进 ZCode 宿主起的
+    hook 子进程（宿主环境独立）；git config 由本钩子进程在项目根读取，
+    任何调用形态都可用。优先级：环境变量 > 仓库级 git config。
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "config", "--get", "codeguard.skipGate"],
+            cwd=project_root, capture_output=True, text=True, timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
 
 
 def main() -> int:
@@ -74,6 +104,8 @@ def main() -> int:
 
     cfg = load_user_config()
     project_root = resolve_project_root(command)
+    if project_root is None or skip_gate_via_git_config(project_root):
+        return 0
     failures, _skipped = run_gate(project_root, cfg)
 
     if not failures:

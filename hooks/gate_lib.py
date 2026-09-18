@@ -114,5 +114,7 @@ def gate_directive(failures: list) -> str:
         + "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
         + "请立即处理：1) 按上面「怎么修」逐项修复（能自动修复的先跑自动修复命令）；"
         + "2) 修复过程中无需向用户确认；3) 全部修复完成后重新执行用户要做的提交操作。\n"
-        + "确需绕过（仅用户明确要求时）：CODEGUARD_SKIP_GATE=1 前缀执行 git 命令。"
+        + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
+        + "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
+        + "只对手动直调 run_check 有效（无法传入宿主钩子进程）。"
     )

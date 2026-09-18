@@ -1,0 +1,7 @@
+# codeguard: stylelint 原生忽略文件（config.ignoreFiles 在部分调用形态下不生效，
+# 本文件是独立机制，任何调用形态都生效——强烈建议与 stylelint.config.* 一起拷贝）
+dist/
+node_modules/
+build/
+target/
+docs/

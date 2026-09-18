@@ -46,6 +46,18 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
             parts.insert(0, d)
     os.environ["PATH"] = ":".join(parts)
 
+    # node/npx 不可用且静态目录未覆盖时，自动降级登录 shell 继承一次
+    # （覆盖 nvm/fnm/Kimi runtime 等非标准 node 安装；约 100-300ms）
+    def _node_available() -> bool:
+        for d in os.environ.get("PATH", "").split(":"):
+            if d and (Path(d) / "node").exists():
+                return True
+        return False
+
+    if not from_login_shell and not _node_available():
+        ensure_user_path(from_login_shell=True)
+        return
+
     if not from_login_shell:
         return
     try:
