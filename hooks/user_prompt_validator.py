@@ -19,13 +19,30 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件�
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
-from detect_lang import ensure_user_path, find_project_root, load_user_config  # noqa: E402
+from detect_lang import detect_languages, ensure_user_path, find_project_root, load_user_config  # noqa: E402
 from gate_lib import gate_directive, run_gate  # noqa: E402
 
 # 触发此钩子的关键词（中英）
 TRIGGER_PATTERNS = [
     "commit", "push", "deploy", "提交", "发布", "部署",
 ]
+
+
+def notify(title: str, message: str) -> None:
+    """macOS 系统通知（非 darwin 静默；仅失败时打扰，通过靠注入文本确认）"""
+    if sys.platform != "darwin":
+        return
+    import subprocess
+    safe_t = title.replace('"', "'")
+    safe_m = message.replace('"', "'")[:200]
+    try:
+        subprocess.Popen(
+            ["osascript", "-e",
+             f'display notification "{safe_m}" with title "{safe_t}" sound name "Pop"'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
 
 
 def is_trigger(user_text: str) -> bool:
@@ -56,17 +73,31 @@ def main() -> int:
 
     cfg = load_user_config()
     project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
-    failures, _skipped = run_gate(project_root, cfg)
+    failures, skipped = run_gate(project_root, cfg)
 
-    if not failures:
-        # 通过（含部分跳过）：静默放行
+    if failures:
+        # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交
+        notify("codeguard 门禁未通过", f"{len(failures)} 个生态待修，AI 正在处理")
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": gate_directive(failures)
+            }
+        }, ensure_ascii=False))
         return 0
 
-    # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交
+    # 通过：注入明确的成功确认（无此行用户会以为门禁根本没跑）；
+    # 即使宿主把它渲染成提示条，文案也是明确的「✅ 通过」语义
+    skipped_langs = {s.split()[0] for s in skipped}
+    checked = sorted(set(detect_languages(project_root)) - skipped_langs)
+    skipped_note = f"；跳过 {len(skipped)} 项（{'；'.join(skipped)}）" if skipped else ""
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": gate_directive(failures)
+            "additionalContext": (
+                f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态"
+                f"（{', '.join(checked) or '无'}），可以提交{skipped_note}。"
+            )
         }
     }, ensure_ascii=False))
     return 0
