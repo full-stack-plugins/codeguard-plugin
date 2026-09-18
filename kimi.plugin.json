@@ -46,7 +46,12 @@
     {
       "event": "UserPromptSubmit",
       "command": "python3 ./hooks/user_prompt_validator.py",
-      "timeout": 30
+      "timeout": 120
+    },
+    {
+      "event": "PreToolUse",
+      "command": "python3 ./hooks/pre_tool_git_guard.py",
+      "timeout": 120
     },
     {
       "event": "PostToolUse",
