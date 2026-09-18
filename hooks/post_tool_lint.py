@@ -1,13 +1,8 @@
-#!/usr/bin/env python3
-"""PostToolUse 钩子：AI 写完文件后自动跑对应语言的 linter。
+"""codeguard PostToolUse 钩子：AI 写文件后自动 lint 并注入告警到 AI 上下文。
 
-这是 codeguard 插件的核心钩子——把规范检查从「提交前」前移到「写完即检」。
-
-退出码：
-- 0：通过（或非代码文件）
-- 2：linter 失败（严格模式下阻塞 AI 继续；非严格模式仅警告）
-- 124：linter 超时
-- 127：linter 命令不存在
+输出协议（ZCode hooks 标准）：
+  stdout 合法 JSON → ZCode 解析 hookSpecificOutput.additionalContext → 注入 AI 上下文
+  AI 看到告警后自行修复；用户同时收到 macOS 系统通知（可关闭）。
 """
 from __future__ import annotations
 
@@ -17,63 +12,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import (  # noqa: E402
-    LANG_COMMANDS,
-    detect_language,
-    find_project_root,
+    LANG_COMMANDS, LANG_INSTALL_HINTS, detect_language, find_project_root, get_overrides,
     load_user_config,
 )
-
-
-def read_payload() -> dict:
-    """兼容多种 hook payload 格式（ZCode/Codex/Claude）"""
-    if sys.stdin.isatty():
-        return {}
-    try:
-        data = json.loads(sys.stdin.read())
-    except json.JSONDecodeError:
-        return {}
-    return data or {}
-
-
-def extract_file_path(payload: dict) -> str:
-    """从多种 payload 形态里抠文件路径"""
-    candidates = [
-        payload.get("file_path"),
-        (payload.get("tool_input") or {}).get("file_path"),
-        (payload.get("tool_input") or {}).get("path"),
-        (payload.get("input") or {}).get("file_path"),
-    ]
-    for c in candidates:
-        if c:
-            return str(c)
-    return ""
-
-
-def should_skip(file_path: str, languages: list[str]) -> tuple[bool, str]:
-    """返回 (skip, lang)：是否跳过本次 lint"""
-    if not file_path:
-        return True, ""
-    lang = detect_language(file_path)
-    if not lang:
-        return True, ""
-    if languages and lang not in languages:
-        return True, lang
-    return False, lang
-
-
-def run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
-    try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        return proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", f"timeout after {timeout}s"
-    except FileNotFoundError as e:
-        return 127, "", f"command not found: {e}"
-
 
 STATE_FILE = PLUGIN_ROOT / ".session_state.json"
 
@@ -97,6 +42,59 @@ def bump_state(lang: str, passed: bool, auto_fixed: bool = False) -> None:
         pass
 
 
+def mac_notify(title: str, message: str) -> None:
+    """macOS 系统通知（用户视觉提醒；非 macOS 静默跳过）"""
+    if sys.platform != "darwin":
+        return
+    safe_title = title.replace('"', "'")
+    safe_msg = message.replace('"', "'")[:200]
+    subprocess.Popen(
+        ["osascript", "-e",
+         f'display notification "{safe_msg}" with title "{safe_title}" sound name "Pop"'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        return proc.returncode, proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", f"timeout after {timeout}s"
+    except FileNotFoundError:
+        return 127, "", "command not found"
+
+
+def read_payload() -> dict:
+    if sys.stdin.isatty():
+        return {}
+    try:
+        return json.loads(sys.stdin.read())
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def extract_file_path(payload: dict) -> str:
+    for c in (payload.get("file_path"),
+              (payload.get("tool_input") or {}).get("file_path"),
+              (payload.get("tool_input") or {}).get("path"),
+              (payload.get("input") or {}).get("file_path")):
+        if c:
+            return str(c)
+    return ""
+
+
+def should_skip(file_path: str, languages: list[str]) -> tuple[bool, str]:
+    if not file_path:
+        return True, ""
+    lang = detect_language(file_path)
+    if not lang:
+        return True, ""
+    if languages and lang not in languages:
+        return True, lang
+    return False, lang
+
+
 def main() -> int:
     payload = read_payload()
     file_path = extract_file_path(payload)
@@ -105,17 +103,12 @@ def main() -> int:
 
     cfg = load_user_config()
     enabled = cfg.get("enabled_languages", [])
-    if enabled == ["auto"] or enabled == []:
-        # auto 模式：从项目根检测
-        project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
-        languages = enabled if enabled and enabled != ["auto"] else None
-    else:
-        languages = enabled
-        project_root = find_project_root(file_path) or Path(os.getcwd())
+    project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
 
-    skip, lang = should_skip(file_path, languages)
+    skip, lang = should_skip(file_path, enabled)
     if skip:
         return 0
+
     # 文档类语言不拦 AI 写作流（AI 产出的报告/文档常不合 lint 严格规则，
     # 拦截会造成死循环）；提交门禁阶段仍有宽松校验
     if lang == "markdown":
@@ -126,35 +119,56 @@ def main() -> int:
         return 0
 
     timeout = cfg.get("lint_timeout_seconds", 120)
-    print(f"[codeguard] lint {lang}: {file_path}")
-
-    rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
-    if rc == 0:
-        print(f"[codeguard] \u2705 {lang} lint passed: {file_path}")
-        bump_state(lang, passed=True)
+    lint_cmd = cmd_def.get("lint")
+    if not lint_cmd:
         return 0
 
-    # linter 失败 → 尝试自动修复
+    rc, stdout, stderr = run(lint_cmd, cwd=project_root, timeout=timeout)
+
+    if rc == 0:
+        bump_state(lang, passed=True)
+        # 注入 AI 上下文：告诉 AI 该文件通过了门禁
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": f"codeguard: ✅ {lang} lint passed for {Path(file_path).name}"
+            }
+        }, ensure_ascii=False))
+        return 0
+
+    # lint 失败 → 尝试自动修复
+    auto_fixed = False
     if cfg.get("auto_fix_on_save", True):
-        print(f"[codeguard] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
-        frc, fs, fe = run(cmd_def["format"], cwd=project_root, timeout=timeout + 60)
-        if frc == 0:
-            print(f"[codeguard] \u2705 auto-fix succeeded, re-running lint...")
-            bump_state(lang, passed=False, auto_fixed=True)
-            rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
+        fmt_cmd = cmd_def.get("format")
+        if fmt_cmd:
+            print(f"[codeguard] ⚠️ {lang} lint failed, attempting auto-fix...")
+            frc, _, _ = run(fmt_cmd, cwd=project_root, timeout=timeout + 60)
+            if frc == 0:
+                auto_fixed = True
+                print(f"[codeguard] ✅ auto-fix succeeded, re-running lint...")
+                rc, stdout, stderr = run(lint_cmd, cwd=project_root, timeout=timeout)
 
-    bump_state(lang, passed=False)
+    passed = rc == 0
+    bump_state(lang, passed=passed, auto_fixed=auto_fixed)
 
-    # 告警但不阻断：exit 始终为 0，AI 能看到 stderr 告警并自行修复，
-    # 不会陷入「修一处→触发新告警→再被拦」的死循环。
-    # 硬门禁由 UserPromptSubmit 钩子承担（提交前全量复检）。
-    print(f"\n[codeguard] \u274c {lang} lint failed for {file_path}", file=sys.stderr)
-    if stdout:
-        print(stdout[-3000:], file=sys.stderr)
-    if stderr:
-        print(stderr[-3000:], file=sys.stderr)
-    print(f"\n[codeguard] fix with: {' '.join(cmd_def['format'])}", file=sys.stderr)
-    print(f"[codeguard] \U0001F4A1 告警已记录，可继续工作；提交前需全部修复", file=sys.stderr)
+    # 构建告警摘要
+    alert = f"{lang} lint {'passed' if passed else 'FAILED'}: {Path(file_path).name}"
+    detail = (stdout or stderr)[-500:] if (stdout or stderr) else ""
+
+    # ===== ZCode 标准：stdout JSON additionalContext → 注入 AI 上下文 =====
+    # AI 看到告警后自行修复；macOS 通知给用户视觉提醒
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": (
+                f"codeguard: ⚠️ {alert}\n{detail}\n"
+                f"建议: 修复上述问题后重新保存文件，codeguard 会自动复检。"
+            )
+        }
+    }, ensure_ascii=False))
+
+    # macOS 系统通知（用户视觉提醒）
+    mac_notify(alert, detail)
 
     return 0
 
