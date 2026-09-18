@@ -1,8 +1,11 @@
 """codeguard PostToolUse 钩子：AI 写文件后自动 lint 并注入告警到 AI 上下文。
 
-输出协议（ZCode hooks 标准）：
-  stdout 合法 JSON → ZCode 解析 hookSpecificOutput.additionalContext → 注入 AI 上下文
-  AI 看到告警后自行修复；用户同时收到 macOS 系统通知（可关闭）。
+输出协议（三端兼容，均为 stdout 合法 JSON、exit 0 不阻断）：
+  ZCode      → 解析 hookSpecificOutput.additionalContext 注入 AI 上下文
+  Codex CLI  → 同一协议注入 developer context；systemMessage 显示为 UI 警告
+               （纯文本 stdout 会被忽略，必须 JSON）
+  Kimi Code  → PostToolUse 观察型，exit 0 时 stdout 内容附加到上下文
+  用户同时收到 macOS 系统通知（可关闭）。
 """
 from __future__ import annotations
 
@@ -15,8 +18,10 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import (  # noqa: E402
-    LANG_COMMANDS, LANG_INSTALL_HINTS, detect_language, find_project_root, get_overrides,
+from detect_lang import (
+    LANG_COMMANDS,
+    detect_language,
+    find_project_root,
     load_user_config,
 )
 
@@ -132,7 +137,8 @@ def main() -> int:
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
                 "additionalContext": f"codeguard: ✅ {lang} lint passed for {Path(file_path).name}"
-            }
+            },
+            "systemMessage": f"codeguard: ✅ {lang} lint passed",
         }, ensure_ascii=False))
         return 0
 
@@ -145,7 +151,7 @@ def main() -> int:
             frc, _, _ = run(fmt_cmd, cwd=project_root, timeout=timeout + 60)
             if frc == 0:
                 auto_fixed = True
-                print(f"[codeguard] ✅ auto-fix succeeded, re-running lint...")
+                print("[codeguard] ✅ auto-fix succeeded, re-running lint...")
                 rc, stdout, stderr = run(lint_cmd, cwd=project_root, timeout=timeout)
 
     passed = rc == 0
@@ -155,8 +161,8 @@ def main() -> int:
     alert = f"{lang} lint {'passed' if passed else 'FAILED'}: {Path(file_path).name}"
     detail = (stdout or stderr)[-500:] if (stdout or stderr) else ""
 
-    # ===== ZCode 标准：stdout JSON additionalContext → 注入 AI 上下文 =====
-    # AI 看到告警后自行修复；macOS 通知给用户视觉提醒
+    # ===== 三端标准：stdout JSON additionalContext → 注入 AI 上下文 =====
+    # systemMessage：Codex/Claude/ZCode UI 警告条；AI 看到告警后自行修复
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
@@ -164,7 +170,8 @@ def main() -> int:
                 f"codeguard: ⚠️ {alert}\n{detail}\n"
                 f"建议: 修复上述问题后重新保存文件，codeguard 会自动复检。"
             )
-        }
+        },
+        "systemMessage": f"codeguard: ⚠️ {alert}",
     }, ensure_ascii=False))
 
     # macOS 系统通知（用户视觉提醒）
