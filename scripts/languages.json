@@ -211,13 +211,19 @@
       "since": "V0.2",
       "lint": [
         "php",
-        "-l"
+        "-l",
+        "{file}"
       ],
       "format": [
         "php-cs-fixer",
         "fix"
       ],
-      "install_hint": "composer require --dev php-cs-fixer"
+      "install_hint": "composer require --dev php-cs-fixer",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.php' -type f -not -path '*/vendor/*' -print0 | xargs -0 -n1 php -l"
+      ]
     },
     {
       "id": "ruby",
@@ -272,14 +278,20 @@
       "status": "stable",
       "since": "V0.2",
       "lint": [
-        "shellcheck"
+        "shellcheck",
+        "{file}"
       ],
       "format": [
         "shfmt",
         "-w",
         "."
       ],
-      "install_hint": "brew install shellcheck shfmt"
+      "install_hint": "brew install shellcheck shfmt",
+      "gate": [
+        "bash",
+        "-c",
+        "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck"
+      ]
     },
     {
       "id": "dockerfile",
@@ -292,7 +304,8 @@
       "status": "stable",
       "since": "V0.2",
       "lint": [
-        "hadolint"
+        "hadolint",
+        "{file}"
       ],
       "format": [
         "hadolint"
@@ -379,11 +392,13 @@
       "since": "V0.4",
       "lint": [
         "clang-tidy",
-        "--quiet"
+        "--quiet",
+        "{file}"
       ],
       "format": [
         "clang-format",
-        "-i"
+        "-i",
+        "{file}"
       ],
       "install_hint": "clang-tidy + clang-format"
     },
@@ -400,11 +415,13 @@
       "since": "V0.4",
       "lint": [
         "clang-tidy",
-        "--quiet"
+        "--quiet",
+        "{file}"
       ],
       "format": [
         "clang-format",
-        "-i"
+        "-i",
+        "{file}"
       ],
       "install_hint": "clang-tidy + clang-format"
     },
@@ -420,11 +437,13 @@
       "since": "V0.4",
       "lint": [
         "clang-tidy",
-        "--quiet"
+        "--quiet",
+        "{file}"
       ],
       "format": [
         "clang-format",
-        "-i"
+        "-i",
+        "{file}"
       ],
       "install_hint": "clang-tidy + clang-format"
     },
@@ -610,7 +629,8 @@
       "since": "V0.3",
       "lint": [
         "sqlfluff",
-        "lint"
+        "lint",
+        "{file}"
       ],
       "format": [
         "sqlfluff",
@@ -784,13 +804,19 @@
       "status": "stable",
       "since": "V0.5",
       "lint": [
-        "perlcritic"
+        "perlcritic",
+        "{file}"
       ],
       "format": [
         "perltidy",
-        "-b"
+        "-b",
+        "{file}"
       ],
-      "install_hint": "cpanm Perl::Critic Perl::Tidy"
+      "install_hint": "cpanm Perl::Critic Perl::Tidy",
+      "gate": [
+        "perlcritic",
+        "."
+      ]
     },
     {
       "id": "groovy",
@@ -993,7 +1019,8 @@
       "status": "stable",
       "since": "V0.5",
       "lint": [
-        "luau-analyze"
+        "luau-analyze",
+        "{file}"
       ],
       "format": [
         "stylua",
@@ -1170,11 +1197,13 @@
       "since": "V0.5",
       "lint": [
         "clang-tidy",
-        "--quiet"
+        "--quiet",
+        "{file}"
       ],
       "format": [
         "clang-format",
-        "-i"
+        "-i",
+        "{file}"
       ],
       "install_hint": "CUDA Toolkit + clangd"
     },

@@ -128,7 +128,11 @@ def main() -> int:
     if not lint_cmd:
         return 0
 
-    rc, stdout, stderr = run(lint_cmd, cwd=project_root, timeout=timeout)
+    def materialize(cmd: list[str]) -> list[str]:
+        """{file} 占位符替换：文件型 linter（shellcheck/hadolint/clang-tidy…）必须传具体文件"""
+        return [c.replace("{file}", str(file_path)) for c in cmd]
+
+    rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
     if rc == 0:
         bump_state(lang, passed=True)
@@ -148,34 +152,51 @@ def main() -> int:
         fmt_cmd = cmd_def.get("format")
         if fmt_cmd:
             print(f"[codeguard] ⚠️ {lang} lint failed, attempting auto-fix...")
-            frc, _, _ = run(fmt_cmd, cwd=project_root, timeout=timeout + 60)
+            frc, _, _ = run(materialize(fmt_cmd), cwd=project_root, timeout=timeout + 60)
             if frc == 0:
                 auto_fixed = True
                 print("[codeguard] ✅ auto-fix succeeded, re-running lint...")
-                rc, stdout, stderr = run(lint_cmd, cwd=project_root, timeout=timeout)
+                rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
     passed = rc == 0
     bump_state(lang, passed=passed, auto_fixed=auto_fixed)
 
-    # 构建告警摘要
-    alert = f"{lang} lint {'passed' if passed else 'FAILED'}: {Path(file_path).name}"
-    detail = (stdout or stderr)[-500:] if (stdout or stderr) else ""
+    if passed:
+        # 已自动修复：告知 AI 文件被工具改过，避免 AI 继续用旧内容
+        note = f"（已自动运行 {' '.join(cmd_def.get('format') or [])} 修复，请重新读取文件）" if auto_fixed else ""
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": f"codeguard: ✅ {lang} lint passed for {Path(file_path).name}{note}"
+            },
+            "systemMessage": f"codeguard: ✅ {lang} lint passed",
+        }, ensure_ascii=False))
+        return 0
 
-    # ===== 三端标准：stdout JSON additionalContext → 注入 AI 上下文 =====
-    # systemMessage：Codex/Claude/ZCode UI 警告条；AI 看到告警后自行修复
+    # ===== 结构化告警：AI 直接看到「什么问题 + 怎么修」 =====
+    # linter 输出头部是最具体的问题（shellcheck/ruff/eslint 均如此），取头部而非尾部
+    raw = (stdout or stderr or "").strip()
+    problem_lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    problems = "\n".join(problem_lines[:5])[:500] or "（linter 未输出具体问题）"
+    fix_cmd = " ".join(cmd_def.get("format") or []) or "按上述问题逐条修复"
+    context = (
+        f"codeguard ⚠️ [{lang}] {Path(file_path).name} 检查未通过\n"
+        f"发现的问题（节选）:\n{problems}\n"
+        f"怎么修:\n"
+        f"  1. 可先运行 `{fix_cmd}` 自动修复格式类问题\n"
+        f"  2. 手动修复上述具体问题后，重新保存该文件，codeguard 会自动复检"
+    )
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": (
-                f"codeguard: ⚠️ {alert}\n{detail}\n"
-                f"建议: 修复上述问题后重新保存文件，codeguard 会自动复检。"
-            )
+            "additionalContext": context
         },
-        "systemMessage": f"codeguard: ⚠️ {alert}",
+        "systemMessage": f"codeguard: ⚠️ {lang} lint FAILED: {Path(file_path).name}",
     }, ensure_ascii=False))
 
     # macOS 系统通知（用户视觉提醒）
-    mac_notify(alert, detail)
+    alert = f"{lang} lint FAILED: {Path(file_path).name}"
+    mac_notify(alert, problem_lines[0][:120] if problem_lines else "")
 
     return 0
 

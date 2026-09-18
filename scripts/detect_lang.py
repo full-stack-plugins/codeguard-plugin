@@ -50,7 +50,12 @@ for _id, _lang in REGISTRY.items():
     if _lang.get("status") in ("stable", "beta"):
         _lint, _fmt = _lang.get("lint"), _lang.get("format")
         if _lint or _fmt:
-            LANG_COMMANDS[_id] = {"lint": _lint, "format": _fmt}
+            LANG_COMMANDS[_id] = {
+                "lint": _lint,
+                "format": _fmt,
+                "gate": _lang.get("gate"),       # 项目级门禁命令（文件型 linter 必须传文件清单）
+                "install_hint": _lang.get("install_hint"),
+            }
     if _lang.get("install_hint"):
         LANG_INSTALL_HINTS[_id] = _lang["install_hint"]
 
@@ -127,8 +132,9 @@ def detect_languages(project_root: str | Path) -> list[str]:
     for marker, lang in PROJECT_MARKERS.items():
         if (project_root / marker).exists():
             langs.add(lang)
-    # 2) 常见源码目录浅扫描
-    src_dirs = ["src", "src/main", "lib", "pkg", "app", "tests", "test"]
+    # 2) 常见源码目录浅扫描（含脚本/二进制/钩子目录：shell 等胶水语言常在这些位置）
+    src_dirs = ["src", "src/main", "lib", "pkg", "app", "tests", "test",
+                "scripts", "bin", "hooks", "cmd", "internal"]
     for d in src_dirs:
         base = project_root / d
         if not base.is_dir():

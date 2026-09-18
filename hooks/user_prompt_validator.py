@@ -65,39 +65,64 @@ def main() -> int:
         languages = [lang for lang in languages if lang in enabled]
 
     print("[codeguard] 检测到「提交/push」意图，运行 linter 门禁检查...")
-    failures = []
+    failures = []   # (lang, 问题摘要, 修复建议)
+    skipped = []    # 无法验证的生态（工具未装/超时/无项目级命令），不阻塞
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
             continue
+        # 门禁用项目级命令（gate）：shellcheck/php -l 等文件型 linter 裸跑会报参数错
+        gate_cmd = cmd_def.get("gate") or cmd_def.get("lint")
+        if not gate_cmd:
+            continue
         timeout = cfg.get("lint_timeout_seconds", 120)
+        hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
         try:
             proc = subprocess.run(
-                cmd_def["lint"], cwd=project_root, capture_output=True, text=True, timeout=timeout
+                gate_cmd, cwd=project_root, capture_output=True, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
-            # 无法验证 ≠ 有漏洞：降级为警告，不阻塞
-            print(f"[codeguard] ⚠️ {lang} 超时，本次跳过该生态门禁")
+            skipped.append(f"{lang} 检查超时（>{timeout}s），本次未验证")
             continue
         except FileNotFoundError:
-            # 工具未装：降级为警告（用户环境问题，非代码问题）
-            print(f"[codeguard] ⚠️ {lang} linter 未安装，跳过该生态（install: {cmd_def.get('install_hint', '见 LANGUAGES.md')}）")
+            skipped.append(f"{lang} linter 未安装，本次未验证（安装: {hint}）")
             continue
-        if proc.returncode != 0:
-            # markdown 等文档类：风格问题不阻塞提交（写入警告）
-            if lang == "markdown":
-                print(f"[codeguard] ⚠️ markdown 风格告警（不阻塞提交）: {proc.stdout[-500:] if proc.stdout else ''}")
-                continue
-            failures.append((lang, f"exit={proc.returncode}\n{proc.stderr[-1000:]}"))
+        if proc.returncode == 0:
+            continue
+        if lang == "markdown":
+            # 文档类风格问题不阻塞提交
+            skipped.append("markdown 风格告警（不阻塞提交）")
+            continue
+        # 问题摘要：linter 输出头部是最具体的问题；usage/横幅类噪音剔除
+        out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+        detail = "\n".join(ln for ln in (out or err).splitlines() if ln.strip())[:600]
+        fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else f"按上述问题修复后重试"
+        failures.append((lang, detail, fix, hint))
+
+    for s in skipped:
+        print(f"[codeguard] ⏭️ {s}")
 
     if failures:
-        print("\n[codeguard] \u274c 门禁检查失败，请先修复:", file=sys.stderr)
-        for lang, info in failures:
-            print(f"  - {lang}: {info}", file=sys.stderr)
-        print(f"\n[codeguard] 自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py", file=sys.stderr)
+        lines = [
+            "",
+            f"codeguard ❌ 提交门禁：{len(failures)} 个生态未通过，修复后重新提交",
+            "=" * 60,
+        ]
+        for lang, detail, fix, hint in failures:
+            lines.append(f"【{lang}】发现的问题（节选）：")
+            lines.append(detail if detail else f"  退出码 {lang} lint 非零，无文本输出")
+            lines.append(f"  ▶ 怎么修: {fix}")
+            lines.append(f"  ▶ 未安装工具时先安装: {hint}")
+            lines.append("-" * 60)
+        lines.append(f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py")
+        lines.append("确需绕过: CODEGUARD_SKIP_GATE=1 后重新提交")
+        print("\n".join(lines), file=sys.stderr)
         return 2
 
-    print("[codeguard] \u2705 所有 linter 通过，可以提交")
+    if skipped:
+        print("[codeguard] ⚠️ 部分生态未能验证（见上方 ⏭️ 行），其余通过")
+    print("[codeguard] ✅ linter 门禁通过，可以提交")
     return 0
 
 
