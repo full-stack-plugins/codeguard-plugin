@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parent.parent)).resolve()
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import detect_languages, find_project_root  # noqa: E402

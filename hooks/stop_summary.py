@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parent.parent)).resolve()
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 
 # 钩子状态文件（由 post_tool_lint.py 写）
 STATE_FILE = PLUGIN_ROOT / ".session_state.json"

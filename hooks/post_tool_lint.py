@@ -17,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parent.parent)).resolve()
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import (  # noqa: E402
@@ -75,6 +75,28 @@ def run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
         return 127, "", f"command not found: {e}"
 
 
+STATE_FILE = PLUGIN_ROOT / ".session_state.json"
+
+
+def bump_state(lang: str, passed: bool, auto_fixed: bool = False) -> None:
+    """累计本会话 lint 结果（Stop 钩子读取汇总）；写失败静默忽略"""
+    state = {}
+    try:
+        if STATE_FILE.exists():
+            state = json.loads(STATE_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+    entry = state.setdefault(lang, {"total": 0, "passed": 0, "failed": 0, "auto_fixed": 0})
+    entry["total"] += 1
+    entry["passed" if passed else "failed"] += 1
+    if auto_fixed:
+        entry["auto_fixed"] += 1
+    try:
+        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False))
+    except OSError:
+        pass
+
+
 def main() -> int:
     payload = read_payload()
     file_path = extract_file_path(payload)
@@ -105,6 +127,7 @@ def main() -> int:
     rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
     if rc == 0:
         print(f"[codeguard] \u2705 {lang} lint passed: {file_path}")
+        bump_state(lang, passed=True)
         return 0
 
     # linter 失败 → 尝试自动修复
@@ -113,7 +136,10 @@ def main() -> int:
         frc, fs, fe = run(cmd_def["format"], cwd=project_root, timeout=timeout + 60)
         if frc == 0:
             print(f"[codeguard] \u2705 auto-fix succeeded, re-running lint...")
+            bump_state(lang, passed=False, auto_fixed=True)
             rc, stdout, stderr = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
+
+    bump_state(lang, passed=False)
 
     # 报告失败
     print(f"\n[codeguard] \u274c {lang} lint failed for {file_path}", file=sys.stderr)
