@@ -96,6 +96,7 @@ for _id, _lang in REGISTRY.items():
                 "lint": _lint,
                 "format": _fmt,
                 "gate": _lang.get("gate"),       # 项目级门禁命令（文件型 linter 必须传文件清单）
+                "probe": _lang.get("probe"),     # 显式探活命令（npx 系必配，覆盖包未装场景）
                 "install_hint": _lang.get("install_hint"),
             }
     if _lang.get("install_hint"):
@@ -136,13 +137,31 @@ def extract_tool_binaries(cmd_def: dict) -> list[str]:
 
 
 def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
-    """pre-flight 探活：逐个主工具跑 `--version`，验证工具链真的能启动。
+    """pre-flight 探活：验证工具链真的能启动。
 
-    返回 (ok, 失败原因)。失败即工具链问题（运行时缺失/命令损坏），
+    语言可用 `probe` 字段显式指定探活命令（npx 系必配——包未装时
+    `--no-install ... --version` 会明确失败，而不是 lint 时才 npm error）；
+    缺省对每个必需二进制跑 `--version`。
+
+    返回 (ok, 失败原因)。失败即工具链问题（运行时缺失/包未装/命令损坏），
     该语言本轮无法检查——归 skipped，绝不能算 lint 失败拦提交。
     """
     import shutil
     import subprocess
+
+    probe = cmd_def.get("probe")
+    if probe:
+        try:
+            proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return False, f"探活超时: {' '.join(probe)}"
+        except OSError as exc:
+            return False, f"探活无法执行: {exc}"
+        if proc.returncode != 0:
+            first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
+            return False, f"探活退出 {proc.returncode}: {first[:100]}"
+        return True, ""
+
     for b in extract_tool_binaries(cmd_def):
         if shutil.which(b) is None:
             return False, f"{b} 不在 PATH"

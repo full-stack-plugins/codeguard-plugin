@@ -369,8 +369,8 @@
       "since": "V0.2",
       "lint": [
         "npx",
-        "stylelint",
-        "**/*.css"
+        "--no-install",
+        "stylelint"
       ],
       "format": [
         "npx",
@@ -378,7 +378,13 @@
         "**/*.css",
         "--fix"
       ],
-      "install_hint": "npm install --save-dev stylelint stylelint-config-standard"
+      "install_hint": "npm install --save-dev stylelint stylelint-config-standard",
+      "probe": [
+        "npx",
+        "--no-install",
+        "stylelint",
+        "--version"
+      ]
     },
     {
       "id": "c",
@@ -610,13 +616,20 @@
       "since": "V0.3",
       "lint": [
         "npx",
+        "--no-install",
         "htmlhint"
       ],
       "format": [
         "prettier",
         "--write"
       ],
-      "install_hint": "npm install -g htmlhint"
+      "install_hint": "npm install -g htmlhint",
+      "probe": [
+        "npx",
+        "--no-install",
+        "htmlhint",
+        "--version"
+      ]
     },
     {
       "id": "sql",
@@ -650,6 +663,7 @@
       "since": "V0.4",
       "lint": [
         "npx",
+        "--no-install",
         "eslint",
         "--ext",
         ".graphql",
@@ -663,7 +677,13 @@
         ".",
         "--fix"
       ],
-      "install_hint": "graphql-eslint"
+      "install_hint": "graphql-eslint",
+      "probe": [
+        "npx",
+        "--no-install",
+        "eslint",
+        "--version"
+      ]
     },
     {
       "id": "protobuf",

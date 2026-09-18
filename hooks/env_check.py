@@ -19,9 +19,9 @@ from detect_lang import (
     LANG_COMMANDS,
     detect_languages,
     ensure_user_path,
-    extract_tool_binaries,
     find_project_root,
     load_user_config,
+    probe_toolchain,
 )
 
 LINTER_CONFIG_FILES = [
@@ -30,11 +30,6 @@ LINTER_CONFIG_FILES = [
     ("typescript", [".pre-commit-config.yaml", "eslint.config.js", ".eslintrc.json", ".eslintrc.js"]),
     ("python", [".pre-commit-config.yaml", "ruff.toml", ".ruff.toml", "pyproject.toml"]),
 ]
-
-
-def required_binaries(cmd_def: dict) -> set[str]:
-    """从 lint/gate 命令提取必须存在的可执行名（统一走 detect_lang，含运行时依赖）"""
-    return set(extract_tool_binaries(cmd_def))
 
 
 def notify(title: str, message: str) -> None:
@@ -79,18 +74,18 @@ def main() -> int:
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    # linter 安装盘点：未安装的语言检查不生效，必须让 AI 和用户第一时间知道
+    # linter 盘点：直接复用门禁的探活（比裸 which 准——能发现 npx 包未装、运行时损坏）
     ready, missing = [], []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
             continue
-        bins = required_binaries(cmd_def)
-        if bins and not all(shutil.which(b) for b in bins):
-            hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
-            missing.append((lang, ", ".join(sorted(bins)), hint))
-        else:
+        ok, reason = probe_toolchain(cmd_def)
+        if ok:
             ready.append(lang)
+        else:
+            hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
+            missing.append((lang, reason, hint))
 
     # 输出注入到 AI 上下文的内容（追加模式）
     lines = []
@@ -101,13 +96,13 @@ def main() -> int:
 
     if missing:
         lines.append("")
-        lines.append("**⚠️ 以下语言的 linter 未安装，这些语言的文件【不会】被检查（提交门禁也会跳过它们）：**")
-        for lang, bins, hint in missing:
-            lines.append(f"  - {lang}（缺 {bins}）→ 安装: `{hint}`")
+        lines.append("**⚠️ 以下语言的检查未生效，这些语言的文件【不会】被检查（提交门禁也会跳过它们）：**")
+        for lang, reason, hint in missing:
+            lines.append(f"  - {lang}（{reason}）→ 修复: `{hint}`")
         lines.append("  请主动提示用户安装；安装后新写的文件才会被检查。")
         notify(
             "codeguard 部分检查未生效",
-            f"缺 {len(missing)} 个 linter: " + ", ".join(lang for lang, _, _ in missing) +
+            f"{len(missing)} 个语言未生效: " + ", ".join(lang for lang, _, _ in missing) +
             "；详情见对话",
         )
     if ready:
