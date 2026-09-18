@@ -1,0 +1,26 @@
+// codestyle-check (codeguard): markdownlint 宽松配置
+// 定位：AI 产出的报告/文档不应用代码级规则拦截；本配置只保留真正影响可读性的规则。
+// 使用方法：拷贝到项目根 .markdownlint-cli2.jsonc
+
+{
+    "config": {
+        // ===== 关闭（报告/文档类高频误报）=====
+        "MD013": false,          // line-length：报告行宽不设限
+        "MD022": false,          // headings 应前后空行
+        "MD031": false,          // fenced code blocks 前后空行
+        "MD032": false,          // lists 前后空行
+        "MD040": false,          // fenced code blocks 语言标注
+        "MD041": false,          // 首行必须是标题（附录/片段常不满足）
+        "MD033": false,          // 行内 HTML（报告常用表格/详情标签）
+        "MD036": false,          // 不用强调代替标题
+        "MD034": false,          // 不带空格的裸 URL
+        "MD038": false,          // 行内代码中的反引号
+        "MD047": false,          // 文件末尾单换行（工具生成文件常缺）
+
+        // ===== 保留（真实影响可读性）=====
+        "MD009": { "br_spaces": 0 },           // 行尾空格
+        "MD010": { "code_blocks": false },     // 硬 tab
+        "MD012": { "maximum": 3 },             // 连续空行上限
+        "MD004": { "style": "dash" },          // 无序列表符号一致
+    }
+}

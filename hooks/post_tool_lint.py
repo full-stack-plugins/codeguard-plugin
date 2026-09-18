@@ -116,6 +116,10 @@ def main() -> int:
     skip, lang = should_skip(file_path, languages)
     if skip:
         return 0
+    # 文档类语言不拦 AI 写作流（AI 产出的报告/文档常不合 lint 严格规则，
+    # 拦截会造成死循环）；提交门禁阶段仍有宽松校验
+    if lang == "markdown":
+        return 0
 
     cmd_def = LANG_COMMANDS.get(lang)
     if not cmd_def:

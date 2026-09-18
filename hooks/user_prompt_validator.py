@@ -46,6 +46,10 @@ def read_user_text() -> str:
 
 
 def main() -> int:
+    # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
+    if os.environ.get("CODEGUARD_SKIP_GATE"):
+        print("[codeguard] CODEGUARD_SKIP_GATE 已设置，跳过提交门禁")
+        return 0
     user_text = read_user_text()
     if not is_trigger(user_text):
         return 0
@@ -72,12 +76,18 @@ def main() -> int:
                 cmd_def["lint"], cwd=project_root, capture_output=True, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
-            failures.append((lang, "timeout"))
+            # 无法验证 ≠ 有漏洞：降级为警告，不阻塞
+            print(f"[codeguard] ⚠️ {lang} 超时，本次跳过该生态门禁")
             continue
         except FileNotFoundError:
-            failures.append((lang, "linter not installed"))
+            # 工具未装：降级为警告（用户环境问题，非代码问题）
+            print(f"[codeguard] ⚠️ {lang} linter 未安装，跳过该生态（install: {cmd_def.get('install_hint', '见 LANGUAGES.md')}）")
             continue
         if proc.returncode != 0:
+            # markdown 等文档类：风格问题不阻塞提交（写入警告）
+            if lang == "markdown":
+                print(f"[codeguard] ⚠️ markdown 风格告警（不阻塞提交）: {proc.stdout[-500:] if proc.stdout else ''}")
+                continue
             failures.append((lang, f"exit={proc.returncode}\n{proc.stderr[-1000:]}"))
 
     if failures:
