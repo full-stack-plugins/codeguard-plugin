@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 REGISTRY_PATH = Path(__file__).resolve().parent / "languages.json"
 
@@ -81,7 +81,7 @@ def get_overrides(project_root: str | Path) -> dict:
     return _OVERRIDES_CACHE[key]
 
 
-def detect_language(file_path: str | Path, project_root: Path | None = None) -> Optional[str]:
+def detect_language(file_path: str | Path, project_root: Path | None = None) -> str | None:
     """按扩展名/文件名判断语言；支持 codeguard.json 自定义映射；非代码文件返回 None"""
     p = Path(file_path)
     overrides = get_overrides(project_root) if project_root else {}
@@ -93,7 +93,7 @@ def detect_language(file_path: str | Path, project_root: Path | None = None) -> 
     return FILE_LANG_MAP.get(p.name)
 
 
-def find_project_root(start: str | Path) -> Optional[Path]:
+def find_project_root(start: str | Path) -> Path | None:
     """从 start 路径向上找项目根（识别到 .git 或任一项目标记文件即停）"""
     p = Path(start).resolve()
     if p.is_file():

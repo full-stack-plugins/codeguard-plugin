@@ -15,7 +15,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import (  # noqa: E402
+from detect_lang import (
     LANG_COMMANDS,
     detect_languages,
     find_project_root,
@@ -64,7 +64,7 @@ def main() -> int:
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    print(f"[codeguard] 检测到「提交/push」意图，运行 linter 门禁检查...")
+    print("[codeguard] 检测到「提交/push」意图，运行 linter 门禁检查...")
     failures = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
@@ -91,13 +91,13 @@ def main() -> int:
             failures.append((lang, f"exit={proc.returncode}\n{proc.stderr[-1000:]}"))
 
     if failures:
-        print(f"\n[codeguard] \u274c 门禁检查失败，请先修复:", file=sys.stderr)
+        print("\n[codeguard] \u274c 门禁检查失败，请先修复:", file=sys.stderr)
         for lang, info in failures:
             print(f"  - {lang}: {info}", file=sys.stderr)
         print(f"\n[codeguard] 自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py", file=sys.stderr)
         return 2
 
-    print(f"[codeguard] \u2705 所有 linter 通过，可以提交")
+    print("[codeguard] \u2705 所有 linter 通过，可以提交")
     return 0
 
 

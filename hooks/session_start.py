@@ -6,16 +6,14 @@
 2. 检查是否已有 linter 配置（.pre-commit-config.yaml、checkstyle.xml、.clippy.toml、eslint.config.js、ruff.toml）
 3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codeguard 管理的项目里
 """
-import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import detect_languages, find_project_root  # noqa: E402
+from detect_lang import detect_languages, find_project_root
 
 LINTER_CONFIG_FILES = [
     ("java", [".pre-commit-config.yaml", "checkstyle.xml", "pmd.xml"]),

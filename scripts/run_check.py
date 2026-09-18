@@ -9,14 +9,12 @@ CLI 模式：
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from detect_lang import (  # noqa: E402
+from detect_lang import (
     LANG_COMMANDS,
     detect_languages,
     find_project_root,
