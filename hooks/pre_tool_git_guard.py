@@ -21,7 +21,12 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
 from detect_lang import ensure_user_path, find_project_root, load_user_config  # noqa: E402
-from gate_lib import gate_directive, run_gate  # noqa: E402
+from gate_lib import (  # noqa: E402
+    check_commit_safety,
+    format_safety_report,
+    gate_directive,
+    run_gate,
+)
 
 # 拦截的 git 子命令（避免误拦 git status/diff/log 等只读命令）
 GUARDED_PATTERNS = ("git commit", "git push")
@@ -42,22 +47,45 @@ def extract_command(payload: dict) -> str:
     return str(cmd) if cmd else ""
 
 
-def resolve_project_root(command: str) -> Path:
-    """门禁检查的目录边界 = 被提交的仓库，不是会话 cwd。
+def _is_git_repo(p: Path) -> bool:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(p), "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return proc.returncode == 0
 
-    多仓聚合工作区（如 codeup 下几十个子仓）里会话 cwd 是根目录，
-    递归 lint 会把无关子仓的文件连坐进来；git 命令通常带 `cd <repo> &&`，
-    从命令里提取目标目录，找不到再回退 cwd。
+
+def resolve_project_roots(command: str) -> list[Path]:
+    """顺序扫描命令链，收集每个 git commit/push 段各自的仓库边界。
+
+    链式发布（cd plugins && git commit && cd minimax && git push）操作
+    多个仓库——每个 git 段的边界 = 它之前最近的 cd（且必须是 git 仓）；
+    无 cd 则用 cwd（需是 git 仓）。去重保序，找不到任何边界返回 []。
     """
     import re
-    m = re.search(r"(?:^|&&|\s;\s)\s*cd\s+(\"[^\"]+\"|'[^']+'|\S+)", command)
-    if m:
-        target = m.group(1).strip("\"'")
-        if Path(target).is_dir():
-            return Path(target)
-    # 无法确定仓库根（cwd 不在任何项目内）时放弃拦截——
-    # 若兜底用 cwd，会话 cwd 漂移会让门禁把无关目录/仓库全部连坐。
-    return find_project_root(os.getcwd()) or None
+    roots: list[Path] = []
+    last_cd: Path | None = None
+    for seg in re.split(r"&&|\|\||;|\n", command):
+        seg = seg.strip()
+        if not seg:
+            continue
+        m = re.match(r"cd\s+(\"[^\"]+\"|'[^']+'|\S+)", seg)
+        if m:
+            target = Path(m.group(1).strip("\"'"))
+            if target.is_dir() and _is_git_repo(target):
+                last_cd = target
+            else:
+                last_cd = None        # cd 到非 git 目录（如 workspace 根）后边界失效
+            continue
+        tokens = seg.split()
+        if len(tokens) >= 2 and tokens[0] == "git" and tokens[1] in ("commit", "push"):
+            root = last_cd or (Path(os.getcwd()) if _is_git_repo(Path(os.getcwd())) else None)
+            if root and root not in roots:
+                roots.append(root)
+    return roots
 
 
 def is_guarded(command: str) -> bool:
@@ -103,16 +131,32 @@ def main() -> int:
         return 0
 
     cfg = load_user_config()
-    project_root = resolve_project_root(command)
-    if project_root is None or skip_gate_via_git_config(project_root):
+    roots = resolve_project_roots(command)
+    if not roots:
         return 0
-    failures, _skipped = run_gate(project_root, cfg)
-
-    if not failures:
+    if any(skip_gate_via_git_config(r) for r in roots):
         return 0
 
+    # 每个被操作的仓库独立跑：linter 门禁 + 提交内容安全检查
+    # （commit 查暂存区；push 查未推送提交的 diff，防已提交未发现的坏文件）
+    reports = []
+    for project_root in roots:
+        failures, _skipped = run_gate(project_root, cfg)
+        if failures:
+            reports.append(gate_directive(failures))
+        safety_mode = "push" if "git push" in command.lower() else "commit"
+        violations = check_commit_safety(project_root, safety_mode)
+        if violations:
+            reports.append(format_safety_report(violations) + (
+                "\n\n**给 AI 的强制指令**：先把上述文件移出版本库"
+                "（git rm --cached + .gitignore），然后重新执行本次 git 命令；"
+                "涉及密钥/凭据的必须提醒用户轮换，不能只删了事。"
+            ))
+
+    if not reports:
+        return 0
     # 硬拦截：stderr 作为工具结果反馈给 AI，AI 修复后重试本命令
-    print(gate_directive(failures), file=sys.stderr)
+    print(("\n\n" + "=" * 20 + " 下一个仓库 " + "=" * 20 + "\n\n").join(reports), file=sys.stderr)
     return 2
 
 

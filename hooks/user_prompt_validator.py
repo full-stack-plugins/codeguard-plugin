@@ -20,7 +20,12 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
 from detect_lang import detect_languages, ensure_user_path, find_project_root, load_user_config  # noqa: E402
-from gate_lib import gate_directive, run_gate  # noqa: E402
+from gate_lib import (  # noqa: E402
+    check_commit_safety,
+    format_safety_report,
+    gate_directive,
+    run_gate,
+)
 
 # 触发此钩子的关键词（中英）
 TRIGGER_PATTERNS = [
@@ -45,11 +50,18 @@ def notify(title: str, message: str) -> None:
         pass
 
 
+# 疑问句特征：在询问功能/做法，不是真的要提交（实测误触发：
+# 「git 提交和推送，是不能把 .venv 排除掉么」被当成提交意图跑了全仓门禁）
+QUESTION_MARKERS = ("？", "?", "么", "吗", "如何", "怎么", "有没有", "是不是", "什么是", "哪些")
+
+
 def is_trigger(user_text: str) -> bool:
     if not user_text:
         return False
     text = user_text.lower()
-    return any(p in text for p in TRIGGER_PATTERNS)
+    if not any(p in text for p in TRIGGER_PATTERNS):
+        return False
+    return not any(q in user_text for q in QUESTION_MARKERS)
 
 
 def read_user_text() -> str:
@@ -74,14 +86,23 @@ def main() -> int:
     cfg = load_user_config()
     project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
     failures, skipped = run_gate(project_root, cfg)
+    # 提交内容安全检查：.venv/node_modules/.env/密钥等不应入库
+    violations = check_commit_safety(project_root, "commit")
 
-    if failures:
+    if failures or violations:
         # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交
         notify("codeguard 门禁未通过", f"{len(failures)} 个生态待修，AI 正在处理")
+        parts = [gate_directive(failures)]
+        if violations:
+            parts.append(format_safety_report(violations))
+        parts.append(
+            "**给 AI 的强制指令**：安全违规文件必须 git rm --cached + 补 .gitignore，"
+            "涉及密钥/凭据的提醒用户轮换；全部修复后重新执行提交，无需向用户确认。"
+        )
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
-                "additionalContext": gate_directive(failures)
+                "additionalContext": "\n\n".join(parts)
             }
         }, ensure_ascii=False))
         return 0
@@ -95,7 +116,7 @@ def main() -> int:
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (
-                f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态"
+                f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态 + 暂存区安全"
                 f"（{', '.join(checked) or '无'}），可以提交{skipped_note}。"
             )
         }

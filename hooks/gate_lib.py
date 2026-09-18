@@ -20,6 +20,84 @@ from detect_lang import (  # noqa: E402
 )
 
 
+# === git 提交内容安全检查：绝不该进版本库的文件 ===
+# 目录（路径任一段落匹配即违规）：依赖/虚拟环境/构建产物/IDE/缓存
+GUARD_EXCLUDE_DIRS = {
+    ".venv", "venv", "env", "node_modules", "__pycache__", ".pytest_cache",
+    ".mypy_cache", ".ruff_cache", "target", "dist", "build", "out", ".next",
+    ".nuxt", ".gradle", "vendor", ".idea", ".vscode", "coverage", ".terraform",
+    ".tox", ".eggs", "htmlcov", ".turbo", ".parcel-cache",
+}
+# 文件名模式（fnmatch）：密钥/凭据/本地环境/数据库/系统垃圾
+GUARD_EXCLUDE_FILES = [
+    ".env", ".env.*", "*.env", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks",
+    "*.keystore", "id_rsa", "id_ed25519", "id_ecdsa", "*.pem.orig",
+    "credentials*.json", "serviceAccount*.json", "*service-account*.json",
+    "*.sqlite", "*.sqlite3", "*.db", ".DS_Store", "Thumbs.db", "*.log", "*.pyc",
+]
+
+
+def _git(project_root: Path, *args: str) -> str | None:
+    """跑只读 git 命令；失败（非 git 仓/无 upstream 等）返回 None，由调用方降级"""
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=project_root, capture_output=True, text=True, timeout=15
+        )
+    except (subprocess.TimeoutExpired, OSError, FileNotFoundError):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def check_commit_safety(project_root: Path, mode: str) -> list[tuple[str, str, str]]:
+    """检查即将进入版本库的文件（commit=暂存区；push=未推送提交的 diff）。
+
+    返回违规列表 [(路径, 命中规则, 建议操作)]；无法判定（非 git 仓/无对比基线）
+    返回空列表并由调用方按 skipped 处理——安全检查不做静默失败。
+    """
+    if mode == "commit":
+        out = _git(project_root, "diff", "--cached", "--name-only", "-z")
+    else:  # push：检查所有未推送提交触及的文件
+        out = _git(project_root, "diff", "--name-only", "-z", "@{upstream}..HEAD")
+        if out is None:
+            out = _git(project_root, "diff", "--name-only", "-z", "origin/main..HEAD")
+    if not out:
+        return []
+
+    import fnmatch
+    violations: list[tuple[str, str, str]] = []
+    for raw in out.split("\0"):
+        f = raw.strip()
+        if not f:
+            continue
+        parts = f.split("/")
+        hit_dir = next((seg for seg in parts[:-1] if seg in GUARD_EXCLUDE_DIRS), None)
+        if hit_dir:
+            violations.append((
+                f, f"目录 ./{hit_dir}/ 属于依赖/产物/本地环境，不应入库",
+                f"git rm -r --cached '{f}' 并在 .gitignore 加 '{hit_dir}/'",
+            ))
+            continue
+        name = parts[-1]
+        rule = next((pat for pat in GUARD_EXCLUDE_FILES if fnmatch.fnmatch(name, pat)), None)
+        if rule:
+            violations.append((
+                f, f"文件命中敏感模式 {rule}（密钥/凭据/本地配置类）",
+                f"git rm --cached '{f}' 并在 .gitignore 加 '{rule}'；确认是否已泄露需要轮换密钥",
+            ))
+    return violations
+
+
+def format_safety_report(violations: list[tuple[str, str, str]]) -> str:
+    lines = ["", f"codeguard 🛑 提交内容安全检查：{len(violations)} 个文件不应入库", "=" * 60]
+    for f, reason, fix in violations:
+        lines.append(f"  {f}")
+        lines.append(f"     原因: {reason}")
+        lines.append(f"     怎么修: {fix}")
+        lines.append("-" * 60)
+    lines.append("修复后重新暂存再提交（git add 时排除上述文件）")
+    return "\n".join(lines)
+
+
 def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
     """运行全量 linter 门禁。
 
