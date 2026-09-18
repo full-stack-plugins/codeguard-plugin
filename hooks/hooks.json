@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/env_check.py\"",
             "timeout": 30,
             "statusMessage": "codeguard: 检测项目语言与现有 linter 配置…"
           }

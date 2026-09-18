@@ -204,7 +204,7 @@ partme-codeguard-plugin/
 ├── .mcp.json                     # MCP server entry (stdio)
 ├── hooks/
 │   ├── hooks.json                # 4 hook definitions
-│   ├── session_start.py          # SessionStart: detect language + inject rules
+│   ├── env_check.py              # SessionStart: detect language + inject rules
 │   ├── post_tool_lint.py         # PostToolUse: core enforcement hook
 │   ├── user_prompt_validator.py  # UserPromptSubmit: commit gate
 │   └── stop_summary.py           # Stop: session summary

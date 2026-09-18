@@ -185,7 +185,7 @@ partme-codeguard-plugin/
 ├── .mcp.json                     # MCP 服务入口（stdio）
 ├── hooks/
 │   ├── hooks.json                # 4 类钩子定义
-│   ├── session_start.py          # SessionStart：检测语言 + 注入规则
+│   ├── env_check.py              # SessionStart：检测语言 + 注入规则
 │   ├── post_tool_lint.py         # PostToolUse：核心强制钩子
 │   ├── user_prompt_validator.py  # UserPromptSubmit：commit 门禁
 │   └── stop_summary.py           # Stop：会话总结

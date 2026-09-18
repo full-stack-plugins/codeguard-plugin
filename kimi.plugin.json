@@ -40,7 +40,7 @@
   "hooks": [
     {
       "event": "SessionStart",
-      "command": "python3 ./hooks/session_start.py",
+      "command": "python3 ./hooks/env_check.py",
       "timeout": 30
     },
     {

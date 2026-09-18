@@ -106,7 +106,7 @@ MCP (.mcp.json) ──> 把 scripts/ 暴露成 MCP 工具
 ```mermaid
 sequenceDiagram
     participant Host as 编程助手
-    participant Hook as session_start.py
+    participant Hook as env_check.py
     participant FS as 项目文件系统
     participant AI as AI Agent
 
