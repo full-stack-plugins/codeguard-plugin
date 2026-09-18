@@ -145,15 +145,18 @@ def main() -> int:
 
     bump_state(lang, passed=False)
 
-    # 报告失败
+    # 告警但不阻断：exit 始终为 0，AI 能看到 stderr 告警并自行修复，
+    # 不会陷入「修一处→触发新告警→再被拦」的死循环。
+    # 硬门禁由 UserPromptSubmit 钩子承担（提交前全量复检）。
     print(f"\n[codeguard] \u274c {lang} lint failed for {file_path}", file=sys.stderr)
     if stdout:
         print(stdout[-3000:], file=sys.stderr)
     if stderr:
         print(stderr[-3000:], file=sys.stderr)
     print(f"\n[codeguard] fix with: {' '.join(cmd_def['format'])}", file=sys.stderr)
+    print(f"[codeguard] \U0001F4A1 告警已记录，可继续工作；提交前需全部修复", file=sys.stderr)
 
-    return 2 if cfg.get("strict_mode", True) else 0
+    return 0
 
 
 if __name__ == "__main__":
