@@ -66,7 +66,6 @@ def main() -> int:
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    print("[codeguard] 检测到「提交/push」意图，运行 linter 门禁检查...")
     failures = []   # (lang, 问题摘要, 修复建议)
     skipped = []    # 无法验证的生态（工具未装/超时/无项目级命令），不阻塞
     for lang in languages:
@@ -102,9 +101,9 @@ def main() -> int:
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else f"按上述问题修复后重试"
         failures.append((lang, detail, fix, hint))
 
-    for s in skipped:
-        print(f"[codeguard] ⏭️ {s}")
-
+    # exit 0 时完全静默：ZCode 会把 UserPromptSubmit 的 stdout 渲染成
+    # hooks_prompt_block 同款徽章，任何提示行都会被误读为「又被拦了」。
+    # 「哪些 linter 未装」已由 SessionStart 盘点告知；这里只在真拦截时出声。
     if failures:
         lines = [
             "",
@@ -122,9 +121,7 @@ def main() -> int:
         print("\n".join(lines), file=sys.stderr)
         return 2
 
-    if skipped:
-        print("[codeguard] ⚠️ 部分生态未能验证（见上方 ⏭️ 行），其余通过")
-    print("[codeguard] ✅ linter 门禁通过，可以提交")
+    # 通过（含部分跳过）：静默返回，不打扰用户
     return 0
 
 
