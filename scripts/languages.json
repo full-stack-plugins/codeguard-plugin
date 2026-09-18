@@ -380,7 +380,8 @@
       "lint": [
         "npx",
         "--no-install",
-        "stylelint"
+        "stylelint",
+        "**/*.css"
       ],
       "format": [
         "npx",
