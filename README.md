@@ -74,15 +74,13 @@ AI code that passes lint on first try
 
 ## Supported languages
 
-**55 languages detected, 22 actively enforced (Beta tier expanded in V0.3)** — the widest coverage of any code-governance plugin. Status tiers (full per-language table in [docs/LANGUAGES.md](docs/LANGUAGES.md)):
+**53 languages Stable (auto-enforced) + 4 Planned with platform tooling** — the widest coverage of any code-governance plugin. Every registered language has a SKILL; Planned languages are the ones without an independent CLI linter (platform IDE diagnostics only). Full per-language table: [docs/LANGUAGES.md](docs/LANGUAGES.md).
 
 | Status | Languages |
 |---|---|
-| **Stable** (auto-enforced, V0.1) | Java, Rust, TypeScript/JavaScript, Python |
-| **Beta** (enforced, V0.2/V0.3) | Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS, Markdown, SQL, TOML, HTML, Protobuf, Terraform/OpenTofu, Nix, Dart, Solidity, Ansible |
-| **Planned** (detected, linter on roadmap, 29) | C, C++, Objective-C, CUDA, Metal, Vue, Svelte, Astro, Haskell, OCaml, F#, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia, Elm, Lua, Luau, Pascal/Delphi, R, CFML, COBOL, VB.NET, Erlang, ArkTS, Liquid |
-
-## Governance skills (Git & Security)
+| **Stable** (53, auto-enforced) | Java, Rust, TypeScript/JavaScript, Python, Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS, Markdown, SQL, TOML, HTML, Protobuf, Terraform/OpenTofu, Nix, Dart, Solidity, Ansible-playbooks, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia (format-only), Pascal (format-only), Elm, Lua, Luau, C++ (clang-tidy), Objective-C, CUDA, GraphQL, Protobuf digest, VB.NET, Erlang, R, CFML — and more; see LANGUAGES.md |
+| **Planned** (4, no independent CLI linter) | Metal, ArkTS (HarmonyOS), COBOL, Liquid (Shopify theme-check 已列为工具，待接通) |
+## Governance skills (Git & Security) (Git & Security)
 
 Beyond linting, codeguard ships standalone governance skills sourced from the team's engineering-standards wiki:
 

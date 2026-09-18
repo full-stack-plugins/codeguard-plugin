@@ -124,7 +124,7 @@
       "markers": [
         "go.mod"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "go",
@@ -145,7 +145,7 @@
         ".cs"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "dotnet",
@@ -166,7 +166,7 @@
         ".kts"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "./gradlew",
@@ -187,7 +187,7 @@
       "markers": [
         "Package.swift"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "swiftlint"
@@ -207,7 +207,7 @@
       "markers": [
         "composer.json"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "php",
@@ -228,7 +228,7 @@
       "markers": [
         "Gemfile"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "rubocop"
@@ -249,7 +249,7 @@
       "markers": [
         "build.sbt"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "scalafmt",
@@ -269,7 +269,7 @@
         ".zsh"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "shellcheck"
@@ -289,7 +289,7 @@
         "Dockerfile"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "hadolint"
@@ -307,7 +307,7 @@
         ".yaml"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "yamllint",
@@ -329,7 +329,7 @@
       "markers": [
         "mix.exs"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "mix",
@@ -352,7 +352,7 @@
         ".less"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.2",
       "lint": [
         "npx",
@@ -375,10 +375,16 @@
         ".h"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
-      "lint": null,
-      "format": null,
+      "lint": [
+        "clang-tidy",
+        "--quiet"
+      ],
+      "format": [
+        "clang-format",
+        "-i"
+      ],
       "install_hint": "clang-tidy + clang-format"
     },
     {
@@ -390,13 +396,15 @@
         ".cc"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
       "lint": [
-        "clang-tidy"
+        "clang-tidy",
+        "--quiet"
       ],
       "format": [
-        "clang-format"
+        "clang-format",
+        "-i"
       ],
       "install_hint": "clang-tidy + clang-format"
     },
@@ -408,13 +416,15 @@
         ".mm"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
       "lint": [
-        "clang-tidy"
+        "clang-tidy",
+        "--quiet"
       ],
       "format": [
-        "clang-format"
+        "clang-format",
+        "-i"
       ],
       "install_hint": "clang-tidy + clang-format"
     },
@@ -427,7 +437,7 @@
       "markers": [
         "pubspec.yaml"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "dart",
@@ -447,7 +457,7 @@
         ".vue"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
       "lint": [
         "npx",
@@ -456,7 +466,14 @@
         ".vue",
         "."
       ],
-      "format": null,
+      "format": [
+        "npx",
+        "eslint",
+        "--ext",
+        ".vue",
+        ".",
+        "--fix"
+      ],
       "install_hint": "eslint-plugin-vue"
     },
     {
@@ -466,10 +483,19 @@
         ".svelte"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
-      "lint": null,
-      "format": null,
+      "lint": [
+        "npx",
+        "eslint",
+        "."
+      ],
+      "format": [
+        "npx",
+        "eslint",
+        ".",
+        "--fix"
+      ],
       "install_hint": "eslint-plugin-svelte"
     },
     {
@@ -479,10 +505,19 @@
         ".astro"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
-      "lint": null,
-      "format": null,
+      "lint": [
+        "npx",
+        "eslint",
+        "."
+      ],
+      "format": [
+        "npx",
+        "eslint",
+        ".",
+        "--fix"
+      ],
       "install_hint": "eslint-plugin-astro"
     },
     {
@@ -492,7 +527,7 @@
         ".sol"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "solhint",
@@ -500,6 +535,7 @@
       ],
       "format": [
         "prettier",
+        "--plugin=prettier-plugin-solidity",
         "--write"
       ],
       "install_hint": "npm install -g solhint prettier prettier-plugin-solidity"
@@ -513,7 +549,7 @@
         ".tofu"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "tflint"
@@ -533,7 +569,7 @@
       "markers": [
         "flake.nix"
       ],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "deadnix"
@@ -551,7 +587,7 @@
         ".htm"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "npx",
@@ -570,7 +606,7 @@
         ".sql"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "sqlfluff",
@@ -590,10 +626,23 @@
         ".gql"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
-      "lint": null,
-      "format": null,
+      "lint": [
+        "npx",
+        "eslint",
+        "--ext",
+        ".graphql",
+        "."
+      ],
+      "format": [
+        "npx",
+        "eslint",
+        "--ext",
+        ".graphql",
+        ".",
+        "--fix"
+      ],
       "install_hint": "graphql-eslint"
     },
     {
@@ -603,7 +652,7 @@
         ".proto"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "buf",
@@ -623,7 +672,7 @@
         ".markdown"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "npx",
@@ -643,7 +692,7 @@
         ".toml"
       ],
       "markers": [],
-      "status": "beta",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "taplo",
@@ -666,14 +715,16 @@
         "stack.yaml",
         "cabal.project"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
-        "hlint"
+        "hlint",
+        "."
       ],
       "format": [
         "fourmolu",
-        "-i"
+        "-i",
+        "."
       ],
       "install_hint": "brew install hlint fourmolu"
     },
@@ -685,12 +736,17 @@
         ".mli"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
-      "lint": null,
+      "lint": [
+        "ocamlformat",
+        "--check",
+        "."
+      ],
       "format": [
         "ocamlformat",
-        "-i"
+        "-i",
+        "."
       ],
       "install_hint": "opam install ocamlformat"
     },
@@ -703,10 +759,15 @@
         ".fsx"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
-      "lint": null,
+      "lint": [
+        "dotnet",
+        "fantomas",
+        "--check"
+      ],
       "format": [
+        "dotnet",
         "fantomas"
       ],
       "install_hint": "dotnet tool install -g fantomas"
@@ -720,7 +781,7 @@
         ".t"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "perlcritic"
@@ -738,12 +799,15 @@
         ".groovy"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "npm-groovy-lint"
       ],
-      "format": null,
+      "format": [
+        "npm-groovy-lint",
+        "--fix"
+      ],
       "install_hint": "npm install -g npm-groovy-lint"
     },
     {
@@ -759,11 +823,12 @@
         "deps.edn",
         "project.clj"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "clj-kondo",
-        "--lint"
+        "--lint",
+        "src"
       ],
       "format": [
         "cljstyle"
@@ -778,12 +843,20 @@
         ".psm1"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
-        "Invoke-ScriptAnalyzer"
+        "pwsh",
+        "-NoProfile",
+        "-Command",
+        "Invoke-ScriptAnalyzer -Path . -Severity Error"
       ],
-      "format": null,
+      "format": [
+        "pwsh",
+        "-NoProfile",
+        "-Command",
+        "Invoke-Formatter"
+      ],
       "install_hint": "Install-Module PSScriptAnalyzer"
     },
     {
@@ -795,7 +868,7 @@
       "markers": [
         "build.zig"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "zig",
@@ -817,12 +890,17 @@
       "markers": [
         ".nimble"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
-      "lint": null,
+      "lint": [
+        "nim",
+        "check",
+        "src"
+      ],
       "format": [
         "nimpretty",
-        "-r"
+        "-r",
+        "."
       ],
       "install_hint": "nimpretty 内置于 Nim"
     },
@@ -835,12 +913,16 @@
       "markers": [
         "shard.yml"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "ameba"
       ],
-      "format": null,
+      "format": [
+        "crystal",
+        "tool",
+        "format"
+      ],
       "install_hint": "brew install crystal-ameba"
     },
     {
@@ -852,13 +934,13 @@
       "markers": [
         "Project.toml"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": null,
       "format": [
         "julia",
         "-e",
-        "using JuliaFormatter; format(.)"
+        "using JuliaFormatter; format('.')"
       ],
       "install_hint": "julia -e 'using Pkg; Pkg.add(\"JuliaFormatter\")'"
     },
@@ -871,7 +953,7 @@
       "markers": [
         "elm.json"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "elm-review"
@@ -889,7 +971,7 @@
         ".lua"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "luacheck",
@@ -908,16 +990,18 @@
         ".luau"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
-        "luau-lint"
+        "luau-analyze"
       ],
       "format": [
         "stylua",
+        "--syntax",
+        "luau",
         "."
       ],
-      "install_hint": "luau-lint"
+      "install_hint": "luau-lsp / luau-analyze"
     },
     {
       "id": "pascal",
@@ -929,11 +1013,13 @@
         ".lpr"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": null,
       "format": [
-        "pasfmt"
+        "ptop",
+        "-b",
+        "."
       ],
       "install_hint": "pasfmt"
     },
@@ -944,18 +1030,19 @@
         ".r"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
-        "R",
-        "--slave",
+        "Rscript",
         "-e",
-        "lintr::lint('.')"
+        "lintr::lint_dir('.')"
       ],
       "format": [
-        "styler"
+        "styler",
+        "::",
+        "style_dir"
       ],
-      "install_hint": "Rscript -e 'install.packages(\"lintr\")'"
+      "install_hint": "Rscript -e 'install.packages(c(\"lintr\",\"styler\"))'"
     },
     {
       "id": "cfml",
@@ -966,7 +1053,7 @@
         ".cfs"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "cflint"
@@ -987,7 +1074,7 @@
       "since": "V0.5",
       "lint": null,
       "format": null,
-      "install_hint": "IBM COBOL Checker"
+      "install_hint": "无独立 CLI linter（依赖平台 IDE 诊断）"
     },
     {
       "id": "vbnet",
@@ -996,7 +1083,7 @@
         ".vb"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.4",
       "lint": [
         "dotnet",
@@ -1018,7 +1105,7 @@
       "markers": [
         "rebar.config"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "elvis",
@@ -1027,7 +1114,7 @@
       "format": [
         "erlfmt"
       ],
-      "install_hint": "rebar3 plugins 或 brew install elvis"
+      "install_hint": "rebar3 plugins / escript"
     },
     {
       "id": "arkts",
@@ -1040,7 +1127,7 @@
       "since": "V0.5",
       "lint": null,
       "format": null,
-      "install_hint": "DevEco Studio ArkTS Linter"
+      "install_hint": "无独立 CLI linter（依赖平台 IDE 诊断）"
     },
     {
       "id": "metal",
@@ -1053,7 +1140,7 @@
       "since": "V0.5",
       "lint": null,
       "format": null,
-      "install_hint": "Xcode Metal compiler 诊断"
+      "install_hint": "无独立 CLI linter（依赖平台 IDE 诊断）"
     },
     {
       "id": "liquid",
@@ -1062,10 +1149,11 @@
         ".liquid"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
-        "theme-check"
+        "theme-check",
+        "."
       ],
       "format": null,
       "install_hint": "gem install theme-check"
@@ -1078,14 +1166,15 @@
         ".cuh"
       ],
       "markers": [],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.5",
       "lint": [
         "clang-tidy",
-        "--cuda"
+        "--quiet"
       ],
       "format": [
-        "clang-format"
+        "clang-format",
+        "-i"
       ],
       "install_hint": "CUDA Toolkit + clangd"
     },
@@ -1097,7 +1186,7 @@
         "ansible.cfg",
         "playbook.yml"
       ],
-      "status": "beta",
+      "status": "planned",
       "since": "V0.3",
       "lint": [
         "ansible-lint"
@@ -1106,7 +1195,7 @@
         "ansible-lint",
         "--fix"
       ],
-      "install_hint": "pip install ansible-lint"
+      "install_hint": "playbook 检查由 ansible-lint 承接（yaml 通道）；语义级检查待集成"
     }
   ]
 }

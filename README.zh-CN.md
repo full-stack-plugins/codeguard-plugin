@@ -74,34 +74,12 @@ AI 一次写出就过 lint 的代码
 
 ## 支持的语言
 
-**识别 55 种语言，其中 22 种已启用 linter 强制门禁（V0.3 扩充 Beta 层）**——同类代码治理插件中最广的覆盖面。三级状态（完整逐语言表格见 [docs/LANGUAGES.md](docs/LANGUAGES.md)）：
+**53 种语言 Stable（默认强制）+ 4 种 Planned（依赖平台内置诊断）**——同类代码治理插件中最广的覆盖面。每种注册语言都有独立 SKILL；完整逐语言表格见 [docs/LANGUAGES.md](docs/LANGUAGES.md)。
 
 | 状态 | 语言 |
 |---|---|
-| **Stable**（默认强制，V0.1） | Java、Rust、TypeScript/JavaScript、Python |
-| **Beta**（强制，V0.2） | Go、C#、Kotlin、Swift、PHP、Ruby、Scala |
-| **Planned**（已识别，linter 在路线图） | C、C++、Objective-C、Dart、Vue、Svelte、Astro、Solidity、Terraform/OpenTofu、Nix、Lua、Luau、CFML、COBOL、VB.NET、Erlang、Pascal/Delphi、R、ArkTS、Metal、Liquid、CUDA |
-
-完整表格（每种语言的 lint/format 命令）：[docs/LANGUAGES.md](docs/LANGUAGES.md)。
-
-## 规范治理技能（Git 与安全）
-
-除 lint 之外，codeguard 内置来自团队工程规范 Wiki 的独立治理技能：
-
-| 技能 | 覆盖内容 |
-|---|---|
-| `codeguard-git-branch` | 7 种主流分支模型——Gitflow、Gitflow+（团队）、GitLab 分支规范、GitHub Flow、GitLab Flow、Trunk-Based Development、OneFlow、Release Flow——含模型识别、分支命名门禁（`feature/{版本}_{功能}_{作者}_{日期}`）、合并方向门禁、合并策略（merge/squash/rebase） |
-| `codeguard-git-commit` | Conventional Commits（Angular 正则门禁 `linters/git/commit-msg`）、Gitmoji 前缀、Udacity 长描述风格、commitlint 工具化 |
-| `codeguard-security-code` | 代码与配置泄露防范、CVE 依赖漏洞扫描（dependency-check / trivy / npm audit / MurphySec） |
-| `codeguard-security-api` | 越权防护（Shiro / Spring Security 注解）、数据权限校验、文件上传三层控制、apikey+timestamp+signature 签名 |
-| `codeguard-security-data` | 敏感字段加密存储（国密 SM2/SM3/SM4）、返回脱敏、单设备登录、等保与密评合规要点 |
-| `codeguard-dockerfile` | Dockerfile 安全风险——root 运行、latest 标签、ADD 滥用、sudo、secrets 进层、HEALTHCHECK 缺失（hadolint + trivy config） |
-
-提交门禁已预置在 pre-commit 模板（`stages: [commit-msg]`）；分支与安全技能会在 AI 建分支、写接口、合并前 review 时自动生效。
-
-### 技能架构
-
-全部 18 个技能遵循从 [rust-skills](https://github.com/full-stack-skills/rust-skills) 抽象的统一编写标准：精瘦的 `SKILL.md`（触发元数据、能力边界、工作流、坑点）+ `references/` 渐进披露深度资料。标准全文见 [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md)。技能之间互相路由（如主入口把 Java 深度问题路由到 java-skills 仓库、把提交格式路由到 codeguard-git-commit）。
+| **Stable**（53 种，默认强制） | Java、Rust、TypeScript/JavaScript、Python、Go、C#、Kotlin、Swift、PHP、Ruby、Scala、Shell、Dockerfile、YAML、Elixir、CSS/SCSS、Markdown、SQL、TOML、HTML、Protobuf、Terraform/OpenTofu、Nix、Dart、Solidity、Ansible、Perl、Groovy、Clojure、PowerShell、Zig、Nim、Crystal、Julia（仅格式化）、Pascal（仅格式化）、Elm、Lua、Luau、C++（clang-tidy）、Objective-C、CUDA、GraphQL、VB.NET、Erlang、R、CFML 等，详见 LANGUAGES.md |
+| **Planned**（4 种，无独立 CLI linter） | Metal、ArkTS（HarmonyOS）、COBOL、Liquid（theme-check 待接通） |
 
 ## 能力与边界
 
