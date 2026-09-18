@@ -1,0 +1,16 @@
+<svg width="280" height="280" viewBox="0 0 1102 1102" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shield" x1="0.15" y1="0.08" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#3BE4A9"/>
+      <stop offset="0.45" stop-color="#21C795"/>
+      <stop offset="1" stop-color="#04835F"/>
+    </linearGradient>
+    <mask id="cut">
+      <rect width="1102" height="1102" fill="white"/>
+      <path d="M 425 398 L 305 502 L 425 606" stroke="black" stroke-width="58" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 472 508 L 546 586 L 654 406" stroke="black" stroke-width="58" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 679 398 L 797 502 L 679 606" stroke="black" stroke-width="58" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <path mask="url(#cut)" fill="url(#shield)" d="M 551 150 C 690 172 810 200 900 232 Q 922 240 922 266 L 922 545 Q 922 700 830 805 Q 740 905 575 975 Q 551 984 527 975 Q 362 905 272 805 Q 180 700 180 545 L 180 266 Q 180 240 202 232 C 292 200 412 172 551 150 Z"/>
+</svg>
