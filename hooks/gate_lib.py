@@ -16,7 +16,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件�
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import (  # noqa: E402
-    LANG_COMMANDS, detect_languages, load_user_config, probe_toolchain,
+    LANG_COMMANDS, detect_languages, load_user_config, project_uses_linter, probe_toolchain,
 )
 
 
@@ -54,6 +54,10 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
         ok, reason = probe_toolchain(cmd_def)
         if not ok:
             skipped.append(f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
+            continue
+        if not project_uses_linter(cmd_def, project_root):
+            # 项目未接入该 linter（无配置文件）——归 skipped，不拦提交
+            skipped.append(f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
             continue
 
         try:

@@ -87,7 +87,17 @@
         ".",
         "--fix"
       ],
-      "install_hint": "项目需安装 eslint"
+      "install_hint": "项目需安装 eslint",
+      "requiresConfig": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
+      ]
     },
     {
       "id": "python",
@@ -716,8 +726,7 @@
       "since": "V0.3",
       "lint": [
         "npx",
-        "markdownlint-cli2",
-        "**/*.md"
+        "markdownlint-cli2"
       ],
       "format": [
         "markdownlint-cli2",

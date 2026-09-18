@@ -97,6 +97,7 @@ for _id, _lang in REGISTRY.items():
                 "format": _fmt,
                 "gate": _lang.get("gate"),       # 项目级门禁命令（文件型 linter 必须传文件清单）
                 "probe": _lang.get("probe"),     # 显式探活命令（npx 系必配，覆盖包未装场景）
+                "requiresConfig": _lang.get("requiresConfig"),  # 未接入配置的项目归 skipped
                 "install_hint": _lang.get("install_hint"),
             }
     if _lang.get("install_hint"):
@@ -134,6 +135,20 @@ def extract_tool_binaries(cmd_def: dict) -> list[str]:
         expanded.add(b)
         expanded.update(BINARY_DEPENDENCIES.get(b, []))
     return sorted(b for b in expanded if b)
+
+
+def project_uses_linter(cmd_def: dict, project_root: str | Path) -> bool:
+    """项目是否接入了该语言的 linter（requiresConfig 声明的配置文件任一存在）。
+
+    生态型 linter（如 ESLint 9+）在没有配置文件的项目里必然报错退出——
+    那是「未接入」，不是「代码违规」；未接入的语言归 skipped 不拦提交。
+    requiresConfig 缺省的语言（自包含工具如 shellcheck/clippy）视为已接入。
+    """
+    required = cmd_def.get("requiresConfig") if isinstance(cmd_def, dict) else None
+    if not required:
+        return True
+    root = Path(project_root)
+    return any((root / name).exists() for name in required)
 
 
 def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
