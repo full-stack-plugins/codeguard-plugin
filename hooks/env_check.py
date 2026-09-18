@@ -33,6 +33,11 @@ LINTER_CONFIG_FILES = [
 # 管道胶水命令不算 linter 本体（gate 命令形如 find ... | xargs -0 shellcheck）
 PIPE_GLUE = {"find", "xargs", "grep", "sort", "sh", "bash", "echo"}
 
+# 运行时依赖：wrapper 命令存在不代表能用（npx 自身是 #!/usr/bin/env node 脚本）
+BINARY_DEPENDENCIES = {
+    "npx": ["node"],
+}
+
 
 def required_binaries(cmd_def: dict) -> set[str]:
     """从 lint/gate 命令提取必须存在于 PATH 的可执行名"""
@@ -48,7 +53,11 @@ def required_binaries(cmd_def: dict) -> set[str]:
                     bins.add(token[0])
         else:
             bins.add(cmd[0])
-    return {b for b in bins if b}
+    expanded: set[str] = set()
+    for b in bins:
+        expanded.add(b)
+        expanded.update(BINARY_DEPENDENCIES.get(b, []))
+    return {b for b in expanded if b}
 
 
 def notify(title: str, message: str) -> None:
