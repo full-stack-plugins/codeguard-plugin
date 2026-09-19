@@ -65,7 +65,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.5.2` |
+| Current version | `0.5.3` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | Not published until the SDK-backed protocol implementation is ready; use the CLI and hooks |
@@ -256,10 +256,10 @@ partme-codeguard-plugin/
 
 | Host | Plugin manifest | Install path | Status |
 |---|---|---|---|
-| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
-| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/partme-codeguard-plugin/` | ✅ V0.1 |
+| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/cli/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.3 verified |
+| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.3 verified |
 | **Claude Code** | (uses Codex manifest via marketplace) | `~/.claude/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
-| **Kimi Code** | (uses Codex manifest) | `~/.kimi/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
+| **Kimi Code** | `kimi.plugin.json` | `~/.kimi-code/plugins/managed/codeguard/` | ✅ V0.5.3 verified |
 
 The hooks, scripts, linters, and skills are **shared across all hosts** — only the manifest differs.
 
