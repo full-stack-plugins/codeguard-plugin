@@ -122,6 +122,8 @@ def test_languages():
         ("c", "gate", "clang-tidy"), ("html", "gate", "htmlhint"),
     ]:
         ok(f"{lid}.{field} 含 {needle!r}", needle in json.dumps(by_id.get(lid, {}).get(field)))
+    ok("rust 无 Cargo.toml 视为未接入", "Cargo.toml" in json.dumps(by_id.get("rust", {}).get("requiresConfig")))
+    ok("java 无 pom/build 视为未接入", "pom.xml" in json.dumps(by_id.get("java", {}).get("requiresConfig")))
     ok("vbnet requiresConfig 用 glob (*.sln)", "*.sln" in json.dumps(by_id.get("vbnet", {})))
     ok("erlang requiresConfig(elvis.config)", "elvis.config" in json.dumps(by_id.get("erlang", {})))
 

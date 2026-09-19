@@ -30,7 +30,13 @@
         "-q",
         "spotless:apply"
       ],
-      "install_hint": null
+      "install_hint": null,
+      "requiresConfig": [
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "settings.gradle"
+      ]
     },
     {
       "id": "rust",
@@ -55,7 +61,10 @@
         "cargo",
         "fmt"
       ],
-      "install_hint": null
+      "install_hint": null,
+      "requiresConfig": [
+        "Cargo.toml"
+      ]
     },
     {
       "id": "typescript",
@@ -153,7 +162,10 @@
         "-w",
         "."
       ],
-      "install_hint": "内置于 Go 工具链；聚合 lint 可装 golangci-lint"
+      "install_hint": "内置于 Go 工具链；聚合 lint 可装 golangci-lint",
+      "requiresConfig": [
+        "go.mod"
+      ]
     },
     {
       "id": "csharp",
@@ -197,7 +209,13 @@
         "./gradlew",
         "ktlintFormat"
       ],
-      "install_hint": "项目需配置 detekt / ktlint 插件"
+      "install_hint": "项目需配置 detekt / ktlint 插件",
+      "requiresConfig": [
+        "build.gradle",
+        "build.gradle.kts",
+        "settings.gradle",
+        "pom.xml"
+      ]
     },
     {
       "id": "swift",
@@ -383,7 +401,10 @@
         "mix",
         "format"
       ],
-      "install_hint": "项目需配置 credo 依赖"
+      "install_hint": "项目需配置 credo 依赖",
+      "requiresConfig": [
+        "mix.exs"
+      ]
     },
     {
       "id": "css",
@@ -519,7 +540,10 @@
         "format",
         "."
       ],
-      "install_hint": "Dart SDK 内置"
+      "install_hint": "Dart SDK 内置",
+      "requiresConfig": [
+        "pubspec.yaml"
+      ]
     },
     {
       "id": "vue",
@@ -987,6 +1011,11 @@
         "bash",
         "-c",
         "find . -name '*.groovy' -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r npm-groovy-lint --no-insight"
+      ],
+      "requiresConfig": [
+        "build.gradle",
+        "build.gradle.kts",
+        "pom.xml"
       ]
     },
     {
