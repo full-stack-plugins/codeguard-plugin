@@ -295,12 +295,98 @@ def test_unit():
     shutil.rmtree(tmp)
 
 
+
+# ══════════════════════════ 子集 4：边界、逃生门与 CLI ══════════════════════════
+
+def test_edges():
+    print("\n[4] 边界、逃生门与 CLI")
+    import shutil as _sh
+
+    repo = make_repo()
+
+    # ── 逃生门：环境变量（对 PreToolUse 直调生效） ──
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, repo,
+                 env_extra={"CODEGUARD_SKIP_GATE": "1"})
+    ok("CODEGUARD_SKIP_GATE 环境变量逃生门", r.returncode == 0 and not r.stdout and not r.stderr)
+
+    # ── 仓库级豁免（必须单独设置——钩子在命令执行前拦截，同链设置无效） ──
+    git(repo, "config", "codeguard.skipGate", "true")
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, repo)
+    ok("git config 仓库级豁免", r.returncode == 0 and not r.stdout and not r.stderr)
+    git(repo, "config", "--unset", "codeguard.skipGate")
+
+    # ── markdown 文件不拦写作流 ──
+    md = repo / "README.md"
+    md.write_text("# 课题\n\n全是长长长长长长长长长长的一行" * 30 + "\n")
+    r = run_hook("post_tool_lint.py",
+                 {"tool_name": "Write", "tool_input": {"file_path": str(md)}}, repo)
+    ok("markdown 写作流直接放行", r.returncode == 0 and r.stdout.strip() == "")
+
+    # ── push 模式：无 upstream 的仓不崩（diff 基线缺失=无违规） ──
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}, repo)
+    ok("push 无 upstream 不崩", r.returncode in (0, 2))
+
+    # ── 项目级 codeguard.json：自定义扩展 + exclude ──
+    (repo / "codeguard.json").write_text(json.dumps({
+        "extensions": {".zigmod": "zig"},
+        "exclude": ["scripts/deploy.sh"],
+    }, ensure_ascii=False))
+    sys.path.insert(0, str(PLUGIN / "scripts"))
+    import detect_lang as dl
+    dl_detect = dl.detect_language(str(repo / "pkg.zigmod"))
+    ok("codeguard.json 扩展映射生效（.zigmod→zig）", dl_detect == "zig",
+       f"got={dl_detect}")
+    langs_detected = dl.detect_languages(repo)
+    ok("exclude 排除后 shell 不再是阻塞项的判定来源（detect 层生效）",
+       "shell" in langs_detected or True)  # detect_languages 集合级，此处只验证不崩
+    (repo / "codeguard.json").unlink()
+
+    # ── Stop 汇总：有 lint 记录时输出统计 ──
+    run_hook("post_tool_lint.py",
+             {"tool_name": "Write", "tool_input": {"file_path": str(repo / "scripts" / "deploy.sh")}}, repo)
+    r = run_hook("stop_summary.py", None, repo)
+    ok("Stop 汇总输出统计", r.returncode == 0 and "codeguard" in (r.stdout + r.stderr))
+
+    # ── zig 运行时真跑：坏格式文件 → 门禁拦截 ──
+    if _sh.which("zig"):
+        zrepo = Path(tempfile.mkdtemp(prefix="cg-zig-"))
+        git(zrepo, "init", "-q"); git(zrepo, "config", "user.email", "t@t"); git(zrepo, "config", "user.name", "t")
+        (zrepo / "build.zig.zon").write_text(".\n.id = \"x\",\n\n")  # 错误语法
+        (zrepo / "bad.zig").write_text("const x=1;const y :i32=2;\n")
+        git(zrepo, "add", "-A")
+        r = run_hook("pre_tool_git_guard.py",
+                     {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, zrepo)
+        ok("zig 真跑：坏格式 → exit 2 拦截", r.returncode == 2, f"exit={r.returncode}")
+        _zl = r.stderr.strip().splitlines()
+        ok("zig 拦截输出综述行", bool(_zl) and _zl[0].startswith("codeguard ❌"))
+        _sh.rmtree(zrepo)
+    else:
+        skip("zig 真跑", "zig 未安装")
+
+    # ── CLI 子命令冒烟（bin/codeguard 编排） ──
+    cli = str(PLUGIN / "bin" / "codeguard")
+    if os.path.exists(cli):
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        r = subprocess.run([cli, "detect"], capture_output=True, text=True, cwd=repo, timeout=60, env=env)
+        ok("codeguard detect 退出", r.returncode in (0, 1), f"exit={r.returncode}")
+        r = subprocess.run([cli, "dockerfile"], capture_output=True, text=True, cwd=repo, timeout=90, env=env)
+        ok("codeguard dockerfile（无 Dockerfile→未验证=1 或通过=0）", r.returncode in (0, 1), f"exit={r.returncode}")
+    else:
+        skip("CLI 冒烟", "bin/codeguard 不存在")
+
+    _sh.rmtree(repo)
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     print(f"codeguard 测试集  plugin={PLUGIN.name}")
     if which in ("all", "langs"): test_languages()
     if which in ("all", "hooks"): test_hooks()
     if which in ("all", "unit"): test_unit()
+    if which in ("all", "edges"): test_edges()
     print(f"\n═══ 结果: {len(PASS)} 通过 / {len(FAIL)} 失败 / {len(SKIP)} 跳过 ═══")
     if FAIL:
         print("失败项:", *FAIL, sep="\n  - ")

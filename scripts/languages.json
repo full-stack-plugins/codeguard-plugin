@@ -1088,7 +1088,11 @@
         "zig",
         "fmt"
       ],
-      "install_hint": "内置于 Zig 工具链"
+      "install_hint": "内置于 Zig 工具链",
+      "probe": [
+        "zig",
+        "version"
+      ]
     },
     {
       "id": "nim",

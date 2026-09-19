@@ -242,6 +242,10 @@ def get_overrides(project_root: str | Path) -> dict:
 def detect_language(file_path: str | Path, project_root: Path | None = None) -> str | None:
     """按扩展名/文件名判断语言；支持 codeguard.json 自定义映射；非代码文件返回 None"""
     p = Path(file_path)
+    # 项目根缺省从文件路径推导——钩子调用都不显式传 root，
+    # 不推导则 codeguard.json 的自定义扩展映射永远不会生效
+    if project_root is None:
+        project_root = find_project_root(p)
     overrides = get_overrides(project_root) if project_root else {}
     ext_map = {**EXT_LANG_MAP, **overrides.get("extensions", {})}
     lang = ext_map.get(p.suffix.lower())
