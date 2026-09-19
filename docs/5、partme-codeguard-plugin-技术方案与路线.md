@@ -120,17 +120,18 @@
 **代价**：升级时要改两处 manifest（用脚本同步可解决）
 **状态**：采纳。
 
-### ADR-007：MCP 用 .mcp.json 而非 SDK 直连
+### ADR-007：未完成 SDK 协议实现前不发布 MCP 声明
 
 **背景**：MCP 服务暴露方式有多种（stdio、HTTP、SSE）。
-**决策**：stdio 启动 Python 脚本，`.mcp.json` 声明。
+**决策**：保留 `.mcp.json` 和 `--mcp` 作为设计草案，但 ZCode、Codex、Kimi 的正式清单不引用它；完成 SDK 协议实现和宿主握手测试后再发布。
 **理由**：
 - stdio 跨平台最简单，无需 Docker/HTTP server
 - 三端 ZCode/Codex/Claude 都支持 stdio MCP
-- run_check.py 已是 CLI，加 `--mcp` flag 即可暴露
+- run_check.py 的 CLI 能力已经可用，但打印提示后退出的占位进程不是合法 MCP server
+- 发布占位声明会让宿主安装成功后仍报告 MCP 初始化失败
 - 当前 SDK 还在演进（2026 年），避免早期锁定
-**代价**：当前是占位实现（CLI flag 已留）；真正接入 MCP SDK 留待 V2
-**状态**：采纳（占位实现已就位）。
+**代价**：V2 前只能通过 CLI、命令与 Hooks 使用检查能力。
+**状态**：采纳（V0.5.1 起三端清单不再声明占位 MCP）。
 
 ---
 

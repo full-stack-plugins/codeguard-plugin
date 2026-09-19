@@ -65,10 +65,10 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.5.0` |
+| Current version | `0.5.1` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
-| MCP server | `python3 scripts/run_check.py --mcp` (stdio JSON-RPC) |
+| MCP server | Not published until the SDK-backed protocol implementation is ready; use the CLI and hooks |
 | Primary language | Python 3.10+ (hooks), YAML/JSON (config) |
 | License | Apache-2.0 |
 
@@ -209,7 +209,7 @@ codeguard:
 partme-codeguard-plugin/
 ├── .zcode-plugin/plugin.json     # ZCode manifest (primary)
 ├── .codex-plugin/plugin.json    # Codex CLI manifest
-├── .mcp.json                     # MCP server entry (stdio)
+├── .mcp.json                     # Reserved MCP draft; intentionally not referenced by released manifests
 ├── hooks/
 │   ├── hooks.json                # 4 hook definitions
 │   ├── env_check.py              # SessionStart: detect language + inject rules
