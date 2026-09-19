@@ -2,8 +2,8 @@
 
 > **文档说明**：本架构文档描述 partme-codeguard-plugin 插件的内部结构、模块划分、数据流与三端适配设计。
 >
-> **版本**：V1.0
-> **最后更新**：2026-09-17
+> **版本**：V1.1
+> **最后更新**：2026-09-19
 
 ---
 
@@ -55,7 +55,8 @@ flowchart LR
     subgraph Plugin["partme-codeguard-plugin 插件"]
         Manifest["双清单<br/>.zcode-plugin/<br/>.codex-plugin/"]
         Hooks["hooks/<br/>4 类钩子"]
-        Skills["skills/<br/>6 个 SKILL.md"]
+        Skills["skills/<br/>68 个外部 vendor 技能<br/>+ 可选插件定制技能"]
+        SkillLock["skills.lock.json<br/>tag / commit / SHA-256"]
         Cmds["commands/<br/>3 个 slash command"]
         Scripts["scripts/<br/>3 个 Python 脚本"]
         Linters["linters/<br/>5 套语言模板"]
@@ -64,6 +65,7 @@ flowchart LR
 
     Manifest -.声明.-> Hooks
     Manifest -.声明.-> Skills
+    SkillLock -.校验并生成.-> Skills
     Manifest -.声明.-> Cmds
     Manifest -.声明.-> MCP
     Hooks -.调用.-> Scripts
@@ -79,7 +81,8 @@ flowchart LR
 |---|---|---|---|
 | **manifest** | `.zcode-plugin/plugin.json`<br/>`.codex-plugin/plugin.json`<br/>`.mcp.json` | 插件元数据声明：名称、版本、skills/commands/hooks 路径、用户配置项 | 三端加载器 |
 | **hooks** | `hooks/hooks.json`<br/>4 个 Python 脚本 | 4 类事件触发：会话开始/用户输入/AI 写文件/会话结束 | 编程助手运行时 |
-| **skills** | `skills/codeguard-*/SKILL.md` | 按需触发的子任务工作流（含规则速查）| 用户 slash command 或 AI 自动调用 |
+| **skills** | `skills/codeguard-*/SKILL.md` | 外部 `codeguard-skills` 的受管离线快照；未列入 lock 的目录才是插件内部定制技能 | 用户 slash command 或 AI 自动调用 |
+| **skill vendor** | `skills.lock.json`<br/>`scripts/vendor/skill_vendor.py` | 固定上游 tag/commit 与逐技能摘要；更新、离线校验、在线校验，同时保留未受管本地技能 | 开发者 + CI |
 | **commands** | `commands/{check,fix,init}.json` | 斜杠命令的 prompt 模板 | 编程助手 slash 解析器 |
 | **scripts** | `scripts/{detect_lang,run_check,fix}.py` | 跨语言调度的纯 Python 实现 | hooks + skills |
 | **linters** | `linters/{checkstyle,clippy,eslint,ruff,pre-commit}/` | 各语言的配置文件模板，拷贝即用 | `scripts/` + 用户 |
@@ -89,6 +92,7 @@ flowchart LR
 ```
 manifest ──> 声明 hooks/scripts/skills/commands 路径
    │
+skills.lock.json ──> vendor/check 受管 skills/，保留未列入 lock 的插件定制技能
 hooks ──> 调用 scripts/（跨语言 linter 调度）
 skills ──> 调用 scripts/（按需 lint）
 commands ──> 引用 skills 的 prompt

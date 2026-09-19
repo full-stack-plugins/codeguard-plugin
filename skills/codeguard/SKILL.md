@@ -1,18 +1,13 @@
 ---
 name: codeguard
 license: Apache-2.0
-description: |
-  codeguard 主入口与全局路由中心：跨语言代码规范门禁（55 种语言识别，16 种 linter 强制）、
-  CVE 依赖漏洞扫描编排、Git 分支与提交治理、安全规范检查。
-  Use when users ask to run lint or code-style checks, fix style violations, scan dependencies
-  for CVEs, or before any commit/push; route language-specific deep questions (syntax, framework,
-  library usage) to the per-language skills, branch naming to codeguard-git-branch, commit format
-  to codeguard-git-commit, and security findings to codeguard-security-{code,api,data}.
+description: Codeguard 主入口与路由中心；当用户要求识别仓库语言、执行 lint/格式门禁、受控修复、CVE 扫描、Git 分支或提交治理、接口/代码/数据安全审查，或在 commit/push/release 前需要证据化质量结论时使用。
+compatibility: 需要 Codeguard 运行时命令或源码仓库上下文；默认只读检查，不自动安装、改规则、提交或推送。
 ---
 
 # codeguard 主入口：跨语言代码规范门禁
 
-> 覆盖 **55 种语言识别 / 16 种 linter 强制**（完整表格：[docs/LANGUAGES.md](../../docs/LANGUAGES.md)）。
+> 把“看起来没问题”变成有命令、范围、版本和退出码的可重复证据。当前能力快照见 `references/capabilities/registry-summary.md`。
 
 ## Capability Boundaries
 
@@ -95,9 +90,69 @@ lint 失败
 
 ## On-Demand Resources
 
-- [语言支持总表](../../docs/LANGUAGES.md)：55 种语言的 lint/format 命令与状态
-- [技能编写标准](../../docs/CODEGUARD_SKILLS_SPEC.md)：新增/修改技能的结构规范
+- 能力快照：`references/capabilities/registry-summary.md`。
+- 门禁决策契约：`references/rules/decision-contract.md`。
+- 证据化操作手册：`references/operations/evidence-playbook.md`。
 
 ## Official References
 
 - 各语言工具官方文档见对应语言技能的 Official References 段
+
+## 不适用范围（什么时候不该用）
+
+- 任务是语法学习、框架设计或业务建模，应直接使用对应专业技能。
+- 用户要求证明生产可用性，但当前只能获得 lint 或本地扫描证据。
+- 任务需要安装、提交、推送、发布或修改安全阈值，却未得到明确授权。
+
+## 数据与安全
+
+本技能不收集、上传、发送或存储用户源码和凭据。默认只读路由；涉及网络扫描、修改文件、Git 写操作或安全例外时，必须交给专用技能并重新核对授权边界。
+
+## 证据化 Workflow
+
+### Step 1：判定用户意图
+
+将请求分为 detect、check、fix、cve、Git 治理或 security，避免一次调用无关能力。
+
+### Step 2：确认作用域和授权
+
+记录仓库/模块、当前 Git 状态、是否允许修改，以及网络、安装、提交和发布边界。
+
+### Step 3：读取能力状态
+
+核对当前语言或功能是 `stable` 还是 `planned`，不把识别能力冒充为可执行门禁。
+
+### Step 4：交给一个主技能
+
+以一个主技能产出结论；只在需要独立证据层时调用其他技能。
+
+### Step 5：验证并报告
+
+将 lint、format、build、test、security、Git 和发布证据分层，明确写 PASS、FAIL、UNVERIFIED 或 PLANNED。
+
+## Rules
+
+1. 每次请求只指定一个主路由，其他为可选证据层。
+2. 工具缺失、超时或能力 planned 不等于 PASS。
+3. 不删除规则、降低阈值或静默抑制来制造绿灯。
+4. 提交、推送和发布需要独立授权，质量检查通过不代表可自动执行。
+
+## 输出模板
+
+```text
+Codeguard 路由结果
+- 目标：<user intent>
+- 作用域：<repo/module/path>
+- 主技能：<selected skill>
+- 能力状态：<stable/planned>
+- 证据：<commands/checkpoints and results>
+- 状态：PASS / FAIL / UNVERIFIED / PLANNED
+- 未验证：<remaining layers>
+```
+
+## 按需加载资源
+
+- 需要核对技能层级与路由时读取 `references/capabilities/registry-summary.md`。
+- 需要形成证据包时读取 `references/operations/evidence-playbook.md`。
+- 需要决策边界时读取 `references/rules/decision-contract.md`。
+- 只打开 `examples/` 中匹配当前任务的示例。

@@ -1,5 +1,13 @@
 # AGENTS.md — 代码规范守卫
 
+## 技能来源边界（强制）
+
+- `skills.lock.json` 中列出的技能以 `full-stack-skills/codeguard-skills` 为事实源；不得直接编辑插件内对应目录。
+- 更新受管技能时，先在外部技能仓完成修改、TRACE 评估和不可变 tag，再更新 lock ref，执行 `python3 scripts/vendor/skill_vendor.py update`。
+- 提交前必须执行 `python3 scripts/vendor/skill_vendor.py check --offline` 和在线 `check`。
+- 只有插件内部定制技能可以在本仓 `skills/` 直接维护，并且必须不出现在 `skills.lock.json` 中；vendor 工具会保留这些目录。
+- Hooks、linters、commands、MCP 配置和可执行脚本仍由插件仓维护。
+
 ## 版本升级要求（强制，AI 必须遵守）
 
 任何代码改动——无论大小——都必须 bump 版本并发布。PartMe.AI 插件市场

@@ -1,8 +1,8 @@
 # codeguard 技能编写标准（CODEGUARD_SKILLS_SPEC）
 
-> **文档说明**：定义 partme-codeguard-plugin 内置技能（skills/）的抽象标准与结构规范。标准从 [rust-skills](https://github.com/full-stack-skills/rust-skills) 抽象而来，并结合 codeguard「门禁型插件」的定位做了裁剪。
+> **文档说明**：定义 Codeguard 技能的抽象标准与结构规范。可复用技能的事实源是 [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills)；插件内 `skills/` 是由 `skills.lock.json` 固定并校验的离线 vendor 快照。
 >
-> **版本**：V1.0　**最后更新**：2026-09-18
+> **版本**：V1.1　**最后更新**：2026-09-19
 
 ---
 
@@ -20,6 +20,17 @@ skills/codeguard-java/
 ```
 
 核心思想（学自 rust-skills）：**SKILL.md 保持精瘦可一次读完，深度资料放 references/ 按需加载**——让 AI 快速拿到 80% 高频规则，需要 20% 深度时再展开。
+
+### 1.1 所有权与发布边界
+
+| 内容 | 事实源 | 修改方式 |
+|---|---|---|
+| 可复用 Codeguard 技能 | `full-stack-skills/codeguard-skills` | 在外部仓修改、评估、发布新 tag，再更新插件 lock |
+| 插件离线技能快照 | 本仓 `skills/` 中被 lock 列出的目录 | 只允许由 `scripts/vendor/skill_vendor.py update` 生成 |
+| 插件内部定制技能 | 本仓 `skills/` 中未被 lock 列出的目录 | 可在插件仓直接维护，vendor 会保留 |
+| Hooks、linters、commands、MCP、运行脚本 | `codeguard-plugin` | 在插件仓开发、测试和发布 |
+
+禁止直接修改 lock 管理的技能目录，否则离线/在线 vendor check 会失败。
 
 ## 2. SKILL.md 结构规范（九段式）
 
@@ -82,7 +93,7 @@ description: |
 | 族 | 技能 | 职责 |
 |---|---|---|
 | **元** | codeguard（主入口）、codeguard-init | 全局路由、项目接入 |
-| **语言族**（11） | codeguard-{java,rust,typescript,python,go,csharp,kotlin,swift,php,ruby,scala} | 各语言 lint/format 门禁与规范速查 |
+| **语言/文件族**（57） | codeguard-{java,rust,typescript,python,...} | 53 个 stable 与 4 个 planned 的 lint/format 门禁及规范速查 |
 | **Git 治理族**（2） | codeguard-git-branch、codeguard-git-commit | 分支模型门禁、提交格式门禁 |
 | **安全治理族**（3） | codeguard-security-{code,api,data} | 泄露/CVE、越权/上传、加密/脱敏/等保密评 |
 
@@ -91,7 +102,18 @@ description: |
 - 语言的**深度语言问题**（语法、框架、库用法）→ 路由到对应语言技能仓（如 full-stack-skills/java-skills）
 - codeguard 只负责「规范门禁」：lint/format/安全检查/提交与分支治理
 
-## 4. 结构升级路线
+## 4. Vendor 工作流
+
+```bash
+# 上游发布新不可变 tag 后，先更新 skills.lock.json 中的 ref
+python3 scripts/vendor/skill_vendor.py update
+python3 scripts/vendor/skill_vendor.py check --offline
+python3 scripts/vendor/skill_vendor.py check
+```
+
+`update` 只替换 lock 中列出的目录，不会触碰未列出的插件内部定制技能。CI 同时执行离线与在线校验，并拒绝未同步 lock 的受管技能直接编辑。
+
+## 5. 结构升级路线
 
 | 阶段 | 状态 | 说明 |
 |---|---|---|
@@ -102,4 +124,4 @@ description: |
 
 ---
 
-**文档版本**：V1.0　**状态**：✅ 生效
+**文档版本**：V1.1　**状态**：✅ 生效

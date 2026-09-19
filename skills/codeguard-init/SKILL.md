@@ -1,9 +1,8 @@
 ---
 name: codeguard-init
-description: |
-  一键把 codeguard 接入当前仓库。检测项目语言、拷贝 linter 配置文件、写 .pre-commit-config.yaml、
-  增量更新 AGENTS.md、生成 GitHub Actions CI 工作流。
-  触发场景：用户说 "/init"、"接入规范检查"、"给项目加 pre-commit"、"加 CI 检查"。
+description: 为已有仓库规划并受控接入 Codeguard，包括语言检测、linter 配置、pre-commit、AGENTS.md 规则和 CI 门禁；当用户说 /init、接入规范检查、添加 pre-commit 或 CI 时使用。必须先盘点现有配置并输出合并计划，不覆盖用户文件。
+license: Apache-2.0
+compatibility: 需要可读的 Git 仓库；创建/合并配置前必须确认作用域，不自动安装 hook、依赖或覆盖现有规则。
 ---
 
 # 初始化项目接入 codeguard
@@ -90,3 +89,79 @@ pre-commit install
 - 不要删除或覆盖项目已有 `.pre-commit-config.yaml` / `checkstyle.xml` / `eslint.config.js`
 - 不要覆盖已有 `AGENTS.md` 内容（只追加章节）
 - 不要自动执行 `pre-commit install`（让用户决定）
+
+## 不适用范围（什么时候不该用）
+
+- 用户只要一次性 lint 检查，不想修改仓库配置。
+- 仓库已有另一套受管质量门禁，但尚未确定是合并还是保留。
+- 要求全局安装 CLI、修改开发者本机 hook 或发布 CI，却没有明确授权。
+
+## 数据与安全
+
+初始化应在本地完成，不收集、上传或记录仓库代码和凭据。生成 CI 时不得将 token、密码或内网地址写入工作流；使用 secret name 占位并说明所需的最小权限。
+
+## 受控 Workflow
+
+### Step 1：读取仓库指令
+
+确认 Git 根、分支、未提交改动、AGENTS/CLAUDE 指令和现有 CI/规格文档。
+
+### Step 2：只读盘点
+
+列出已有 linter、formatter、pre-commit、CI、ignore、suppression 和生成文件规则，对每个文件标注 create/merge/skip。
+
+### Step 3：检测语言并核对能力
+
+将 `codeguard detect` 结果与仓库实际构建文件交叉验证；对 `planned` 语言不生成伪门禁。
+
+### Step 4：生成合并计划
+
+在写文件前展示将创建、修改、保留的目标和风险。已有配置冲突时停止并请用户决定。
+
+### Step 5：执行最小接入
+
+只对已批准文件做增量修改；保留既有版本、自定义规则和用户注释。
+
+### Step 6：验证配置
+
+运行配置 parser、Codeguard detect/check dry-run 和 CI 语法检查；工具不可用时报告 `UNVERIFIED`。
+
+### Step 7：交付手动动作
+
+清晰列出需用户安装的工具、hook 启用、secret 配置和首次 CI 验证，不冒充已完成。
+
+## Rules
+
+1. 任何已有配置先 merge，不直接覆盖。
+2. 不为了开启 Codeguard 删除团队自定义规则。
+3. 不自动安装全局工具、Git hook 或 CI secret。
+4. 只有实际执行并通过的门禁才能报告已接入。
+5. 配置改动必须带 diff 摘要和回退方法。
+
+## 输出模板
+
+```text
+Codeguard init 结果
+- 仓库/模块：<scope>
+- 语言：<detected + evidence>
+- 现有门禁：<inventory>
+- 文件处理：<create/merge/skip>
+- 已验证：<commands and exits>
+- 未验证：<missing tools/CI/secrets>
+- 用户待执行：<hook/install/publish actions>
+```
+
+## Gotchas
+
+1. **YAML 合并不是文本追加**：重复 key 可让 CI 配置静默覆盖。
+2. **pre-commit hook 与 CI 不是同一证据**：本地 hook 已安装不代表远程 workflow 可运行。
+3. **工具版本漂移**：应尽可能复用仓库既有版本锁定。
+4. **monorepo 作用域**：根配置可能不适用每个子包，需明确 working-directory。
+5. **现有未提交文件**：重叠修改不得用生成模板覆盖。
+6. **只生成文件不等于接入完成**：还需实际 parser、check 和 CI 运行证据。
+
+## 按需加载资源
+
+- 进行现有配置盘点时读取 `references/rules/merge-policy.md`。
+- 设计接入顺序和回退时读取 `references/operations/adoption-playbook.md`。
+- 根据仓库现状只读取 `examples/` 中的对应示例。

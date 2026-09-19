@@ -1,0 +1,26 @@
+# 工具链快照
+
+该快照来自 Codeguard 运行时注册表。发布前应通过差分检查确认未漂移。
+
+```json
+{
+  "id": "liquid",
+  "name": "Liquid (Shopify)",
+  "status": "stable",
+  "since": "V0.5",
+  "extensions": [
+    ".liquid"
+  ],
+  "file_names": [],
+  "markers": [],
+  "requiresConfig": [],
+  "probe": [],
+  "lint": [
+    "theme-check",
+    "."
+  ],
+  "gate": [],
+  "format": null,
+  "install_hint": "gem install theme-check"
+}
+```

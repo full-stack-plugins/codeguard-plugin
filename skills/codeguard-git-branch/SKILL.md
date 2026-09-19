@@ -1,10 +1,8 @@
 ---
 name: codeguard-git-branch
-description: |
-  Git 分支规范：整合 7 种主流分支策略（Gitflow、Gitflow+、GitLab 分支规范、GitHub Flow、
-  GitLab Flow、Trunk-Based Development、OneFlow、Release Flow），含模型识别、命名门禁、
-  合并方向门禁与合并策略（merge/squash/rebase）。
-  触发场景：AI 帮用户创建/切换/合并分支、规划发版、或用户说"分支规范"、"gitflow"、"建分支"。
+description: 识别并执行 Gitflow、GitHub/GitLab Flow、Trunk-Based、OneFlow 和 Release Flow 的分支命名、流向与合并门禁；当用户要创建、切换、合并、rebase 分支，规划发版，或询问分支规范/gitflow 时使用。先识别仓库现行模型，不编造版本、作者或流向。
+license: Apache-2.0
+compatibility: 需要 Git 仓库上下文；默认只读识别，未经用户授权不创建/切换分支、不 rebase 或 push。
 ---
 
 # Git 分支规范（7 种主流模型整合）
@@ -188,3 +186,50 @@ AI 规则：先看项目既有历史（`git log --oneline --graph -20`）识别�
 - [ ] 合并前：确认方向在门禁表内；master/main 合并确认版本号与 tag 计划
 - [ ] rebase 前：确认分支未被他人拉取
 - [ ] 严禁：直接向 master/main 提交（除非 TBD 且团队允许）；跨模型混用命名；发布分支收 feature 新功能
+
+## 不适用范围（什么时候不该用）
+
+- 只需编写 commit message，转交 **`codeguard-git-commit`** 技能。
+- 仓库已有明确模型，但用户要求更换团队工流；这是治理决策，不应由技能擅自完成。
+- 目标是已推送的共享历史，却没有团队确认与恢复计划。
+
+## 数据与安全
+
+默认只读取本地 Git 元数据，不收集、上传、发送或存储源码和凭据。创建/切换分支、rebase、merge、push 和 tag 都是独立写操作，必须在用户授权与范围内执行。
+
+## 证据化 Workflow
+
+### Step 1：读取仓库规则
+
+查看 AGENTS/CONTRIBUTING/团队文档、默认分支、保护规则和发布配置。
+
+### Step 2：识别现行模型
+
+使用远程分支、最近历史和发布分支作为证据；无法唯一判定时列出候选与差异。
+
+### Step 3：校验命名输入
+
+从 issue、tag、Git 配置或用户获取 version/author/description，不编造缺失值。
+
+### Step 4：检查流向和历史安全
+
+确认 source/target 符合模型，并在 rebase 前确认分支未被共享。
+
+### Step 5：输出计划或执行已授权动作
+
+报告模型、证据、命名、流向、合并策略和恢复方法。
+
+## Gotchas
+
+1. **存在 develop 不一定是 Gitflow**：需同时核对 release/hotfix 流向。
+2. **环境分支可能禁止回流**：GitLab Flow 的代码通常只向下游环境流动。
+3. **rebase 会改写 SHA**：已共享分支不得擅自 rebase/force-push。
+4. **squash 会丢失细粒度历史**：适用性取决于团队审计与回滚策略。
+5. **tag 不是自动结论**：版本号与签名要求必须来自仓库规则。
+6. **worktree 和子模块有独立状态**：不要用外层分支推断内层仓库。
+
+## 按需加载资源
+
+- 比较模型时读取 `references/branch-models-comparison.md`。
+- 决策或交接时读取 `references/rules/decision-contract.md` 与 `references/operations/evidence-playbook.md`。
+- 只打开 `examples/` 中匹配当前任务的示例。

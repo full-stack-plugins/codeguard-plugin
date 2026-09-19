@@ -1,9 +1,8 @@
 ---
 name: codeguard-git-commit
-description: |
-  Commit 日志规范：整合主流风格——Conventional Commits（Angular）、Gitmoji、Udacity，
-  含正则门禁、commitlint 工具与示例。AI 代写提交信息必须遵守。
-  触发场景：AI 帮用户写 commit message、执行 git commit、或用户说"提交规范"、"commit 规范"。
+description: 根据已暂存差异和仓库历史起草、校验 Conventional Commits、Gitmoji 或 Udacity 风格的提交信息；当用户要写 commit message、执行 git commit、设置 commitlint 或询问提交规范时使用。不凭对话编造改动，不用 --no-verify 绕过门禁。
+license: Apache-2.0
+compatibility: 需要 Git 仓库和可读的 staged diff；默认只生成/校验文案，不自动提交、推送或改写历史。
 ---
 
 # Commit 日志规范（三种主流风格整合）
@@ -130,3 +129,50 @@ docs(readme)：补充三端安装说明
 4. subject 说清「做了什么」，禁止 `update` / `fix` 等空泛词
 5. 提交者与作者邮箱必须使用已验证邮箱
 6. 不确定时问用户，**不得**用 `--no-verify` 绕过门禁
+
+## 不适用范围（什么时候不该用）
+
+- 只要求设计分支模型或合并策略，转交 **`codeguard-git-branch`** 技能。
+- 没有 staged diff 却要求根据对话直接生成并提交。
+- 需要 amend、rebase 或重写已推送历史，但未确认影响范围。
+
+## 数据与安全
+
+默认只读取 staged diff 和本地提交元数据，不收集、上传、发送或存储源码与凭据。提交信息不得包含 token、密码、客户个人数据或未公开漏洞细节。
+
+## 证据化 Workflow
+
+### Step 1：检查 staged 范围
+
+运行 `git diff --cached --stat` 和 `git diff --cached`，确认没有凭据、生成噪声或互不相关改动。
+
+### Step 2：识别仓库风格
+
+读取近期提交、commitlint/hook 配置和 CONTRIBUTING，不把外部风格强加给已有项目。
+
+### Step 3：分类改动
+
+依实际 diff 选择 type/scope；混合无关改动时建议拆分提交。
+
+### Step 4：起草 message
+
+写出简明 subject；对复杂变更补充 what/why、风险和 breaking change。
+
+### Step 5：运行门禁
+
+用仓库现有 commit-msg/commitlint 校验。失败应修正 message，不用 `--no-verify`。
+
+## Gotchas
+
+1. **unstaged 改动不属于当次提交**：不应写入 subject/body。
+2. **纯格式不等于 refactor**：遵循项目对 `style` 和 `refactor` 的语义。
+3. **breaking change 不能隐藏**：需用 `!` 或 `BREAKING CHANGE:` 并说明迁移。
+4. **机器生成文件可掩盖主体变更**：scope 应描述逻辑所属模块。
+5. **Gitmoji 支持需以仓库历史为准**：不因个人偏好擅自添加。
+6. **验证邮箱与签名是独立门禁**：message 合规不代表身份或 GPG/SSH 签名合规。
+
+## 按需加载资源
+
+- 比较风格时读取 `references/commit-style-comparison.md`。
+- 决策或交接时读取 `references/rules/decision-contract.md` 与 `references/operations/evidence-playbook.md`。
+- 只打开 `examples/` 中匹配当前任务的示例。

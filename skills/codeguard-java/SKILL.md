@@ -1,114 +1,182 @@
 ---
 name: codeguard-java
+description: 使用 Codeguard 对 Java 项目执行并诊断代码规范门禁；当用户要求 lint、格式检查、自动修复、提交前质量验证，或出现 mvn -q javadoc:jar -DskipTests 相关失败时使用。先确认仓库配置和工具可用性，区分通过、失败、无法验证与 planned，修复后必须复跑。
 license: Apache-2.0
-description: |
-  Apply Java lint gates (javadoc, Checkstyle P3C), diagnose javadoc errors and warnings,
-  enforce Java naming/import/style conventions, and fix style violations via Spotless.
-  Use when users write or review Java, hit mvn javadoc:jar failures, see checkstyle errors,
-  or ask about P3C/Alibaba style rules, javadoc tags, or Java naming conventions.
-  Route deep Java syntax/framework/library questions to the java-skills repository;
-  route commit format to codeguard-git-commit and CVE findings to codeguard-security-code.
+compatibility: 需要本地项目、对应语言工具链和仓库既有 lint 配置；默认只读检查，不自动安装依赖。
 ---
 
-# Java 代码规范门禁
+# Java Codeguard 门禁
 
-> 基于 [Checkstyle](https://checkstyle.sourceforge.io/)、[Alibaba P3C](https://github.com/alibaba/p3c)、[Spotless](https://github.com/diffplug/spotless) 与团队 `mvn javadoc:jar` 门禁实践。
+> 目标：把“看起来没问题”变成可重复的工具证据，并且诚实区分通过、失败、无法验证和 planned。
 
-## Capability Boundaries
+## 30 秒开始
 
-### ✅ Strengths
-1. javadoc 门禁：`mvn javadoc:jar` 三类 error（reference not found / heading sequence / table caption）与全部 warnings 的诊断与修复
-2. Checkstyle P3C：命名、import、复杂度、行宽规则与抑制配置
-3. Spotless 自动格式化接入
-4. doclint 严格模式（JDK 17/21）下的 HTML 规则（`<caption>`、标题层级、跨模块 `{@link}`）
+1. 在仓库根确认 ``pom.xml`, `build.gradle`` 或目标文件存在。
+2. 探测工具：`mvn --version`。
+3. 先只读检查：`mvn -q javadoc:jar -DskipTests`。
+4. 将结果分为：代码违规、配置缺失、工具缺失、工具内部错误。
+5. 只对可安全修复项执行：`mvn -q spotless:apply`。
+6. 复跑 lint，并执行项目已有测试/构建门禁。
 
-### ⚠️ Prerequisites
-1. Maven 与 JDK 17+；javadoc 门禁建议使用与 CI 一致的 JDK（doclint 规则随 JDK 收紧）
+可直接提出：
 
-### ❌ Out of Scope
-1. Java 语法学习、Spring/MyBatis 等框架用法 → [java-skills](https://github.com/full-stack-skills/java-skills)
-2. 依赖漏洞（CVE）→ `codeguard-security-code`
-3. 提交格式 → `codeguard-git-commit`
+- “检查这个 Java 项目，先不要修改，给我 lint 失败分类。”
+- “只修复 Java 的格式问题，语义问题先列清单。”
+- “提交前验证 Java lint、测试和构建证据。”
 
-## When to Use
 
-- "javadoc 报错了" / "checkstyle 失败" / "P3C 规则"
-- AI 写完 `.java` 文件后钩子拦截
-- "Java 命名规范" / "import 排序"
+## 能力边界
 
-## I. javadoc 门禁（核心约束）
+### ✅ 擅长处理
 
-```bash
-mvn -q javadoc:jar -DskipTests      # 门禁命令（零改动可跑）
-```
+1. 根据 `.java` 与项目标记识别 Java 工作区。
+2. 执行 `mvn -q javadoc:jar -DskipTests` 并保留退出码、作用域和工具版本。
+3. 区分格式、静态规则、配置、依赖和环境类失败。
+4. 使用 `mvn -q spotless:apply` 处理可逆问题并复扫。
+5. 把本地结果与 CI/构建/测试证据分层汇报。
 
-强制规则：
-- public 类/接口/枚举：javadoc + `@author`
-- public 方法：每个参数 `@param` + 非 void 加 `@return`
-- public 常量：单行 javadoc 说明含义
-- `@Override` 方法豁免；`src/test/**` 豁免（suppressions.xml）
+### ⚠️ 需要条件
 
-错误速查（全部来自真实踩坑，详见 [references/javadoc-error-quickref.md](references/javadoc-error-quickref.md)）：
+1. 目标工具必须已安装且版本与项目约束兼容。
+2. 必须从正确仓库或模块根目录执行。
+3. 项目若有自定义配置，以已提交配置为准。
+4. 生成代码、vendor、缓存目录是否扫描必须遵循仓库规则。
 
-| javadoc 报错 | 根因 | 修复 |
-|---|---|---|
-| `reference not found` | `{@link}` 指向的类不在当前模块 classpath（常见于 common 模块引用 api 模块） | 改 `{@code ClassName}` 纯文本 |
-| `heading used out of sequence` | 类注释隐式 H1，直接用 `<h3>` 跳级 | `<h3>` 改 `<p><b>...</b></p>` |
-| `no caption for table` | `<table>` 缺 `<caption>` | 表格首行加 `<caption>标题</caption>` |
-| `no comment` / `no @param` / `no @return` | 公共成员缺 javadoc | 按强制规则补齐 |
-| `use of default constructor...` | class 声明上方 javadoc 块不紧邻或重复 | 合并为单份紧贴 class 行 |
+### ❌ 不适用范围
 
-## II. Checkstyle P3C
+1. 不把 formatter 通过当作编译、测试或安全审计通过。
+2. 不静默安装工具、升级依赖或修改团队规则。
+3. 不用 suppress/ignore/调高阈值掩盖真实问题。
+4. 不在缺少工具或配置时声称“检查通过”。
 
-```bash
-mvn -q checkstyle:check          # 项目配置 checkstyle 插件后可用
-```
 
-配置模板：`linters/checkstyle/p3c-javadoc-enforced.xml`（P3C 风格 + javadoc 强制）、
-`linters/checkstyle/checkstyle-suppressions.xml`（测试类/生成代码豁免）。
+## 什么时候使用
 
-| 规则族 | 要点 |
+- 用户要求检查或修复 Java 代码规范。
+- AI 修改了 `.java`，需要提交前验证。
+- CI 出现与 `mvn -q javadoc:jar -DskipTests` 相关的失败。
+- 需要判断某个问题能否自动修复，或必须人工处理。
+
+## 什么时候不该使用
+
+- 主要任务是学习语言语法、框架设计或业务建模，应改用对应语言专业技能。
+- 主要任务是依赖漏洞、安全审计或许可证治理，应使用专门安全技能。
+- 用户只要求解释一条报错且没有项目上下文时，先做局部解释，不宣称仓库全绿。
+
+## 数据与安全
+
+本技能不收集、上传、发送或存储用户代码和凭据。默认只读取本地仓库配置并运行本地工具；不联网安装依赖，不记录 token、密码或私有源码。任何自动修复前先检查 diff，破坏性或大范围修改必须由用户明确确认。
+
+## 执行契约
+
+| 项目 | 当前事实 |
 |---|---|
-| 命名 | 类 UpperCamelCase / 方法 lowerCamelCase / 常量 UPPER_SNAKE_CASE / 包全小写 |
-| Import | 禁通配符 `.*`、禁未使用、分组排序 |
-| 复杂度 | 方法参数 ≤7；行宽 160 |
+| 状态 | `stable`（自 Codeguard V0.1） |
+| 文件扩展名 | `.java` |
+| 项目标记 | `pom.xml`, `build.gradle` |
+| 接入配置 | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle` |
+| 工具准备 | 工具链内置或由项目声明 |
+| 探测命令 | `使用命令查找与项目配置检查` |
+| lint | `mvn -q javadoc:jar -DskipTests` |
+| format/fix | `mvn -q spotless:apply` |
+| 项目级 gate | `mvn -q javadoc:jar -DskipTests` |
 
-## III. Spotless 自动格式化
 
-```bash
-mvn -q spotless:apply            # 自动修复格式类问题
-mvn -q spotless:check            # CI 检查
+## 标准 Workflow
+
+### Step 1：确定真实作用域
+
+确认仓库根、模块根、生成目录、vendor 目录和用户指定文件。多模块项目先列出将被扫描的模块，禁止靠当前目录猜测。
+
+### Step 2：读取项目契约
+
+读取 `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle` 及 CI 中的实际命令。仓库配置优先于本技能示例；如果两者冲突，先报告差异。
+
+### Step 3：探测工具与版本
+
+运行 `对应工具 --version`。工具缺失、版本不兼容或配置无法加载均记为“无法验证”，不是通过。
+
+### Step 4：执行只读检查
+
+运行 `mvn -q javadoc:jar -DskipTests`，记录命令、工作目录、退出码、工具版本和首个可操作错误。
+
+### Step 5：失败分型
+
+| 类型 | 典型信号 | 处理 |
+|---|---|---|
+| 格式 | 缩进、空白、import 顺序 | 允许 formatter，随后检查 diff |
+| 静态规则 | unused、复杂度、命名、危险 API | 最小语义修复，禁止批量猜测 |
+| 配置 | parser/config/schema 找不到 | 修复接入或报告前置条件 |
+| 环境 | command not found、版本冲突 | 报告安装/版本要求，不静默安装 |
+| 工具内部错误 | crash、timeout、解析器异常 | 保留原始证据，缩小复现范围 |
+
+### Step 6：受控修复
+
+优先运行 `mvn -q spotless:apply`。只处理确定可逆的问题；依赖升级、规则豁免、生成文件和业务语义改动必须单独说明。
+
+### Step 7：验证闭环
+
+复跑同一 lint 命令，再运行项目已有测试与构建。只有命令、范围和退出码都明确时才写“通过”；否则写“未运行”或“无法验证”。
+
+## Rules
+
+1. **同命令复验**：修复后必须复跑触发失败的原命令。
+2. **证据分层**：lint、format、compile、test、security 分开报告。
+3. **最小修改**：不顺手重构，不把风格修复扩大成业务改写。
+4. **配置优先**：不覆盖项目已有 ignore、dialect、target 或版本约束。
+5. **禁止胡编**：未运行的工具、未看到的配置和未验证的平台必须明确标注。
+
+## 输出模板
+
+```text
+Java Codeguard 结果
+- 范围：<仓库/模块/文件>
+- 工具：<名称与版本>
+- 命令：<实际命令>
+- 状态：PASS / FAIL / UNVERIFIED / PLANNED
+- 发现：<按格式/规则/配置/环境分类>
+- 修改：<文件与原因；无修改写 none>
+- 复验：<命令、退出码>
+- 未验证：<测试/构建/平台差异>
 ```
-
-Spotless 只修格式（缩进/import 排序/行尾），**不修** javadoc 缺失。
-
-## IV. 集成方式
-
-- PostToolUse 钩子：AI 写 `.java` 后自动跑 `mvn javadoc:jar`（默认门禁）
-- pre-commit：`.pre-commit-config.yaml` 的 `maven-javadoc` hook
-- CI：`mvn verify`（javadoc 在 package 阶段触发）
-
-## Workflow
-
-1. 写完 `.java` → 等 codeguard 钩子结果（或手动 `mvn -q javadoc:jar -DskipTests`）
-2. 有 error → 按速查表修复
-3. 格式类 warning → `mvn -q spotless:apply`
-4. 复跑至零 error
-5. 提交前跑一次全模块（多模块取最坏结果）
 
 ## Gotchas
 
-1. `mvn compile` 不跑 javadoc——本地绿色不代表 install/deploy 绿色
-2. doclint 严格度随 JDK 升级收紧（17 → 21 有新增检查），CI 与本地 JDK 要对齐
-3. 跨模块 `{@link}` 是重灾区：common 模块永远解析不到 api 模块的类
-4. Javadoc 里的 cron 表达式 `"0 */10 * * * ?"` 会被 doclint 当成注释结束符——写成 `"0 0/10 * * * ?"`
-5. 同一 class 上叠加多份 `/** */` 块能编译通过，但 javadoc 只认紧邻的那份
+1. **工具缺失不是通过** — 必须输出 `UNVERIFIED` 和明确的准备方式。
+2. **formatter 不是 linter** — 格式全绿不能覆盖静态规则或编译错误。
+3. **根目录决定结果** — 在错误模块运行可能漏检或加载错误配置。
+4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
+5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
+6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
+1. **领域陷阱** — `mvn compile` 不执行 Javadoc 门禁；发布链失败时必须单独运行 `mvn javadoc:jar`。
+2. **领域陷阱** — JDK 版本会改变 doclint 严格度；本地和 CI 必须使用同一主版本。
 
-## On-Demand Resources
+## 信息不足时
 
-- [javadoc 错误速查与实战案例](references/javadoc-error-quickref.md)：doclint 全错误分类、修复模板、JDK 版本差异
-- [Checkstyle P3C ↔ codeguard 规则映射](references/checkstyle-p3c-mapping.md)：启用规则逐条说明与豁免配置
+不要只说“请提供更多信息”。先给出安全的只读检查方案，并列出仍需确认的具体项：
 
-## Official References
+1. 仓库/模块根目录；
+2. 目标工具与版本；
+3. 项目配置文件；
+4. CI 中的权威命令；
+5. 是否允许自动修复。
 
-- [Checkstyle](https://checkstyle.sourceforge.io/) · [Alibaba P3C](https://github.com/alibaba/p3c) · [Spotless](https://github.com/diffplug/spotless) · [Javadoc Guide](https://docs.oracle.com/en/java/javase/17/javadoc/javadoc.html)
+## FAQ
+
+**Q1：工具没安装，可以判定代码没问题吗？** 不能。状态必须是 `UNVERIFIED`。
+
+**Q2：可以自动加 ignore 或 suppression 吗？** 不可以。只有用户明确接受并记录理由时才能豁免。
+
+**Q3：格式化后为什么还失败？** formatter 只覆盖格式；静态规则、配置、编译和测试仍需分别处理。
+
+**Q4：是否应该扫描生成代码？** 默认遵循仓库配置；没有规则时先排除生成/vendor，再向用户说明。
+
+**Q5：如何避免一次修改太多？** 先按失败类别和文件分批修复，每批都复跑原命令并审查 diff。
+
+**Q6：本地通过就能说 CI 会通过吗？** 不能。还需对齐 CI 的版本、环境变量、操作系统和命令范围。
+
+## 按需加载资源
+
+- 遇到退出码、失败分类或豁免决策时，读取 `references/rules/gate-rules.md`。
+- 需要核对本语言注册表、工具链和项目配置时，读取 `references/tooling/toolchain.md`。
+- 需要可复制任务示例时，按场景读取 `examples/`，不必一次加载全部。

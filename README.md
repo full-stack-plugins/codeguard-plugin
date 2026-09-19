@@ -65,7 +65,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.2.0` |
+| Current version | `0.4.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | `python3 scripts/run_check.py --mcp` (stdio JSON-RPC) |
@@ -95,9 +95,17 @@ Beyond linting, codeguard ships standalone governance skills sourced from the te
 
 The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`); branch and security skills guide the AI during branch creation, interface development, and pre-merge review.
 
-### Skill architecture
+### External skill source
 
-All 18 skills follow a unified authoring standard abstracted from [rust-skills](https://github.com/full-stack-skills/rust-skills): a lean `SKILL.md` (trigger metadata, capability boundaries, workflow, gotchas) plus `references/` for progressive disclosure of deep material. The standard is documented in [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md). Skills cross-route to each other (e.g. the main entry routes deep Java questions to the java-skills repository, commit format to codeguard-git-commit).
+The 68 portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills), not independently inside this plugin. This repository vendors the complete `v0.1.0` snapshot so installed plugins work offline:
+
+- `skills.lock.json` pins the upstream repository, immutable tag, resolved commit, managed skill names, and per-skill SHA-256 digests.
+- `python3 scripts/vendor/skill_vendor.py update` refreshes only the skill names listed in the lock.
+- `python3 scripts/vendor/skill_vendor.py check --offline` verifies the packaged snapshot; omit `--offline` to verify the upstream ref and content too.
+- Do not directly edit a locked skill directory. Change and release `codeguard-skills`, update the lock ref, then run the vendor update.
+- Plugin-specific skills may remain under `skills/` only when they are intentionally absent from `skills.lock.json`; the vendor leaves those directories untouched.
+
+Hooks, linters, commands, MCP wiring, and executable scripts remain plugin-owned. The authoring standard is documented in [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md).
 
 ## Capabilities and boundaries
 
@@ -211,8 +219,10 @@ partme-codeguard-plugin/
 ├── scripts/
 │   ├── detect_lang.py            # language detection + linter command table (shared)
 │   ├── run_check.py              # main CLI: detect + run all linters + report
-│   └── fix.py                    # auto-fix CLI
-├── skills/                       # 68 SKILL.md (main + init + 22 languages + 2 git + 3 security + planned-language skeletons)
+│   ├── fix.py                    # auto-fix CLI
+│   └── vendor/skill_vendor.py    # lock-driven external skill vendor/check
+├── skills.lock.json              # upstream tag/commit + managed skills + SHA-256 digests
+├── skills/                       # 68 vendored skills from codeguard-skills v0.1.0
 │   ├── codeguard/                # main entry
 │   ├── codeguard-init/           # one-line bootstrap
 │   ├── codeguard-{java,rust,typescript,python}/

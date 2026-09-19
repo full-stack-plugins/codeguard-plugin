@@ -1,90 +1,182 @@
 ---
 name: codeguard-typescript
-description: |
-  TypeScript / JavaScript 代码规范：ESLint recommended + Prettier 一致格式化。
-  触发：用户说"eslint"、"ts 规范"、"prettier"、"lint"。
+description: 使用 Codeguard 对 TypeScript / JavaScript 项目执行并诊断代码规范门禁；当用户要求 lint、格式检查、自动修复、提交前质量验证，或出现 npx --no-install eslint . --max-warnings 0 相关失败时使用。先确认仓库配置和工具可用性，区分通过、失败、无法验证与 planned，修复后必须复跑。
+license: Apache-2.0
+compatibility: 需要本地项目、对应语言工具链和仓库既有 lint 配置；默认只读检查，不自动安装依赖。
 ---
 
-# TypeScript / JavaScript 代码规范
+# TypeScript / JavaScript Codeguard 门禁
 
-## 强制项（违反必须修复）
+> 目标：把“看起来没问题”变成可重复的工具证据，并且诚实区分通过、失败、无法验证和 planned。
 
-### 1. ESLint recommended
+## 30 秒开始
 
-```bash
-npx eslint . --max-warnings 0
-```
+1. 在仓库根确认 ``package.json`, `deno.json`` 或目标文件存在。
+2. 探测工具：`npx --no-install eslint --version`。
+3. 先只读检查：`npx --no-install eslint . --max-warnings 0`。
+4. 将结果分为：代码违规、配置缺失、工具缺失、工具内部错误。
+5. 只对可安全修复项执行：`npx eslint . --fix`。
+6. 复跑 lint，并执行项目已有测试/构建门禁。
 
-必须 0 warning。常用规则：
+可直接提出：
 
-| 规则 | 行为 |
+- “检查这个 TypeScript / JavaScript 项目，先不要修改，给我 lint 失败分类。”
+- “只修复 TypeScript / JavaScript 的格式问题，语义问题先列清单。”
+- “提交前验证 TypeScript / JavaScript lint、测试和构建证据。”
+
+
+## 能力边界
+
+### ✅ 擅长处理
+
+1. 根据 `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` 与项目标记识别 TypeScript / JavaScript 工作区。
+2. 执行 `npx --no-install eslint . --max-warnings 0` 并保留退出码、作用域和工具版本。
+3. 区分格式、静态规则、配置、依赖和环境类失败。
+4. 使用 `npx eslint . --fix` 处理可逆问题并复扫。
+5. 把本地结果与 CI/构建/测试证据分层汇报。
+
+### ⚠️ 需要条件
+
+1. 目标工具必须已安装且版本与项目约束兼容。
+2. 必须从正确仓库或模块根目录执行。
+3. 项目若有自定义配置，以已提交配置为准。
+4. 生成代码、vendor、缓存目录是否扫描必须遵循仓库规则。
+
+### ❌ 不适用范围
+
+1. 不把 formatter 通过当作编译、测试或安全审计通过。
+2. 不静默安装工具、升级依赖或修改团队规则。
+3. 不用 suppress/ignore/调高阈值掩盖真实问题。
+4. 不在缺少工具或配置时声称“检查通过”。
+
+
+## 什么时候使用
+
+- 用户要求检查或修复 TypeScript / JavaScript 代码规范。
+- AI 修改了 `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`，需要提交前验证。
+- CI 出现与 `npx --no-install eslint . --max-warnings 0` 相关的失败。
+- 需要判断某个问题能否自动修复，或必须人工处理。
+
+## 什么时候不该使用
+
+- 主要任务是学习语言语法、框架设计或业务建模，应改用对应语言专业技能。
+- 主要任务是依赖漏洞、安全审计或许可证治理，应使用专门安全技能。
+- 用户只要求解释一条报错且没有项目上下文时，先做局部解释，不宣称仓库全绿。
+
+## 数据与安全
+
+本技能不收集、上传、发送或存储用户代码和凭据。默认只读取本地仓库配置并运行本地工具；不联网安装依赖，不记录 token、密码或私有源码。任何自动修复前先检查 diff，破坏性或大范围修改必须由用户明确确认。
+
+## 执行契约
+
+| 项目 | 当前事实 |
 |---|---|
-| `no-unused-vars` | error（参数/变量未使用报错） |
-| `prefer-const` | error（let 应改为 const） |
-| `eqeqeq` | error（`==` 改 `===`） |
-| `no-undef` | error（使用未声明的变量） |
-| `no-var` | error（必须用 let/const） |
-| `no-console` | warn（除 warn/error/info 外禁止 console） |
+| 状态 | `stable`（自 Codeguard V0.1） |
+| 文件扩展名 | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` |
+| 项目标记 | `package.json`, `deno.json` |
+| 接入配置 | `eslint.config.js`, `eslint.config.mjs`, `eslint.config.cjs`, `eslint.config.ts`, `.eslintrc.json`, `.eslintrc.js`, `.eslintrc.yml`, `.pre-commit-config.yaml` |
+| 工具准备 | 项目需安装 eslint |
+| 探测命令 | `npx --no-install eslint --version` |
+| lint | `npx --no-install eslint . --max-warnings 0` |
+| format/fix | `npx eslint . --fix` |
+| 项目级 gate | `npx --no-install eslint . --max-warnings 0` |
 
-### 2. TypeScript strict
 
-`tsconfig.json` 必须开启：
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true
-  }
-}
+## 标准 Workflow
+
+### Step 1：确定真实作用域
+
+确认仓库根、模块根、生成目录、vendor 目录和用户指定文件。多模块项目先列出将被扫描的模块，禁止靠当前目录猜测。
+
+### Step 2：读取项目契约
+
+读取 `eslint.config.js`, `eslint.config.mjs`, `eslint.config.cjs`, `eslint.config.ts`, `.eslintrc.json`, `.eslintrc.js`, `.eslintrc.yml`, `.pre-commit-config.yaml` 及 CI 中的实际命令。仓库配置优先于本技能示例；如果两者冲突，先报告差异。
+
+### Step 3：探测工具与版本
+
+运行 `npx --no-install eslint --version`。工具缺失、版本不兼容或配置无法加载均记为“无法验证”，不是通过。
+
+### Step 4：执行只读检查
+
+运行 `npx --no-install eslint . --max-warnings 0`，记录命令、工作目录、退出码、工具版本和首个可操作错误。
+
+### Step 5：失败分型
+
+| 类型 | 典型信号 | 处理 |
+|---|---|---|
+| 格式 | 缩进、空白、import 顺序 | 允许 formatter，随后检查 diff |
+| 静态规则 | unused、复杂度、命名、危险 API | 最小语义修复，禁止批量猜测 |
+| 配置 | parser/config/schema 找不到 | 修复接入或报告前置条件 |
+| 环境 | command not found、版本冲突 | 报告安装/版本要求，不静默安装 |
+| 工具内部错误 | crash、timeout、解析器异常 | 保留原始证据，缩小复现范围 |
+
+### Step 6：受控修复
+
+优先运行 `npx eslint . --fix`。只处理确定可逆的问题；依赖升级、规则豁免、生成文件和业务语义改动必须单独说明。
+
+### Step 7：验证闭环
+
+复跑同一 lint 命令，再运行项目已有测试与构建。只有命令、范围和退出码都明确时才写“通过”；否则写“未运行”或“无法验证”。
+
+## Rules
+
+1. **同命令复验**：修复后必须复跑触发失败的原命令。
+2. **证据分层**：lint、format、compile、test、security 分开报告。
+3. **最小修改**：不顺手重构，不把风格修复扩大成业务改写。
+4. **配置优先**：不覆盖项目已有 ignore、dialect、target 或版本约束。
+5. **禁止胡编**：未运行的工具、未看到的配置和未验证的平台必须明确标注。
+
+## 输出模板
+
+```text
+TypeScript / JavaScript Codeguard 结果
+- 范围：<仓库/模块/文件>
+- 工具：<名称与版本>
+- 命令：<实际命令>
+- 状态：PASS / FAIL / UNVERIFIED / PLANNED
+- 发现：<按格式/规则/配置/环境分类>
+- 修改：<文件与原因；无修改写 none>
+- 复验：<命令、退出码>
+- 未验证：<测试/构建/平台差异>
 ```
 
-### 3. 命名
+## Gotchas
 
-- 类/类型/枚举：`UpperCamelCase`（`UserService`）
-- 函数/变量：`lowerCamelCase`
-- 常量：`UPPER_SNAKE_CASE`（仅当 `const` 且永不变更时）
-- 文件名：kebab-case（`user-service.ts`）或 camelCase（团队约定）
+1. **工具缺失不是通过** — 必须输出 `UNVERIFIED` 和明确的准备方式。
+2. **formatter 不是 linter** — 格式全绿不能覆盖静态规则或编译错误。
+3. **根目录决定结果** — 在错误模块运行可能漏检或加载错误配置。
+4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
+5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
+6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
+1. **领域陷阱** — 坚持 `npx --no-install`，避免检查过程静默下载与改变依赖树。
+2. **领域陷阱** — ESLint flat config 与旧 `.eslintrc` 的解析规则不同，先确认项目实际采用哪一套。
 
-### 4. Import 顺序
+## 信息不足时
 
-```
-// 1. Node 内置
-import { readFileSync } from 'fs';
+不要只说“请提供更多信息”。先给出安全的只读检查方案，并列出仍需确认的具体项：
 
-// 2. 第三方
-import express from 'express';
+1. 仓库/模块根目录；
+2. 目标工具与版本；
+3. 项目配置文件；
+4. CI 中的权威命令；
+5. 是否允许自动修复。
 
-// 3. 本项目（按字母序）
-import { UserService } from './user-service';
-```
+## FAQ
 
-### 5. 不要使用
+**Q1：工具没安装，可以判定代码没问题吗？** 不能。状态必须是 `UNVERIFIED`。
 
-- `any`（除非明确注释说明原因）
-- `@ts-ignore`（用 `@ts-expect-error` 并说明）
-- `as unknown as X` 双重断言
-- `eval()`、`new Function()`
-- `console.log` 在生产代码（仅 dev/warn/error 可用）
+**Q2：可以自动加 ignore 或 suppression 吗？** 不可以。只有用户明确接受并记录理由时才能豁免。
 
-## 自动修复
+**Q3：格式化后为什么还失败？** formatter 只覆盖格式；静态规则、配置、编译和测试仍需分别处理。
 
-```bash
-npx eslint . --fix          # 自动修复可修复的问题
-npx prettier --write .      # 格式化（如果项目同时使用 prettier）
-```
+**Q4：是否应该扫描生成代码？** 默认遵循仓库配置；没有规则时先排除生成/vendor，再向用户说明。
 
-## 常见错误速查
+**Q5：如何避免一次修改太多？** 先按失败类别和文件分批修复，每批都复跑原命令并审查 diff。
 
-| ESLint 报错 | 修复 |
-|---|---|
-| `no-unused-vars` | 删除未使用变量，或前缀加 `_`（`no-unused-vars` 配置 `varsIgnorePattern: "^_"`） |
-| `prefer-const` | `let x = 5;` → `const x = 5;` |
-| `eqeqeq` | `a == b` → `a === b` |
-| `@typescript-eslint/no-explicit-any` | 替换为具体类型或 `unknown` |
-| `import/order` | 调整 import 顺序 |
+**Q6：本地通过就能说 CI 会通过吗？** 不能。还需对齐 CI 的版本、环境变量、操作系统和命令范围。
+
+## 按需加载资源
+
+- 遇到退出码、失败分类或豁免决策时，读取 `references/rules/gate-rules.md`。
+- 需要核对本语言注册表、工具链和项目配置时，读取 `references/tooling/toolchain.md`。
+- 需要可复制任务示例时，按场景读取 `examples/`，不必一次加载全部。

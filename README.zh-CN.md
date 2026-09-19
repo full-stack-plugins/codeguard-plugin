@@ -65,7 +65,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.2.0` |
+| 当前版本 | `0.4.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | `python3 scripts/run_check.py --mcp`（stdio JSON-RPC） |
@@ -80,6 +80,18 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | **Stable**（53 种，默认强制） | Java、Rust、TypeScript/JavaScript、Python、Go、C#、Kotlin、Swift、PHP、Ruby、Scala、Shell、Dockerfile、YAML、Elixir、CSS/SCSS、Markdown、SQL、TOML、HTML、Protobuf、Terraform/OpenTofu、Nix、Dart、Solidity、Ansible、Perl、Groovy、Clojure、PowerShell、Zig、Nim、Crystal、Julia（仅格式化）、Pascal（仅格式化）、Elm、Lua、Luau、C++（clang-tidy）、Objective-C、CUDA、GraphQL、VB.NET、Erlang、R、CFML 等，详见 LANGUAGES.md |
 | **Planned**（4 种，无独立 CLI linter） | Metal、ArkTS（HarmonyOS）、COBOL、Liquid（theme-check 待接通） |
+
+## 外部技能来源
+
+68 个可复用技能统一在 [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills) 编写，插件不再维护一份独立手写副本。为保证插件安装后离线可用，本仓库 vendor 了完整的 `v0.1.0` 快照：
+
+- `skills.lock.json` 固定上游仓库、不可变 tag、解析后的 commit、受管技能清单与逐技能 SHA-256。
+- `python3 scripts/vendor/skill_vendor.py update` 只刷新 lock 中列出的技能。
+- `python3 scripts/vendor/skill_vendor.py check --offline` 校验插件内快照；去掉 `--offline` 还会校验上游 ref 与内容。
+- 不得直接修改 lock 管理的技能目录。应先在 `codeguard-skills` 修改并发布，再更新 lock ref 并执行 vendor update。
+- 只有插件内部定制技能可以直接保留在 `skills/`，且必须明确不列入 `skills.lock.json`；vendor 不会删除或覆盖这些目录。
+
+Hooks、linters、commands、MCP 接线和可执行脚本仍由插件仓负责。
 
 ## 能力与边界
 
@@ -192,8 +204,10 @@ partme-codeguard-plugin/
 ├── scripts/
 │   ├── detect_lang.py            # 语言检测 + linter 命令表（共享）
 │   ├── run_check.py              # 主 CLI：检测 + 跑全量 + 报告
-│   └── fix.py                    # 自动修复 CLI
-├── skills/                       # 68 个 SKILL.md（主入口 + init + 22 语言强制 + 2 Git + 3 安全 + planned 语言骨架）
+│   ├── fix.py                    # 自动修复 CLI
+│   └── vendor/skill_vendor.py    # lock 驱动的外部技能 vendor/check
+├── skills.lock.json              # 上游 tag/commit + 受管技能 + SHA-256
+├── skills/                       # 从 codeguard-skills v0.1.0 vendor 的 68 个技能
 │   ├── codeguard/                # 主入口
 │   ├── codeguard-init/           # 一行接入
 │   ├── codeguard-{java,rust,typescript,python}/

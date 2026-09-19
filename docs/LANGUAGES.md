@@ -83,7 +83,7 @@
 
 1. `scripts/languages.json` 注册表加一条语言定义（id/extensions/markers/lint/format/status）。
 2. `linters/<lang>/` 放配置模板。
-3. `skills/codeguard-<lang>/SKILL.md` 写规范速查（frontmatter `name` == 目录名）。
-4. 重跑 `python3 scripts/gen_language_docs.py` 同步本文档。
-5. `python3 scripts/detect_lang.py <项目>` 冒烟验证。
-
+3. 在外部 `full-stack-skills/codeguard-skills` 新增或更新 `skills/codeguard-<lang>/`，完成 lint、TRACE 评估并发布不可变 tag。
+4. 更新插件 `skills.lock.json` 的 ref 和技能清单，运行 `python3 scripts/vendor/skill_vendor.py update`。
+5. 重跑 `python3 scripts/gen_language_docs.py` 同步本文档。
+6. 执行 vendor 离线/在线检查，并用 `python3 scripts/detect_lang.py <项目>` 冒烟验证。
