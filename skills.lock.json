@@ -4,8 +4,8 @@
     {
       "package": "codeguard-skills",
       "repo": "https://github.com/full-stack-skills/codeguard-skills.git",
-      "ref": "v0.1.0",
-      "sha": "d6f2ee3c7b67ef037082212ca13a4bda758eefe0",
+      "ref": "v0.1.1",
+      "sha": "5f20f995c82f07233682517c1c39686887e709f1",
       "skills": [
         "codeguard",
         "codeguard-ansible",

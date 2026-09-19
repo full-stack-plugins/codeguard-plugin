@@ -65,7 +65,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.5.3` |
+| 当前版本 | `0.5.4` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | SDK 协议实现完成前不随清单发布；当前使用 CLI 与 Hooks |
@@ -241,10 +241,10 @@ partme-codeguard-plugin/
 
 | 平台 | 插件 manifest | 安装路径 | 状态 |
 |---|---|---|---|
-| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/cli/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.3 已验证 |
-| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.3 已验证 |
+| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/cli/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.4 已验证 |
+| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.4 已验证 |
 | **Claude Code** | （复用 Codex manifest，经 marketplace 安装） | `~/.claude/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
-| **Kimi Code** | `kimi.plugin.json` | `~/.kimi-code/plugins/managed/codeguard/` | ✅ V0.5.3 已验证 |
+| **Kimi Code** | `kimi.plugin.json` | `~/.kimi-code/plugins/managed/codeguard/` | ✅ V0.5.4 已验证 |
 
 钩子、脚本、linter、skills 在所有平台**共享**——只有 manifest 不同。
 
