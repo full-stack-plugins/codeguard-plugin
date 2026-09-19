@@ -83,10 +83,14 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
         )
         if proc.returncode == 0:
             inherited = proc.stdout.strip().splitlines()
-            if inherited and inherited[-1].count(":") > cur.count(":"):
-                os.environ["PATH"] = inherited[-1]
+            if inherited:
+                # 即使登录 shell 没提供更丰富的 PATH，也缓存这次探测结果。
+                # Linux CI 的 login shell 常与当前 PATH 等价；若不写缓存，
+                # 每次钩子都会重复 spawn shell，违背十分钟缓存契约。
+                resolved = inherited[-1] if inherited[-1].count(":") > cur.count(":") else os.environ["PATH"]
+                os.environ["PATH"] = resolved
                 try:
-                    cache_file.write_text(inherited[-1])
+                    cache_file.write_text(resolved)
                 except OSError:
                     pass
     except (OSError, subprocess.SubprocessError):
