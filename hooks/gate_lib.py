@@ -122,6 +122,9 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
         # 门禁用项目级命令（gate）：shellcheck/php -l 等文件型 linter 裸跑会报参数错
         gate_cmd = cmd_def.get("gate") or cmd_def.get("lint")
         if not gate_cmd:
+            # 无 gate 的语言（如 java 的 lint 是全模块 mvn 命令）如实计入 skipped，
+            # 否则 user_prompt_validator 的「已检查 N 个生态」统计虚标（实测 java 被虚标）
+            skipped.append(f"{lang} 未配置项目级 gate 命令，本次未验证")
             continue
         if "{file}" in " ".join(gate_cmd):
             # {file} 占位符只在 PostToolUse 单文件模式下被替换；门禁拿字面量
@@ -166,7 +169,7 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
         # 真实 lint 失败：问题摘要取输出头部（最具体的问题在前）
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()
-        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:600]
+        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:2000]
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
         failures.append((lang, detail, fix, hint))
     return failures, skipped

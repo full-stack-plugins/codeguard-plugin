@@ -333,7 +333,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck"
+        "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck --severity=warning"
       ]
     },
     {
@@ -585,7 +585,9 @@
         ".eslintrc.json",
         ".eslintrc.js",
         ".eslintrc.yml",
-        ".pre-commit-config.yaml"
+        ".pre-commit-config.yaml",
+        ".eslintrc",
+        ".eslintrc.cjs"
       ]
     },
     {
@@ -762,7 +764,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r npx --no-install htmlhint"
+        "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -exec grep -L '<%' {} + | xargs -0 -r npx --no-install htmlhint"
       ]
     },
     {

@@ -380,6 +380,82 @@ def test_edges():
     _sh.rmtree(repo)
 
 
+# ══════════════════════════ 子集 5：实战回归（2026-09-19 真实项目踩坑） ══════════════════════════
+
+def test_field_regressions():
+    print("\n[5] 实战回归：EJS 误报豁免 / requiresConfig 基线 / 双副本去重 / severity")
+
+    # ── 1. EJS 模板：vue-cli public/index.html 含 <% %>，htmlhint 三规则误报 ──
+    ejs = make_repo()
+    (ejs / "public").mkdir()
+    (ejs / "public" / "index.html").write_text(
+        "<!DOCTYPE html><html><body>"
+        "<% if (process.env.VUE_APP_X) { %><span class='icon'><%= msg %></span><% } %>"
+        "</body></html>\n"
+    )
+    # PostToolUse：EJS 文件 → 豁免误报规则后应通过（不再拦截）
+    r = run_hook("post_tool_lint.py",
+                 {"tool_name": "Write", "tool_input": {"file_path": str(ejs / "public" / "index.html")}}, ejs)
+    ok("EJS 模板豁免后 lint 通过", r.returncode == 0 and "FAILED" not in r.stdout)
+
+    # gate：EJS 文件被 grep -L '<%' 过滤，不再进 htmlhint
+    git(ejs, "add", "-A")
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash", "tool_input": {"command": f"git -C {ejs} commit -m x"}}, ejs)
+    ok("html gate 过滤 EJS 文件（不再拦提交）",
+       "html" not in (r.stderr or ""))
+
+    # ── 2. eslint 未接入项目（无任何 .eslintrc*）→ PostToolUse 静默跳过 ──
+    novue = make_repo()
+    (novue / "comp.vue").write_text("<template><div/></template>\n")
+    r = run_hook("post_tool_lint.py",
+                 {"tool_name": "Write", "tool_input": {"file_path": str(novue / "comp.vue")}}, novue)
+    ok("vue 未接入 eslint → PostToolUse 静默（不误报）",
+       r.returncode == 0 and "FAILED" not in r.stdout and "lint passed" not in r.stdout)
+
+    # gate：同样不拦提交
+    git(novue, "add", "-A")
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash", "tool_input": {"command": f"git -C {novue} commit -m x"}}, novue)
+    ok("vue gate：未接入项目不被 eslint 阻断", "vue" not in (r.stderr or ""))
+
+    # ── 3. 双副本去重：2 秒内同文件同 mtime 的第二次触发静默 ──
+    dup = make_repo()
+    payload = {"tool_name": "Write", "tool_input": {"file_path": str(dup / "scripts" / "deploy.sh")}}
+    r1 = run_hook("post_tool_lint.py", payload, dup)
+    r2 = run_hook("post_tool_lint.py", payload, dup)
+    ok("第一次触发正常输出", r1.returncode == 0 and r1.stdout.strip() != "")
+    ok("第二次触发（同文件同 mtime）静默去重",
+       r2.returncode == 0 and "additionalContext" not in r2.stdout)
+
+    # ── 4. shell severity=warning：info 级（SC2086）不再拦提交 ──
+    sev = make_repo()
+    (sev / "scripts" / "deploy.sh").write_text(
+        '#!/bin/bash\necho "$HOME"\n'   # 干净脚本（无 shellcheck 问题）
+    )
+    git(sev, "add", "-A")
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash",
+                  "tool_input": {"command": f"cd {sev} && git commit -m x"}}, sev)
+    ok("干净脚本不拦提交（severity=warning 基线）",
+       "shell" not in (r.stderr or ""))
+
+    # ── 5. 真 warning 级问题仍拦截（severity 收紧不放走真问题） ──
+    sev2 = make_repo()
+    (sev2 / "scripts" / "deploy.sh").write_text(
+        '#!/bin/bash\nif [ $foo = bar ]; then echo hi; fi\n'  # SC2086+SC2154 warning 级
+    )
+    git(sev2, "add", "-A")
+    r = run_hook("pre_tool_git_guard.py",
+                 {"tool_name": "Bash",
+                  "tool_input": {"command": f"cd {sev2} && git commit -m x"}}, sev2)
+    ok("warning 级真问题（未定义变量）仍拦截", "shell" in (r.stderr or ""))
+
+    # 清理
+    for d in (ejs, novue, dup, sev, sev2):
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     print(f"codeguard 测试集  plugin={PLUGIN.name}")
@@ -387,6 +463,7 @@ def main():
     if which in ("all", "hooks"): test_hooks()
     if which in ("all", "unit"): test_unit()
     if which in ("all", "edges"): test_edges()
+    if which in ("all", "field"): test_field_regressions()
     print(f"\n═══ 结果: {len(PASS)} 通过 / {len(FAIL)} 失败 / {len(SKIP)} 跳过 ═══")
     if FAIL:
         print("失败项:", *FAIL, sep="\n  - ")

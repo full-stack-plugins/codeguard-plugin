@@ -24,9 +24,13 @@ from detect_lang import (
     ensure_user_path,
     find_project_root,
     load_user_config,
+    project_uses_linter,
 )
 
 STATE_FILE = PLUGIN_ROOT / ".session_state.json"
+# 双副本去重：同一插件可能以多个 marketplace 副本安装（partme-ai/ 与
+# full-stack-plugins/ 各一份，钩子双份触发——实测），用户级固定路径跨副本共享
+DEDUP_FILE = Path.home() / ".codeguard" / "hook_dedup.json"
 
 
 def bump_state(lang: str, passed: bool, auto_fixed: bool = False) -> None:
@@ -59,6 +63,51 @@ def mac_notify(title: str, message: str) -> None:
          f'display notification "{safe_msg}" with title "{safe_title}" sound name "Pop"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+
+
+def should_suppress_duplicate(file_path: str) -> bool:
+    """双副本去重：2 秒内同路径且文件未变化的重复触发静默跳过。
+
+    两个 marketplace 副本各挂一份 PostToolUse 钩子时，同一 Write 事件
+    会先后起两个钩子进程——第二份的输出对 AI/用户是纯重复。判定键为
+    (路径, 文件 mtime_ns)：内容变了（mtime 变了）不吞，照常检查。
+    """
+    import time as _time
+    try:
+        mtime = Path(file_path).stat().st_mtime_ns
+    except OSError:
+        return False
+    now = _time.monotonic()
+    dedup = {}
+    try:
+        DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if DEDUP_FILE.exists():
+            dedup = json.loads(DEDUP_FILE.read_text())
+        last = dedup.get(file_path) or {}
+        if last.get("mtime_ns") == mtime and now - last.get("ts", 0) < 2.0:
+            dedup[file_path] = {"mtime_ns": mtime, "ts": now}
+            DEDUP_FILE.write_text(json.dumps(dedup))
+            return True
+        dedup[file_path] = {"mtime_ns": mtime, "ts": now}
+        # 清理陈旧条目（防无限增长）
+        stale = [k for k, v in dedup.items() if now - v.get("ts", 0) > 60]
+        for k in stale:
+            dedup.pop(k, None)
+        DEDUP_FILE.write_text(json.dumps(dedup))
+    except OSError:
+        return False
+    return False
+
+
+def is_ejs_template(file_path: str) -> bool:
+    """vue-cli 的 public/index.html 是 EJS 模板（<%= %>/<% if %>）。htmlhint
+    对 EJS 标记必然误报（spec-char-escape / attr-value-double-quotes），
+    且 CLI 不支持按规则覆盖（--rule=false 报 unknown option，实测）——
+    这类文件直接跳过：EJS 语法错误由 vue-cli 构建流程兜底。"""
+    try:
+        return "<%" in Path(file_path).read_text(errors="ignore")[:8192]
+    except OSError:
+        return False
 
 
 def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
@@ -116,6 +165,10 @@ def main() -> int:
     if skip:
         return 0
 
+    # 双副本去重：另一 marketplace 副本的钩子刚查过同一份文件则静默
+    if should_suppress_duplicate(file_path):
+        return 0
+
     # 文档类语言不拦 AI 写作流（AI 产出的报告/文档常不合 lint 严格规则，
     # 拦截会造成死循环）；提交门禁阶段仍有宽松校验
     if lang == "markdown":
@@ -125,10 +178,20 @@ def main() -> int:
     if not cmd_def:
         return 0
 
-    timeout = cfg.get("lint_timeout_seconds", 120)
-    lint_cmd = cmd_def.get("lint")
+    # 项目未接入该 linter（无配置文件）时，生态型 linter（eslint）必然报错
+    # 退出——那是「未接入」不是「代码违规」（qumall-mall-ui 无 .eslintrc 实测）
+    if not project_uses_linter(cmd_def, project_root):
+        return 0
+
+    # EJS 模板（vue-cli public/index.html）直接跳过 htmlhint：CLI 不支持
+    # 按规则豁免（实测 unknown option），而误报是必然的
+    if lang == "html" and is_ejs_template(file_path):
+        return 0
+    lint_cmd = cmd_def.get("lint") or []
     if not lint_cmd:
         return 0
+
+    timeout = cfg.get("lint_timeout_seconds", 120)
 
     def materialize(cmd: list[str]) -> list[str]:
         """{file} 占位符替换：文件型 linter（shellcheck/hadolint/clang-tidy…）必须传具体文件"""
