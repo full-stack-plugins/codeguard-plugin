@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,20 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
 
     if not from_login_shell:
         return
+    # 登录 shell 继承结果缓存（跨进程文件，10 分钟 TTL）——
+    # 每条含触发词的消息/每次门禁都要补 PATH，不缓存则每次 spawn zsh（100-300ms）
+    import time as _time
+    cache_file = Path(tempfile.gettempdir()) / f"codeguard-path-cache-{os.getuid()}"
+    now = _time.time()
+    if cache_file.exists():
+        try:
+            age = now - cache_file.stat().st_mtime
+            cached = cache_file.read_text().strip()
+            if age < 600 and ":" in cached:
+                os.environ["PATH"] = cached
+                return
+        except OSError:
+            pass
     try:
         shell = os.environ.get("SHELL") or "/bin/zsh"
         proc = subprocess.run(
@@ -70,6 +85,10 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
             inherited = proc.stdout.strip().splitlines()
             if inherited and inherited[-1].count(":") > cur.count(":"):
                 os.environ["PATH"] = inherited[-1]
+                try:
+                    cache_file.write_text(inherited[-1])
+                except OSError:
+                    pass
     except (OSError, subprocess.SubprocessError):
         pass
 
@@ -115,6 +134,8 @@ for _id, _lang in REGISTRY.items():
     if _lang.get("install_hint"):
         LANG_INSTALL_HINTS[_id] = _lang["install_hint"]
 
+
+_TOOL_CACHE: dict[tuple, tuple] = {}
 
 # 运行时依赖：wrapper 命令存在不代表能用（npx 自身是 #!/usr/bin/env node 脚本）
 BINARY_DEPENDENCIES = {
@@ -177,39 +198,59 @@ def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
     `--no-install ... --version` 会明确失败，而不是 lint 时才 npm error）；
     缺省对每个必需二进制跑 `--version`。
 
+    进程内缓存（_TOOL_CACHE）：eslint 等被 typescript/vue/svelte/astro 多个
+    语言共享，同一进程只真探一次；hooks 进程短生命周期，无需落盘。
+
     返回 (ok, 失败原因)。失败即工具链问题（运行时缺失/包未装/命令损坏），
     该语言本轮无法检查——归 skipped，绝不能算 lint 失败拦提交。
     """
     import shutil
     import subprocess
 
+    def _cached(key: tuple, fn):
+        if key not in _TOOL_CACHE:
+            _TOOL_CACHE[key] = fn()
+        return _TOOL_CACHE[key]
+
     probe = cmd_def.get("probe")
     if probe:
-        try:
-            proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return False, f"探活超时: {' '.join(probe)}"
-        except OSError as exc:
-            return False, f"探活无法执行: {exc}"
-        if proc.returncode != 0:
-            first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
-            return False, f"探活退出 {proc.returncode}: {first[:100]}"
-        return True, ""
+        return _cached(("probe", tuple(probe)), lambda: _run_probe_cmd(probe, timeout))
 
     for b in extract_tool_binaries(cmd_def):
-        if shutil.which(b) is None:
-            return False, f"{b} 不在 PATH"
-        try:
-            proc = subprocess.run(
-                [b, "--version"], capture_output=True, text=True, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            return False, f"{b} --version 超时"
-        except OSError as exc:
-            return False, f"{b} 无法执行: {exc}"
-        if proc.returncode != 0:
-            first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
-            return False, f"{b} --version 退出 {proc.returncode}: {first[:100]}"
+        ok, reason = _cached(("bin", b), lambda b=b: _probe_binary(b, timeout))
+        if not ok:
+            return False, reason
+    return True, ""
+
+
+def _run_probe_cmd(probe: list, timeout: int) -> tuple[bool, str]:
+    import subprocess
+    try:
+        proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"探活超时: {' '.join(probe)}"
+    except OSError as exc:
+        return False, f"探活无法执行: {exc}"
+    if proc.returncode != 0:
+        first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
+        return False, f"探活退出 {proc.returncode}: {first[:100]}"
+    return True, ""
+
+
+def _probe_binary(b: str, timeout: int) -> tuple[bool, str]:
+    import shutil
+    import subprocess
+    if shutil.which(b) is None:
+        return False, f"{b} 不在 PATH"
+    try:
+        proc = subprocess.run([b, "--version"], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"{b} --version 超时"
+    except OSError as exc:
+        return False, f"{b} 无法执行: {exc}"
+    if proc.returncode != 0:
+        first = next((ln for ln in (proc.stderr or proc.stdout).splitlines() if ln.strip()), "")
+        return False, f"{b} --version 退出 {proc.returncode}: {first[:100]}"
     return True, ""
 
 

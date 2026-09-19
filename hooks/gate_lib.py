@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -98,82 +100,125 @@ def format_safety_report(violations: list[tuple[str, str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _gate_cache_path(project_root: Path) -> Path:
+    import hashlib, tempfile
+    key = hashlib.sha1(str(project_root.resolve()).encode()).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"codeguard-gate-{os.getuid()}-{key}.json"
+
+
+def _gate_cache_key(project_root: Path, languages: list) -> str | None:
+    """缓存键：HEAD + 暂存区指纹（index mtime + 文件数）。文件一变即失效。"""
+    head = _git(project_root, "rev-parse", "HEAD")
+    if head is None:
+        return None
+    idx = project_root / ".git" / "index"
+    try:
+        idx_sig = f"{idx.stat().st_mtime_ns}:{idx.stat().st_size}" if idx.exists() else "no-index"
+    except OSError:
+        return None
+    return f"{head.strip()}|{idx_sig}|{','.join(sorted(languages))}"
+
+
+GATE_CACHE_TTL = 60  # 秒：UPS 软门禁与紧随的 PreToolUse 硬门禁之间复用
+
+
 def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
-    """运行全量 linter 门禁。
+    """运行全量 linter 门禁（跨进程结果缓存 + 并行执行）。
+
+    软门禁（UserPromptSubmit）与硬门禁（PreToolUse）在正常提交路径上
+    会对同一状态连跑两次全量 lint——缓存键含 HEAD 与暂存区指纹，
+    文件未变则 60s 内直接复用；AI 修复并重新暂存后键变化自动失效。
 
     返回 (failures, skipped)：
     - failures: [(lang, 问题节选, 修复命令, install_hint)]
     - skipped:  [str] 无法验证的说明（工具未装/超时），不阻塞
     """
+    import time as _time
     languages = detect_languages(project_root)
     if not languages:
         return [], []
-
     enabled = cfg.get("enabled_languages", [])
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    failures: list[tuple[str, str, str, str]] = []
-    skipped: list[str] = []
-    for lang in languages:
+    ck = _gate_cache_key(project_root, languages)
+    cache_file = _gate_cache_path(project_root)
+    if ck:
+        try:
+            blob = json.loads(cache_file.read_text())
+            if blob.get("key") == ck and _time.time() - blob.get("ts", 0) < GATE_CACHE_TTL:
+                return blob["failures"], blob["skipped"]
+        except (OSError, ValueError, KeyError):
+            pass
+
+    failures, skipped = _run_gate_uncached(project_root, cfg, languages)
+
+    if ck:
+        try:
+            cache_file.write_text(json.dumps(
+                {"key": ck, "ts": _time.time(), "failures": failures, "skipped": skipped},
+                ensure_ascii=False))
+        except OSError:
+            pass
+    return failures, skipped
+
+
+def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[list, list]:
+    """单次全量门禁（多语言并行，结果顺序保持语言表顺序）"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def check(lang: str):
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
-            continue
-        # 门禁用项目级命令（gate）：shellcheck/php -l 等文件型 linter 裸跑会报参数错
+            return None
         gate_cmd = cmd_def.get("gate") or cmd_def.get("lint")
         if not gate_cmd:
-            # 无 gate 的语言（如 java 的 lint 是全模块 mvn 命令）如实计入 skipped，
-            # 否则 user_prompt_validator 的「已检查 N 个生态」统计虚标（实测 java 被虚标）
-            skipped.append(f"{lang} 未配置项目级 gate 命令，本次未验证")
-            continue
+            return None
         if "{file}" in " ".join(gate_cmd):
             # {file} 占位符只在 PostToolUse 单文件模式下被替换；门禁拿字面量
             # 当文件名跑必然报"文件不存在"→ 会被误判成 lint 失败。归跳过。
-            skipped.append(f"{lang} 未配置项目级 gate 命令（lint 为单文件模式），本次未验证")
-            continue
+            return (lang, None, f"{lang} 未配置项目级 gate 命令（lint 为单文件模式），本次未验证")
         timeout = cfg.get("lint_timeout_seconds", 120)
         hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
-
-        # pre-flight 探活：工具链跑不起来（运行时缺失/命令损坏）≠ 代码问题。
-        # 探活失败归 skipped；通过后 lint 的非零退出一律按真实检查失败处理，
-        # 不再做输出文本猜测（"No such file or directory" 也可能是 lint 报的内容）。
         ok, reason = probe_toolchain(cmd_def)
         if not ok:
-            skipped.append(f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
-            continue
+            return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
         if not project_uses_linter(cmd_def, project_root):
-            # 项目未接入该 linter（无配置文件）——归 skipped，不拦提交
-            skipped.append(f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
-            continue
-
+            return (lang, None, f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
         try:
             proc = subprocess.run(
                 gate_cmd, cwd=project_root, capture_output=True, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
-            skipped.append(f"{lang} 检查超时（>{timeout}s），本次未验证")
-            continue
+            return (lang, None, f"{lang} 检查超时（>{timeout}s），本次未验证")
         except FileNotFoundError:
-            skipped.append(f"{lang} linter 未安装，本次未验证（安装: {hint}）")
-            continue
+            return (lang, None, f"{lang} linter 未安装，本次未验证（安装: {hint}）")
         if proc.returncode == 0:
-            continue
+            return None
         if lang == "markdown":
-            # 文档类风格问题不阻塞提交
-            skipped.append("markdown 风格告警（不阻塞提交）")
-            continue
+            return (lang, None, "markdown 风格告警（不阻塞提交）")
         if proc.returncode == 127:
-            # POSIX 语义明确的 command not found（探活后的运行中缺失，如 npx 内部调 node）
-            skipped.append(f"{lang} 工具链异常未验证：命令不存在（exit 127）")
-            continue
-        # 真实 lint 失败：问题摘要取输出头部（最具体的问题在前）
+            return (lang, None, f"{lang} 工具链异常未验证：命令不存在（exit 127）")
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()
-        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:2000]
+        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:600]
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
-        failures.append((lang, detail, fix, hint))
-    return failures, skipped
+        return (lang, (lang, detail, fix, hint), None)
 
+    results = []
+    with ThreadPoolExecutor(max_workers=min(4, max(1, len(languages)))) as pool:
+        results = list(pool.map(check, languages))
+
+    failures, skipped = [], []
+    for r in results:              # pool.map 保序，输出与语言表顺序一致
+        if r is None:
+            continue
+        lang, failure, skip = r
+        if failure:
+            failures.append(failure)
+        if skip:
+            skipped.append(skip)
+    return failures, skipped
 
 def summarize_failures(failures: list) -> str:
     """问题综述（一行，用作标题/通知标题）：哪几个生态、什么性质的问题"""

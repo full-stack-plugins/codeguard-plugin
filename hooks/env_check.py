@@ -123,4 +123,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:  # 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+        print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
+        sys.exit(0)

@@ -52,6 +52,27 @@ def bump_state(lang: str, passed: bool, auto_fixed: bool = False) -> None:
         pass
 
 
+def _notify_cooldown_ok(lang: str, cooldown_s: int = 60) -> bool:
+    """同语言通知冷却：60s 内已弹过则抑制（additionalContext 注入不受影响）。"""
+    import time
+    state = {}
+    try:
+        if STATE_FILE.exists():
+            state = json.loads(STATE_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+    entry = state.get(lang) or {}
+    now = time.time()
+    if now - entry.get("last_notify", 0) < cooldown_s:
+        return False
+    entry["last_notify"] = now
+    state[lang] = entry
+    try:
+        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False))
+    except OSError:
+        pass
+    return True
+
 def mac_notify(title: str, message: str) -> None:
     """macOS 系统通知（用户视觉提醒；非 macOS 静默跳过）"""
     if sys.platform != "darwin":
@@ -259,12 +280,19 @@ def main() -> int:
         "systemMessage": f"codeguard: ⚠️ {lang} lint FAILED: {Path(file_path).name}",
     }, ensure_ascii=False))
 
-    # macOS 系统通知（用户视觉提醒）
+    # macOS 系统通知（用户视觉提醒；同语言 60s 冷却——批量编辑时不轰炸）
     alert = f"{lang} lint FAILED: {Path(file_path).name}"
-    mac_notify(alert, problem_lines[0][:120] if problem_lines else "")
+    if _notify_cooldown_ok(lang):
+        mac_notify(alert, problem_lines[0][:120] if problem_lines else "")
 
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:  # 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+        print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
+        sys.exit(0)

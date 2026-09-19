@@ -64,6 +64,7 @@ def make_repo() -> Path:
         '#!/bin/bash\nif [ $foo = bar ]; then echo hi; fi\n'
     )
     git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "init")
     return repo
 
 
@@ -456,6 +457,96 @@ def test_field_regressions():
         shutil.rmtree(d, ignore_errors=True)
 
 
+
+# ══════════════════════════ 子集 5：性能与健壮性 ══════════════════════════
+
+def test_perf():
+    print("\n[5] 性能与健壮性（缓存/去重/兜底/冷却）")
+    import io as _io
+
+    # ── 探活去重：eslint 系 4 语言只真探 1 次 ──
+    import detect_lang as dl
+    calls = []
+    orig = dl._run_probe_cmd
+    dl._run_probe_cmd = lambda probe, t: (calls.append(tuple(probe)), orig(probe, t))[1]
+    try:
+        for lid in ("typescript", "vue", "svelte", "astro"):
+            dl.probe_toolchain(dl.LANG_COMMANDS[lid])
+    finally:
+        dl._run_probe_cmd = orig
+    ok("探活去重（4 语言共享 eslint → 1 次执行）", len(calls) == 1, f"实际 {len(calls)} 次")
+
+    # ── 门禁跨进程缓存：同状态 60s 内复用；index 变化即失效 ──
+    import gate_lib
+    repo = make_repo()
+    exec_count = []
+    orig_uncached = gate_lib._run_gate_uncached
+    def counting(root, cfg, langs):
+        exec_count.append(1)
+        return orig_uncached(root, cfg, langs)
+    gate_lib._run_gate_uncached = counting
+    try:
+        f1, s1 = gate_lib.run_gate(repo, {})
+        n_after_first = len(exec_count)
+        f2, s2 = gate_lib.run_gate(repo, {})
+        ok("门禁缓存命中（第二次零执行）", len(exec_count) == n_after_first == 1,
+           f"执行 {len(exec_count)} 次")
+        ok("缓存结果一致", [x[0] for x in f1] == [x[0] for x in f2])
+        # index 变化 → 键变 → 重新执行
+        (repo / "scripts" / "more.sh").write_text("# ok\n")
+        git(repo, "add", "-A")
+        gate_lib.run_gate(repo, {})
+        ok("暂存区变化即缓存失效（重跑）", len(exec_count) == 2, f"执行 {len(exec_count)} 次")
+    finally:
+        gate_lib._run_gate_uncached = orig_uncached
+
+    # ── 异常兜底：钩子内部错误 fail-open（exit 0，无 traceback） ──
+    code = (
+        "import sys, runpy, io, json\n"
+        "sys.argv=['hook']\n"
+        "sys.stdin=io.StringIO(json.dumps({'user_prompt':'提交代码'}))\n"
+        "sys.path.insert(0,'hooks')\n"
+        "import gate_lib\n"
+        "def _boom(*a, **k): raise RuntimeError('injected-failure')\n"
+        "gate_lib.run_gate=_boom\n"
+        f"runpy.run_path({str(HOOKS / 'user_prompt_validator.py')!r}, run_name='__main__')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       cwd=PLUGIN, timeout=60)
+    ok("钩子内部错误 fail-open（exit 0）", r.returncode == 0, f"exit={r.returncode}")
+    ok("无 traceback 进输出", "Traceback" not in (r.stdout + r.stderr))
+    ok("有一行降级说明", "fail-open" in r.stderr or "内部错误" in r.stderr)
+
+    # ── PATH 继承缓存：第二次不再 spawn 登录 shell ──
+    spawns = []
+    real_run = subprocess.run
+    def counting_run(cmd, *a, **kw):
+        if cmd and cmd[0].endswith(("zsh", "bash")) and "-lc" in cmd:
+            spawns.append(1)
+        return real_run(cmd, *a, **kw)
+    subprocess.run = counting_run
+    try:
+        dl.ensure_user_path(from_login_shell=True)
+        n1 = len(spawns)
+        dl.ensure_user_path(from_login_shell=True)
+        ok("PATH 缓存：第二次零 spawn", len(spawns) == n1, f"spawn {len(spawns)} 次")
+    finally:
+        subprocess.run = real_run
+
+    # ── 通知冷却：同语言 60s 内只弹一次 ──
+    import importlib
+    import post_tool_lint as ptl
+    importlib.reload(ptl)
+    tmp_state = Path(tempfile.mkdtemp()) / ".session_state.json"
+    ptl.STATE_FILE = tmp_state
+    ok("通知冷却：首次放行", ptl._notify_cooldown_ok("shell") is True)
+    ok("通知冷却：60s 内抑制", ptl._notify_cooldown_ok("shell") is False)
+    ok("通知冷却：其他语言不受影响", ptl._notify_cooldown_ok("python") is True)
+
+    import shutil as _sh2
+    _sh2.rmtree(repo, ignore_errors=True)
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     print(f"codeguard 测试集  plugin={PLUGIN.name}")
@@ -463,6 +554,7 @@ def main():
     if which in ("all", "hooks"): test_hooks()
     if which in ("all", "unit"): test_unit()
     if which in ("all", "edges"): test_edges()
+    if which in ("all", "perf"): test_perf()
     if which in ("all", "field"): test_field_regressions()
     print(f"\n═══ 结果: {len(PASS)} 通过 / {len(FAIL)} 失败 / {len(SKIP)} 跳过 ═══")
     if FAIL:
