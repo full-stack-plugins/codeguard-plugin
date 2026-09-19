@@ -76,6 +76,7 @@
       "since": "V0.1",
       "lint": [
         "npx",
+        "--no-install",
         "eslint",
         ".",
         "--max-warnings",
@@ -97,6 +98,12 @@
         ".eslintrc.js",
         ".eslintrc.yml",
         ".pre-commit-config.yaml"
+      ],
+      "probe": [
+        "npx",
+        "--no-install",
+        "eslint",
+        "--version"
       ]
     },
     {
@@ -166,7 +173,11 @@
         "dotnet",
         "format"
       ],
-      "install_hint": ".NET SDK 6+"
+      "install_hint": ".NET SDK 6+",
+      "requiresConfig": [
+        "*.sln",
+        "*.csproj"
+      ]
     },
     {
       "id": "kotlin",
@@ -269,12 +280,16 @@
       "since": "V0.2",
       "lint": [
         "scalafmt",
-        "--check"
+        "--check",
+        "."
       ],
       "format": [
         "scalafmt"
       ],
-      "install_hint": "coursier install scalafmt"
+      "install_hint": "coursier install scalafmt",
+      "requiresConfig": [
+        ".scalafmt.conf"
+      ]
     },
     {
       "id": "shell",
@@ -320,7 +335,12 @@
       "format": [
         "hadolint"
       ],
-      "install_hint": "brew install hadolint"
+      "install_hint": "brew install hadolint",
+      "gate": [
+        "bash",
+        "-c",
+        "find . \\( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name 'Containerfile' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r hadolint"
+      ]
     },
     {
       "id": "yaml",
@@ -417,7 +437,12 @@
         "-i",
         "{file}"
       ],
-      "install_hint": "clang-tidy + clang-format"
+      "install_hint": "clang-tidy + clang-format",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.c' -o -name '*.h' | xargs -r clang-tidy --quiet"
+      ]
     },
     {
       "id": "cpp",
@@ -440,7 +465,12 @@
         "-i",
         "{file}"
       ],
-      "install_hint": "clang-tidy + clang-format"
+      "install_hint": "clang-tidy + clang-format",
+      "gate": [
+        "bash",
+        "-c",
+        "find . \\( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' \\) -type f -print0 | xargs -0 -r clang-tidy --quiet"
+      ]
     },
     {
       "id": "objc",
@@ -462,7 +492,12 @@
         "-i",
         "{file}"
       ],
-      "install_hint": "clang-tidy + clang-format"
+      "install_hint": "clang-tidy + clang-format",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.m' -o -name '*.mm' | xargs -r clang-tidy --quiet"
+      ]
     },
     {
       "id": "dart",
@@ -497,6 +532,7 @@
       "since": "V0.4",
       "lint": [
         "npx",
+        "--no-install",
         "eslint",
         "--ext",
         ".vue",
@@ -510,7 +546,23 @@
         ".",
         "--fix"
       ],
-      "install_hint": "eslint-plugin-vue"
+      "install_hint": "eslint-plugin-vue",
+      "probe": [
+        "npx",
+        "--no-install",
+        "eslint",
+        "--version"
+      ],
+      "requiresConfig": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
+      ]
     },
     {
       "id": "svelte",
@@ -523,6 +575,7 @@
       "since": "V0.4",
       "lint": [
         "npx",
+        "--no-install",
         "eslint",
         "."
       ],
@@ -532,7 +585,23 @@
         ".",
         "--fix"
       ],
-      "install_hint": "eslint-plugin-svelte"
+      "install_hint": "eslint-plugin-svelte",
+      "probe": [
+        "npx",
+        "--no-install",
+        "eslint",
+        "--version"
+      ],
+      "requiresConfig": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
+      ]
     },
     {
       "id": "astro",
@@ -545,6 +614,7 @@
       "since": "V0.4",
       "lint": [
         "npx",
+        "--no-install",
         "eslint",
         "."
       ],
@@ -554,7 +624,23 @@
         ".",
         "--fix"
       ],
-      "install_hint": "eslint-plugin-astro"
+      "install_hint": "eslint-plugin-astro",
+      "probe": [
+        "npx",
+        "--no-install",
+        "eslint",
+        "--version"
+      ],
+      "requiresConfig": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
+      ]
     },
     {
       "id": "solidity",
@@ -608,12 +694,19 @@
       "status": "stable",
       "since": "V0.3",
       "lint": [
-        "deadnix"
+        "deadnix",
+        "{file}"
       ],
       "format": [
-        "nixpkgs-fmt"
+        "nixpkgs-fmt",
+        "{file}"
       ],
-      "install_hint": "nix-env -iA nixpkgs.nixpkgs-fmt nixpkgs.deadnix"
+      "install_hint": "nix-env -iA nixpkgs.nixpkgs-fmt nixpkgs.deadnix",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.nix' -type f -print0 | xargs -0 -r deadnix"
+      ]
     },
     {
       "id": "html",
@@ -628,7 +721,8 @@
       "lint": [
         "npx",
         "--no-install",
-        "htmlhint"
+        "htmlhint",
+        "{file}"
       ],
       "format": [
         "prettier",
@@ -640,6 +734,11 @@
         "--no-install",
         "htmlhint",
         "--version"
+      ],
+      "gate": [
+        "bash",
+        "-c",
+        "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r npx --no-install htmlhint"
       ]
     },
     {
@@ -660,7 +759,12 @@
         "sqlfluff",
         "fix"
       ],
-      "install_hint": "pip install sqlfluff"
+      "install_hint": "pip install sqlfluff",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.sql' -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r sqlfluff lint"
+      ]
     },
     {
       "id": "graphql",
@@ -713,7 +817,12 @@
         "buf",
         "format"
       ],
-      "install_hint": "brew install bufbuild/buf/buf"
+      "install_hint": "brew install bufbuild/buf/buf",
+      "requiresConfig": [
+        "buf.yaml",
+        "buf.gen.yaml",
+        "buf.work.yaml"
+      ]
     },
     {
       "id": "markdown",
@@ -727,13 +836,20 @@
       "since": "V0.3",
       "lint": [
         "npx",
+        "--no-install",
         "markdownlint-cli2"
       ],
       "format": [
         "markdownlint-cli2",
         "--fix"
       ],
-      "install_hint": "npm install -g markdownlint-cli2"
+      "install_hint": "npm install -g markdownlint-cli2",
+      "probe": [
+        "npx",
+        "--no-install",
+        "markdownlint-cli2",
+        "--version"
+      ]
     },
     {
       "id": "toml",
@@ -746,7 +862,8 @@
       "since": "V0.3",
       "lint": [
         "taplo",
-        "lint"
+        "lint",
+        "."
       ],
       "format": [
         "taplo",
@@ -858,13 +975,19 @@
       "status": "stable",
       "since": "V0.5",
       "lint": [
-        "npm-groovy-lint"
+        "npm-groovy-lint",
+        "{file}"
       ],
       "format": [
         "npm-groovy-lint",
         "--fix"
       ],
-      "install_hint": "npm install -g npm-groovy-lint"
+      "install_hint": "npm install -g npm-groovy-lint",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.groovy' -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r npm-groovy-lint --no-insight"
+      ]
     },
     {
       "id": "clojure",
@@ -929,7 +1052,8 @@
       "lint": [
         "zig",
         "fmt",
-        "--check"
+        "--check",
+        "."
       ],
       "format": [
         "zig",
@@ -979,7 +1103,10 @@
         "tool",
         "format"
       ],
-      "install_hint": "brew install crystal-ameba"
+      "install_hint": "brew install crystal-ameba",
+      "requiresConfig": [
+        "shard.yml"
+      ]
     },
     {
       "id": "julia",
@@ -1018,7 +1145,10 @@
         "elm-format",
         "--yes"
       ],
-      "install_hint": "npm install -g elm-review elm-format"
+      "install_hint": "npm install -g elm-review elm-format",
+      "requiresConfig": [
+        "elm.json"
+      ]
     },
     {
       "id": "lua",
@@ -1058,7 +1188,12 @@
         "luau",
         "."
       ],
-      "install_hint": "luau-lsp / luau-analyze"
+      "install_hint": "luau-lsp / luau-analyze",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.luau' -type f -print0 | xargs -0 -r luau-analyze"
+      ]
     },
     {
       "id": "pascal",
@@ -1113,10 +1248,16 @@
       "status": "stable",
       "since": "V0.5",
       "lint": [
-        "cflint"
+        "cflint",
+        "{file}"
       ],
       "format": null,
-      "install_hint": "brew install cflint"
+      "install_hint": "brew install cflint",
+      "gate": [
+        "bash",
+        "-c",
+        "find . \\( -name '*.cfc' -o -name '*.cfm' \\) -type f -print0 | xargs -0 -r cflint"
+      ]
     },
     {
       "id": "cobol",
@@ -1144,13 +1285,19 @@
       "since": "V0.4",
       "lint": [
         "dotnet",
-        "format"
+        "format",
+        "--verify-no-changes"
       ],
       "format": [
         "dotnet",
         "format"
       ],
-      "install_hint": ".NET SDK 6+"
+      "install_hint": ".NET SDK 6+",
+      "requiresConfig": [
+        "*.sln",
+        "*.csproj",
+        "*.vbproj"
+      ]
     },
     {
       "id": "erlang",
@@ -1171,7 +1318,11 @@
       "format": [
         "erlfmt"
       ],
-      "install_hint": "rebar3 plugins / escript"
+      "install_hint": "rebar3 plugins / escript",
+      "requiresConfig": [
+        "elvis.config",
+        "elvis.config.js"
+      ]
     },
     {
       "id": "arkts",
@@ -1235,7 +1386,12 @@
         "-i",
         "{file}"
       ],
-      "install_hint": "CUDA Toolkit + clangd"
+      "install_hint": "CUDA Toolkit + clangd",
+      "gate": [
+        "bash",
+        "-c",
+        "find . -name '*.cu' | xargs -r clang-tidy --quiet"
+      ]
     },
     {
       "id": "ansible",

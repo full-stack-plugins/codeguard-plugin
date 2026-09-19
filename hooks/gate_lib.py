@@ -88,7 +88,7 @@ def check_commit_safety(project_root: Path, mode: str) -> list[tuple[str, str, s
 
 
 def format_safety_report(violations: list[tuple[str, str, str]]) -> str:
-    lines = ["", f"codeguard 🛑 提交内容安全检查：{len(violations)} 个文件不应入库", "=" * 60]
+    lines = [f"codeguard 🛑 提交内容安全检查：{len(violations)} 个文件不应入库", "─" * 60]
     for f, reason, fix in violations:
         lines.append(f"  {f}")
         lines.append(f"     原因: {reason}")
@@ -122,6 +122,11 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
         # 门禁用项目级命令（gate）：shellcheck/php -l 等文件型 linter 裸跑会报参数错
         gate_cmd = cmd_def.get("gate") or cmd_def.get("lint")
         if not gate_cmd:
+            continue
+        if "{file}" in " ".join(gate_cmd):
+            # {file} 占位符只在 PostToolUse 单文件模式下被替换；门禁拿字面量
+            # 当文件名跑必然报"文件不存在"→ 会被误判成 lint 失败。归跳过。
+            skipped.append(f"{lang} 未配置项目级 gate 命令（lint 为单文件模式），本次未验证")
             continue
         timeout = cfg.get("lint_timeout_seconds", 120)
         hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
@@ -167,19 +172,28 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
     return failures, skipped
 
 
+def summarize_failures(failures: list) -> str:
+    """问题综述（一行，用作标题/通知标题）：哪几个生态、什么性质的问题"""
+    langs = "、".join(f[0] for f in failures)
+    return f"codeguard ❌ 提交门禁未通过：{langs} 共 {len(failures)} 个语言生态有 lint 问题"
+
+
 def format_failure_report(failures: list) -> str:
-    """把 failures 渲染成面向 AI/用户的「问题 + 怎么修」文本"""
+    """渲染「综述 + 细节」两段式报告。
+
+    第一行 = 问题综述（宿主 UI 通常取首行作标题）；随后是细节，
+    不再重复综述内容——修复"标题和详情一样"的问题。
+    """
     lines = [
-        "",
-        f"codeguard ❌ 提交门禁：{len(failures)} 个生态未通过",
-        "=" * 60,
+        summarize_failures(failures),
+        "─" * 60,
     ]
     for lang, detail, fix, hint in failures:
-        lines.append(f"【{lang}】发现的问题（节选）：")
+        lines.append(f"【{lang}】具体问题：")
         lines.append(detail if detail else "  lint 退出码非零，无文本输出")
         lines.append(f"  ▶ 怎么修: {fix}")
         lines.append(f"  ▶ 未安装工具时先安装: {hint}")
-        lines.append("-" * 60)
+        lines.append("─" * 60)
     lines.append(f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py")
     return "\n".join(lines)
 

@@ -1,24 +1,21 @@
-# Build artifacts
-dist/
-build/
-*.pyc
+
 __pycache__/
-*.egg-info/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Test
-.pytest_cache/
 .coverage
-htmlcov/
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Plugin runtime state (per-session)
+.idea/
+.pytest_cache/
 .session_state.json
+.vscode/
+*.egg-info/
+*.pyc
+*.swo
+*.swp
+# Build artifacts
+# IDE
+# OS
+# Plugin runtime state (per-session)
+# Test
+build/
+dist/
+htmlcov/
+Thumbs.db

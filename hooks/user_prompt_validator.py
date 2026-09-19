@@ -25,6 +25,7 @@ from gate_lib import (  # noqa: E402
     format_safety_report,
     gate_directive,
     run_gate,
+    summarize_failures,
 )
 
 # 触发此钩子的关键词（中英）
@@ -91,7 +92,8 @@ def main() -> int:
 
     if failures or violations:
         # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交
-        notify("codeguard 门禁未通过", f"{len(failures)} 个生态待修，AI 正在处理")
+        _first_issue = failures[0][1].splitlines()[0][:120] if failures and failures[0][1] else "详见对话"
+        notify(summarize_failures(failures), f"{failures[0][0]}: {_first_issue}")
         parts = [gate_directive(failures)]
         if violations:
             parts.append(format_safety_report(violations))

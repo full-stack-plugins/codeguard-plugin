@@ -160,7 +160,14 @@ def project_uses_linter(cmd_def: dict, project_root: str | Path) -> bool:
     if not required:
         return True
     root = Path(project_root)
-    return any((root / name).exists() for name in required)
+    import fnmatch
+    for name in required:
+        if any(w in name for w in "*?["):
+            if any(fnmatch.fnmatch(p.name, name) for p in root.iterdir()):
+                return True
+        elif (root / name).exists():
+            return True
+    return False
 
 
 def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
