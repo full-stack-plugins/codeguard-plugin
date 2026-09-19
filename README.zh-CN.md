@@ -65,7 +65,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.5.1` |
+| 当前版本 | `0.5.2` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | SDK 协议实现完成前不随清单发布；当前使用 CLI 与 Hooks |
@@ -194,7 +194,6 @@ codeguard:
 partme-codeguard-plugin/
 ├── .zcode-plugin/plugin.json     # ZCode manifest（主）
 ├── .codex-plugin/plugin.json    # Codex CLI manifest
-├── .mcp.json                     # MCP 草案预留；正式发布清单不引用
 ├── hooks/
 │   ├── hooks.json                # 4 类钩子定义
 │   ├── env_check.py              # SessionStart：检测语言 + 注入规则

@@ -13,10 +13,16 @@ MANIFESTS = (
 
 class PluginManifestTest(unittest.TestCase):
     def test_released_manifests_do_not_publish_placeholder_mcp_server(self):
+        self.assertFalse((ROOT / ".mcp.json").exists())
         for manifest in MANIFESTS:
             with self.subTest(manifest=manifest.name):
                 data = json.loads(manifest.read_text(encoding="utf-8"))
                 self.assertNotIn("mcpServers", data)
+
+    def test_zcode_uses_convention_based_hook_discovery_once(self):
+        data = json.loads(MANIFESTS[0].read_text(encoding="utf-8"))
+        self.assertNotIn("hooks", data)
+        self.assertTrue((ROOT / "hooks" / "hooks.json").is_file())
 
     def test_each_released_manifest_points_to_the_68_skill_bundle(self):
         expected = len(list((ROOT / "skills").glob("*/SKILL.md")))
