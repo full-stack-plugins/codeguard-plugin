@@ -65,7 +65,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.4.0` |
+| Current version | `0.5.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | `python3 scripts/run_check.py --mcp` (stdio JSON-RPC) |
@@ -103,7 +103,7 @@ The 68 portable skills are authored in [full-stack-skills/codeguard-skills](http
 - `python3 scripts/vendor/skill_vendor.py update` refreshes only the skill names listed in the lock.
 - `python3 scripts/vendor/skill_vendor.py check --offline` verifies the packaged snapshot; omit `--offline` to verify the upstream ref and content too.
 - Do not directly edit a locked skill directory. Change and release `codeguard-skills`, update the lock ref, then run the vendor update.
-- Plugin-specific skills may remain under `skills/` only when they are intentionally absent from `skills.lock.json`; the vendor leaves those directories untouched.
+- Plugin-specific skills may remain under `skills/` only when they are intentionally absent from `skills.lock.json` and explicitly listed in `plugin-local-skills.json`; the vendor preserves declared directories and rejects undeclared exceptions.
 
 Hooks, linters, commands, MCP wiring, and executable scripts remain plugin-owned. The authoring standard is documented in [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md).
 
@@ -222,6 +222,7 @@ partme-codeguard-plugin/
 │   ├── fix.py                    # auto-fix CLI
 │   └── vendor/skill_vendor.py    # lock-driven external skill vendor/check
 ├── skills.lock.json              # upstream tag/commit + managed skills + SHA-256 digests
+├── plugin-local-skills.json      # explicit plugin-only skill exceptions (currently empty)
 ├── skills/                       # 68 vendored skills from codeguard-skills v0.1.0
 │   ├── codeguard/                # main entry
 │   ├── codeguard-init/           # one-line bootstrap

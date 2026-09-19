@@ -65,7 +65,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.4.0` |
+| 当前版本 | `0.5.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | `python3 scripts/run_check.py --mcp`（stdio JSON-RPC） |
@@ -89,7 +89,7 @@ AI 一次写出就过 lint 的代码
 - `python3 scripts/vendor/skill_vendor.py update` 只刷新 lock 中列出的技能。
 - `python3 scripts/vendor/skill_vendor.py check --offline` 校验插件内快照；去掉 `--offline` 还会校验上游 ref 与内容。
 - 不得直接修改 lock 管理的技能目录。应先在 `codeguard-skills` 修改并发布，再更新 lock ref 并执行 vendor update。
-- 只有插件内部定制技能可以直接保留在 `skills/`，且必须明确不列入 `skills.lock.json`；vendor 不会删除或覆盖这些目录。
+- 只有插件内部定制技能可以直接保留在 `skills/`，且必须明确不列入 `skills.lock.json`、显式登记到 `plugin-local-skills.json`；vendor 会保留已声明目录并拒绝未声明例外。
 
 Hooks、linters、commands、MCP 接线和可执行脚本仍由插件仓负责。
 
@@ -207,6 +207,7 @@ partme-codeguard-plugin/
 │   ├── fix.py                    # 自动修复 CLI
 │   └── vendor/skill_vendor.py    # lock 驱动的外部技能 vendor/check
 ├── skills.lock.json              # 上游 tag/commit + 受管技能 + SHA-256
+├── plugin-local-skills.json      # 插件专属技能显式例外清单（当前为空）
 ├── skills/                       # 从 codeguard-skills v0.1.0 vendor 的 68 个技能
 │   ├── codeguard/                # 主入口
 │   ├── codeguard-init/           # 一行接入

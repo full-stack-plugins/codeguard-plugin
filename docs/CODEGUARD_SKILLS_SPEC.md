@@ -27,7 +27,7 @@ skills/codeguard-java/
 |---|---|---|
 | 可复用 Codeguard 技能 | `full-stack-skills/codeguard-skills` | 在外部仓修改、评估、发布新 tag，再更新插件 lock |
 | 插件离线技能快照 | 本仓 `skills/` 中被 lock 列出的目录 | 只允许由 `scripts/vendor/skill_vendor.py update` 生成 |
-| 插件内部定制技能 | 本仓 `skills/` 中未被 lock 列出的目录 | 可在插件仓直接维护，vendor 会保留 |
+| 插件内部定制技能 | 本仓 `skills/` 中未被 lock 列出、但在 `plugin-local-skills.json` 显式登记的目录 | 可在插件仓直接维护，vendor 会保留；未登记目录会被拒绝 |
 | Hooks、linters、commands、MCP、运行脚本 | `codeguard-plugin` | 在插件仓开发、测试和发布 |
 
 禁止直接修改 lock 管理的技能目录，否则离线/在线 vendor check 会失败。

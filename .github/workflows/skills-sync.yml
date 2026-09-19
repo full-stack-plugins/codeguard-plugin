@@ -6,6 +6,15 @@ on:
   schedule:
     - cron: "41 3 * * *"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Optional immutable codeguard-skills release tag
+        required: false
+        type: string
+      sha:
+        description: Required peeled commit SHA when ref is provided
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -16,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.SKILLS_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      REQUESTED_REF: ${{ github.event.client_payload.ref || inputs.ref }}
+      REQUESTED_SHA: ${{ github.event.client_payload.sha || inputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -24,7 +35,18 @@ jobs:
         with:
           python-version: "3.12"
       - name: Vendor skills from pinned sources
-        run: python3 scripts/vendor/skill_vendor.py update
+        shell: bash
+        run: |
+          arguments=(update)
+          if [[ -n "$REQUESTED_REF" || -n "$REQUESTED_SHA" ]]; then
+            if [[ -z "$REQUESTED_REF" || -z "$REQUESTED_SHA" ]]; then
+              echo "::error::Both ref and sha are required for a release upgrade"
+              exit 1
+            fi
+            arguments+=(--source-ref "codeguard-skills=$REQUESTED_REF")
+            arguments+=(--expected-sha "codeguard-skills=$REQUESTED_SHA")
+          fi
+          python3 scripts/vendor/skill_vendor.py "${arguments[@]}"
       - name: Verify the fresh snapshot
         run: python3 scripts/vendor/skill_vendor.py check
       - name: Push a sync branch when the snapshot changed
@@ -39,7 +61,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B chore/skills-sync
           git add skills/ skills.lock.json
-          git commit -m "chore: sync vendored skills from codeguard-skills"
+          git commit -m "chore: sync vendored skills from codeguard-skills ${REQUESTED_REF:-current-lock}"
           git push --force-with-lease origin chore/skills-sync
           echo "changed=true" >> "$GITHUB_OUTPUT"
       - name: Open the sync PR if none exists
@@ -50,7 +72,7 @@ jobs:
             exit 0
           fi
           gh pr create \
-            --title "chore: sync vendored Codeguard skills" \
-            --body "Automated refresh of the checksummed skill snapshot from skills.lock.json. Externally managed skills come from full-stack-skills/codeguard-skills; unlisted plugin-local skills are preserved." \
+            --title "chore: sync vendored Codeguard skills ${REQUESTED_REF:-current-lock}" \
+            --body "Automated refresh of the checksummed skill snapshot from skills.lock.json. Requested release: ${REQUESTED_REF:-current lock}; expected commit: ${REQUESTED_SHA:-already pinned}. Externally managed skills come from full-stack-skills/codeguard-skills; plugin-local exceptions must be declared in plugin-local-skills.json." \
             --head chore/skills-sync --base main \
             --label skills-sync

@@ -5,9 +5,10 @@ The source skill package is the single source of truth. This plugin keeps a
 checksummed snapshot so an installed plugin remains complete and usable
 without fetching another repository at runtime.
 
-Only skill names listed in ``skills.lock.json`` are managed. Unlisted
-directories under ``skills/`` are plugin-local custom skills and are never
-removed or overwritten by this tool.
+Only skill names listed in ``skills.lock.json`` are managed. Plugin-local
+custom skills must be declared separately in ``plugin-local-skills.json``;
+they are never removed or overwritten by this tool. Undeclared skill
+directories are rejected so a new local exception is always explicit.
 
 Commands:
   update  Fetch pinned sources, replace managed skill directories, and refresh
@@ -30,6 +31,8 @@ from pathlib import Path
 
 
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+VERSION_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
+COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def fail(message: str) -> None:
@@ -112,6 +115,8 @@ def validate_source(source: dict, root: Path) -> Path:
             raise RuntimeError(f"source {source.get('package', '?')}: missing key '{key}'")
     if not isinstance(source["skills"], list) or not source["skills"]:
         raise RuntimeError(f"{source['package']}: skills must be a non-empty list")
+    if not isinstance(source["ref"], str) or not VERSION_TAG_RE.match(source["ref"]):
+        raise RuntimeError(f"{source['package']}: ref must be an immutable semantic version tag")
     if len(source["skills"]) != len(set(source["skills"])):
         raise RuntimeError(f"{source['package']}: duplicate skill names in lock entry")
     for name in source["skills"]:
@@ -122,6 +127,57 @@ def validate_source(source: dict, root: Path) -> Path:
     if root != destination and root not in destination.parents:
         raise RuntimeError(f"{source['package']}: dest escapes repository root")
     return destination
+
+
+def validate_plugin_local_inventory(root: Path, lock: dict) -> None:
+    """Require every unvendorized skill to be declared in a separate policy file."""
+    policy_path = root / "plugin-local-skills.json"
+    if not policy_path.is_file():
+        raise RuntimeError("plugin-local-skills.json is required")
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    if policy.get("version") != 1:
+        raise RuntimeError("unsupported plugin-local-skills.json version")
+    if not isinstance(policy.get("dest"), str):
+        raise RuntimeError("plugin-local-skills.json requires a dest string")
+    names = policy.get("skills")
+    if not isinstance(names, list):
+        raise RuntimeError("plugin-local-skills.json requires a skills list")
+    if len(names) != len(set(names)):
+        raise RuntimeError("plugin-local-skills.json contains duplicate skill names")
+    for name in names:
+        if not isinstance(name, str) or not SKILL_NAME_RE.match(name):
+            raise RuntimeError(f"plugin-local-skills.json contains illegal skill name '{name}'")
+
+    destination = (root / policy["dest"]).resolve()
+    if root != destination and root not in destination.parents:
+        raise RuntimeError("plugin-local-skills.json dest escapes repository root")
+    managed = {
+        name
+        for source in lock["sources"]
+        if (root / source.get("dest", "")).resolve() == destination
+        for name in source.get("skills", [])
+    }
+    overlap = sorted(managed & set(names))
+    if overlap:
+        raise RuntimeError(
+            "plugin-local skills must not appear in skills.lock.json: " + ", ".join(overlap)
+        )
+    actual = {
+        path.name
+        for path in destination.iterdir()
+        if path.is_dir() and (path / "SKILL.md").is_file()
+    } if destination.is_dir() else set()
+    undeclared = sorted(actual - managed - set(names))
+    missing = sorted(set(names) - actual)
+    if undeclared:
+        raise RuntimeError(
+            "undeclared plugin-local skills; add them to plugin-local-skills.json: "
+            + ", ".join(undeclared)
+        )
+    if missing:
+        raise RuntimeError(
+            "declared plugin-local skills are missing from the tree: " + ", ".join(missing)
+        )
 
 
 def validate_no_cross_source_collisions(lock: dict) -> None:
@@ -164,20 +220,54 @@ def source_checkout(source: dict, overrides: dict[str, str], workdir: Path) -> t
     return checkout, sha
 
 
-def cmd_update(lock_path: Path, overrides: dict[str, str]) -> int:
+def validate_assignment_packages(lock: dict, assignments: dict[str, str], option: str) -> None:
+    """Reject assignments for sources that are not present in the lockfile."""
+    packages = {source["package"] for source in lock["sources"]}
+    unknown = sorted(set(assignments) - packages)
+    if unknown:
+        raise RuntimeError(f"{option} references unknown packages: {', '.join(unknown)}")
+
+
+def cmd_update(
+    lock_path: Path,
+    overrides: dict[str, str],
+    source_refs: dict[str, str],
+    expected_shas: dict[str, str],
+) -> int:
     """Refresh every managed skill while preserving plugin-local skills."""
     root = lock_path.parent
     lock = load_lock(lock_path)
     validate_no_cross_source_collisions(lock)
+    validate_plugin_local_inventory(root, lock)
+    validate_assignment_packages(lock, source_refs, "--source-ref")
+    validate_assignment_packages(lock, expected_shas, "--expected-sha")
+    for package, ref in source_refs.items():
+        if not VERSION_TAG_RE.match(ref):
+            raise RuntimeError(f"{package}: --source-ref must be vMAJOR.MINOR.PATCH")
+    for package, sha in expected_shas.items():
+        if not COMMIT_SHA_RE.match(sha):
+            raise RuntimeError(f"{package}: --expected-sha must be a 40-character commit SHA")
     errors = 0
 
     with tempfile.TemporaryDirectory(prefix="skill-vendor-") as temporary:
         for source in lock["sources"]:
+            package = source["package"]
+            if package in source_refs:
+                source["ref"] = source_refs[package]
             destination = validate_source(source, root)
             try:
                 checkout, sha = source_checkout(source, overrides, Path(temporary))
             except (RuntimeError, subprocess.CalledProcessError) as error:
                 fail(f"{source['package']}: {error}")
+                errors += 1
+                continue
+
+            expected_sha = expected_shas.get(package)
+            if expected_sha and sha != expected_sha:
+                fail(
+                    f"{package}: {source['ref']} resolved to {sha}, "
+                    f"expected dispatched commit {expected_sha}"
+                )
                 errors += 1
                 continue
 
@@ -200,6 +290,7 @@ def cmd_update(lock_path: Path, overrides: dict[str, str]) -> int:
 
     if errors:
         return 1
+    validate_plugin_local_inventory(root, lock)
     lock_path.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"lockfile updated: {lock_path}")
     return 0
@@ -210,6 +301,7 @@ def cmd_check(lock_path: Path, offline: bool, overrides: dict[str, str]) -> int:
     root = lock_path.parent
     lock = load_lock(lock_path)
     validate_no_cross_source_collisions(lock)
+    validate_plugin_local_inventory(root, lock)
     errors = 0
 
     with tempfile.TemporaryDirectory(prefix="skill-vendor-") as temporary:
@@ -260,15 +352,17 @@ def cmd_check(lock_path: Path, offline: bool, overrides: dict[str, str]) -> int:
     return 0
 
 
-def parse_overrides(pairs: list[str]) -> dict[str, str]:
-    """Parse repeatable ``PACKAGE=PATH`` local-source overrides."""
-    overrides = {}
+def parse_assignments(pairs: list[str], option: str) -> dict[str, str]:
+    """Parse repeatable ``PACKAGE=VALUE`` assignments."""
+    assignments = {}
     for pair in pairs:
-        package, separator, path = pair.partition("=")
-        if not separator:
-            raise SystemExit(f"--source-path expects PKG=PATH, got '{pair}'")
-        overrides[package] = path
-    return overrides
+        package, separator, value = pair.partition("=")
+        if not separator or not package or not value:
+            raise SystemExit(f"{option} expects PKG=VALUE, got '{pair}'")
+        if package in assignments:
+            raise SystemExit(f"{option} repeats package '{package}'")
+        assignments[package] = value
+    return assignments
 
 
 def main() -> int:
@@ -277,6 +371,8 @@ def main() -> int:
     parser.add_argument("--lock", default="skills.lock.json")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--source-path", action="append", default=[], metavar="PKG=PATH")
+    parser.add_argument("--source-ref", action="append", default=[], metavar="PKG=TAG")
+    parser.add_argument("--expected-sha", action="append", default=[], metavar="PKG=SHA")
     args = parser.parse_args()
 
     lock_path = Path(args.lock).resolve()
@@ -285,8 +381,19 @@ def main() -> int:
         return 1
     try:
         if args.command == "update":
-            return cmd_update(lock_path, parse_overrides(args.source_path))
-        return cmd_check(lock_path, args.offline, parse_overrides(args.source_path))
+            return cmd_update(
+                lock_path,
+                parse_assignments(args.source_path, "--source-path"),
+                parse_assignments(args.source_ref, "--source-ref"),
+                parse_assignments(args.expected_sha, "--expected-sha"),
+            )
+        if args.source_ref or args.expected_sha:
+            raise RuntimeError("--source-ref and --expected-sha are only valid with update")
+        return cmd_check(
+            lock_path,
+            args.offline,
+            parse_assignments(args.source_path, "--source-path"),
+        )
     except (RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         fail(str(error))
         return 1

@@ -72,6 +72,10 @@ def make_consumer(base: Path, upstream: Path, skills: list[str]) -> Path:
         json.dumps(lock, indent=2) + "\n",
         encoding="utf-8",
     )
+    (consumer / "plugin-local-skills.json").write_text(
+        json.dumps({"version": 1, "dest": "skills/", "skills": []}, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return consumer
 
 
@@ -117,6 +121,11 @@ class SkillVendorTest(unittest.TestCase):
             "---\nname: plugin-local\ndescription: plugin internal custom skill\n---\n",
             encoding="utf-8",
         )
+        (consumer / "plugin-local-skills.json").write_text(
+            json.dumps({"version": 1, "dest": "skills/", "skills": ["plugin-local"]}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
 
         self.assertEqual(vendor("update", consumer).returncode, 0)
         self.assertTrue((local / "SKILL.md").is_file())
@@ -124,6 +133,70 @@ class SkillVendorTest(unittest.TestCase):
             "plugin-local",
             json.loads((consumer / "skills.lock.json").read_text())["sources"][0]["sha256"],
         )
+
+    def test_update_rejects_undeclared_plugin_local_skill(self) -> None:
+        upstream = make_upstream(self.base, {"demo-one": "managed external skill"})
+        consumer = make_consumer(self.base, upstream, ["demo-one"])
+        local = consumer / "skills" / "plugin-local"
+        local.mkdir()
+        (local / "SKILL.md").write_text(
+            "---\nname: plugin-local\ndescription: undeclared local skill\n---\n",
+            encoding="utf-8",
+        )
+
+        result = vendor("update", consumer)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("undeclared plugin-local skills", result.stdout)
+
+    def test_update_accepts_dispatched_tag_and_expected_sha(self) -> None:
+        upstream = make_upstream(self.base, {"demo-one": "first release"})
+        consumer = make_consumer(self.base, upstream, ["demo-one"])
+        self.assertEqual(vendor("update", consumer).returncode, 0)
+
+        skill = upstream / "skills" / "demo-one" / "SKILL.md"
+        skill.write_text(skill.read_text(encoding="utf-8") + "second release\n", encoding="utf-8")
+        run_git(["add", "-A"], upstream)
+        run_git(["commit", "--quiet", "-m", "second"], upstream)
+        run_git(["tag", "-a", "v1.1.0", "-m", "second release"], upstream)
+        expected_sha = subprocess.run(
+            ["git", "rev-list", "-n", "1", "v1.1.0"],
+            cwd=upstream,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        result = vendor(
+            "update",
+            consumer,
+            "--source-ref",
+            "demo-skills=v1.1.0",
+            "--expected-sha",
+            f"demo-skills={expected_sha}",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout)
+        lock = json.loads((consumer / "skills.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["sources"][0]["ref"], "v1.1.0")
+        self.assertEqual(lock["sources"][0]["sha"], expected_sha)
+        self.assertIn("second release", (consumer / "skills" / "demo-one" / "SKILL.md").read_text())
+
+    def test_update_rejects_dispatched_sha_mismatch_without_rewriting_lock(self) -> None:
+        upstream = make_upstream(self.base, {"demo-one": "first release"})
+        consumer = make_consumer(self.base, upstream, ["demo-one"])
+        self.assertEqual(vendor("update", consumer).returncode, 0)
+        before = (consumer / "skills.lock.json").read_text(encoding="utf-8")
+
+        result = vendor(
+            "update",
+            consumer,
+            "--source-ref",
+            "demo-skills=v1.0.0",
+            "--expected-sha",
+            "demo-skills=0000000000000000000000000000000000000000",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("expected dispatched commit", result.stdout)
+        self.assertEqual((consumer / "skills.lock.json").read_text(encoding="utf-8"), before)
 
     def test_check_detects_in_tree_tampering(self) -> None:
         upstream = make_upstream(self.base, {"demo-one": "first demo skill gate"})

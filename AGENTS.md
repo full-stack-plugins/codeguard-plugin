@@ -5,7 +5,7 @@
 - `skills.lock.json` 中列出的技能以 `full-stack-skills/codeguard-skills` 为事实源；不得直接编辑插件内对应目录。
 - 更新受管技能时，先在外部技能仓完成修改、TRACE 评估和不可变 tag，再更新 lock ref，执行 `python3 scripts/vendor/skill_vendor.py update`。
 - 提交前必须执行 `python3 scripts/vendor/skill_vendor.py check --offline` 和在线 `check`。
-- 只有插件内部定制技能可以在本仓 `skills/` 直接维护，并且必须不出现在 `skills.lock.json` 中；vendor 工具会保留这些目录。
+- 只有插件内部定制技能可以在本仓 `skills/` 直接维护，并且必须不出现在 `skills.lock.json` 中、必须显式登记到 `plugin-local-skills.json`；vendor 工具会保留这些目录并拒绝未声明目录。
 - Hooks、linters、commands、MCP 配置和可执行脚本仍由插件仓维护。
 
 ## 版本升级要求（强制，AI 必须遵守）
