@@ -30,19 +30,20 @@ def cmd_str(lang: dict, key: str) -> str:
     return "`" + " ".join(cmd) + "`"
 
 
-def main() -> int:
-    data = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    langs = data["languages"]
-
+def build_lines(langs: list) -> list:
+    """由注册表产出文档全部内容（含「新增语言的流程」——该段与注册表同源演进，
+    不再允许文档单方面领先于生成器：两向漂移都由 tests/run_all.py 的同步检查拦截）"""
     unique = len({l["id"] for l in langs}) - len([l for l in langs if l["id"] in ("dockerfile", "ansible")])
     lines: list[str] = []
     lines.append("# partme-codeguard-plugin 支持的语言\n")
     lines.append(
         f"> 覆盖 **{unique} 种编程语言**（注册表 {len(langs)} 条，含 Dockerfile/Ansible 等文件类型条目）。"
         f"所有语言均可被 `detect_lang` 识别；其中 **{sum(1 for l in langs if l['status'] != 'planned')} 条**已接入 linter 强制门禁"
-        "（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。\n"
+        "（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。"
     )
+    # 两条说明同属一个引用块：中间留空行会被 markdownlint 判为 MD028（引用块内空行）
     lines.append(
+        ">\n"
         "> 本文档由 `scripts/languages.json` 注册表自动生成（`scripts/gen_language_docs.py`）；"
         "新增/调整语言请改注册表后重新生成。\n"
     )
@@ -77,11 +78,17 @@ def main() -> int:
     lines.append("## 新增语言的流程\n")
     lines.append("1. `scripts/languages.json` 注册表加一条语言定义（id/extensions/markers/lint/format/status）。")
     lines.append("2. `linters/<lang>/` 放配置模板。")
-    lines.append("3. `skills/codeguard-<lang>/SKILL.md` 写规范速查（frontmatter `name` == 目录名）。")
-    lines.append("4. 重跑 `python3 scripts/gen_language_docs.py` 同步本文档。")
-    lines.append("5. `python3 scripts/detect_lang.py <项目>` 冒烟验证。\n")
+    lines.append("3. 在外部 `full-stack-skills/codeguard-skills` 新增或更新 `skills/codeguard-<lang>/`，完成 lint、TRACE 评估并发布不可变 tag。")
+    lines.append("4. 更新插件 `skills.lock.json` 的 ref 和技能清单，运行 `python3 scripts/vendor/skill_vendor.py update`。")
+    lines.append("5. 重跑 `python3 scripts/gen_language_docs.py` 同步本文档。")
+    lines.append("6. 执行 vendor 离线/在线检查，并用 `python3 scripts/detect_lang.py <项目>` 冒烟验证。\n")
+    return lines
 
-    DOC.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+def main() -> int:
+    data = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    langs = data["languages"]
+    DOC.write_text("\n".join(build_lines(langs)) + "\n", encoding="utf-8")
     print(f"[gen-language-docs] 生成 {DOC}（{len(langs)} 语言）")
     return 0
 

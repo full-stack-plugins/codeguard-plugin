@@ -26,6 +26,26 @@ from detect_lang import detect_languages, find_project_root
 
 SEVERITY_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
 
+# CVSS v3 档位下界（LOW 0.1–3.9 / MEDIUM 4.0–6.9 / HIGH 7.0–8.9 / CRITICAL 9.0–10）。
+# maven 的 failBuildOnCVSS 是数值语义，与其余扫描器的「级别集合」必须表达同一 intent：
+# --severity HIGH ⇒ 恰好在 CVSS>=7 失败，而不是旧映射 SEVERITY_ORDER+1 产生的 >=3
+# （那会把全部 MEDIUM 也算进 HIGH，比其他扫描器激进一整档）。
+CVSS_BAND_FLOOR = {"LOW": 0, "MEDIUM": 4, "HIGH": 7, "CRITICAL": 9}
+
+
+def severities_at_and_above(threshold: str) -> list[str]:
+    """「阈值及以上」的级别集合，标签序从低到高（trivy 的 --severity 逗号列表用）"""
+    floor = SEVERITY_ORDER[threshold.upper()]
+    return [s for s in ("LOW", "MEDIUM", "HIGH", "CRITICAL") if SEVERITY_ORDER[s] >= floor]
+
+# 退出码：0 通过 / 1 无法验证 / 2 存在漏洞 / 3 参数错误。
+# 3 必须独立：CI 常用 -eq 2 判定安全告警，而 argparse 默认的参数错误退出码正是 2，
+# 复用会把一次拼写错误读成漏洞告警；复用 1 又会把「用错了参数」掩盖成「环境缺工具」。
+EXIT_PASS = 0
+EXIT_UNVERIFIED = 1
+EXIT_FINDINGS = 2
+EXIT_USAGE = 3
+
 
 def run(cmd: list[str], cwd: Path, timeout: int = 600) -> tuple[int, str, str]:
     try:
@@ -101,7 +121,7 @@ def scan_cargo(root: Path) -> dict:
 def scan_trivy(root: Path, threshold: str) -> dict:
     rc, out, err = run(
         ["trivy", "fs", "--scanners", "vuln",
-         "--severity", f"{threshold},CRITICAL" if threshold != "CRITICAL" else "CRITICAL",
+         "--severity", ",".join(severities_at_and_above(threshold)),
          "."],
         cwd=root, timeout=1800,
     )
@@ -114,26 +134,103 @@ def scan_trivy(root: Path, threshold: str) -> dict:
             "fix_hint": "按报告升级受影响依赖版本"}
 
 
+# 各扫描器的调用约定不同（阈值形式、是否支持自动修复），适配成统一入口：
+# (root, severity, allow_fix) -> result。差异与生态标识放在一起，不再散落在派发分支里。
+def _scan_maven_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    # failBuildOnCVSS 按数值档位（HIGH⇒7），与其余扫描器的「阈值及以上」同一 intent
+    return scan_maven(root, CVSS_BAND_FLOOR[severity])
+
+
+def _scan_node_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    result = scan_node(root, severity, allow_fix)
+    if allow_fix and result.get("failed"):
+        print("[codeguard-cve] npm audit fix ...")
+        run(["npm", "audit", "fix"], cwd=root, timeout=900)
+        result["after_fix"] = scan_node(root, severity, False)
+    return result
+
+
+def _scan_pip_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    return scan_pip(root)
+
+
+def _scan_cargo_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    return scan_cargo(root)
+
+
+def _scan_trivy_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    return scan_trivy(root, severity)
+
+
+# 唯一权威映射：规范标识 → 别名 / 映射语言 / 前置条件标志文件 / 扫描入口。
+# 命令行入参、语言检测映射、前置条件判定与结果报告全部从这里派生，
+# 标识不一致在该文件内不再可表达。
+# languages 为空的生态（universal）只能显式选择，不会被语言检测自动选中。
 ECOSYSTEM_SCANNERS = {
-    "java": scan_maven,
-    "node": scan_node,
-    "python": scan_pip,
-    "rust": scan_cargo,
+    "maven": {
+        "aliases": ("java",),
+        "languages": ("java",),
+        "markers": ("pom.xml",),
+        "scan": _scan_maven_ecosystem,
+    },
+    "node": {
+        "aliases": (),
+        "languages": ("typescript",),
+        "markers": ("package.json", "package-lock.json", "npm-shrinkwrap.json"),
+        "scan": _scan_node_ecosystem,
+    },
+    "python": {
+        "aliases": (),
+        "languages": ("python",),
+        "markers": ("requirements.txt", "requirements-dev.txt", "pyproject.toml", "Pipfile.lock"),
+        "scan": _scan_pip_ecosystem,
+    },
+    "rust": {
+        "aliases": (),
+        "languages": ("rust",),
+        "markers": ("Cargo.lock",),
+        "scan": _scan_cargo_ecosystem,
+    },
+    "universal": {
+        "aliases": ("trivy",),
+        "languages": (),
+        "markers": (),
+        "scan": _scan_trivy_ecosystem,
+    },
 }
 
-# 扫描前置条件：缺少标志文件说明项目不属于该生态（或依赖未锁定），
-# 运行扫描器只会得到环境错误——归类为「无法验证」而非「有漏洞」。
-ECOSYSTEM_PRECHECK = {
-    "maven": ["pom.xml"],
-    "node": ["package.json", "package-lock.json", "npm-shrinkwrap.json"],
-    "python": ["requirements.txt", "requirements-dev.txt", "pyproject.toml", "Pipfile.lock"],
-    "rust": ["Cargo.lock"],
-}
+
+def canonical_ecosystem(value: str) -> str | None:
+    """生态标识归一化：接受规范标识与其别名；未声明返回 None"""
+    key = value.strip().lower()
+    if key in ECOSYSTEM_SCANNERS:
+        return key
+    for canonical, spec in ECOSYSTEM_SCANNERS.items():
+        if key in spec["aliases"]:
+            return canonical
+    return None
+
+
+def ecosystem_choices() -> str:
+    """全部可接受标识（含别名），供错误信息与 --help 共用"""
+    parts = []
+    for canonical, spec in ECOSYSTEM_SCANNERS.items():
+        aliases = spec["aliases"]
+        parts.append(f"{canonical}（别名 {'/'.join(aliases)}）" if aliases else canonical)
+    return "、".join(parts)
+
+
+def language_ecosystem_map() -> dict[str, str]:
+    """语言 id → 规范生态标识，从权威映射派生"""
+    return {lang: canonical
+            for canonical, spec in ECOSYSTEM_SCANNERS.items()
+            for lang in spec["languages"]}
 
 
 def precheck(root: Path, eco: str) -> tuple[bool, str]:
-    """返回 (可扫描, 说明)"""
-    markers = ECOSYSTEM_PRECHECK.get(eco, [])
+    """返回 (可扫描, 说明)。缺少标志文件说明项目不属于该生态（或依赖未锁定），
+    运行扫描器只会得到环境错误——归类为「无法验证」而非「有漏洞」。"""
+    markers = ECOSYSTEM_SCANNERS.get(eco, {}).get("markers", ())
     if not markers:
         return True, ""
     if any((root / m).exists() for m in markers):
@@ -143,7 +240,7 @@ def precheck(root: Path, eco: str) -> tuple[bool, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(prog="codeguard cve")
-    ap.add_argument("--ecosystem", help="只扫指定生态（java/node/python/rust）")
+    ap.add_argument("--ecosystem", help=f"只扫指定生态（{ecosystem_choices()}）")
     ap.add_argument("--fix", action="store_true", help="允许自动修复（当前 npm audit fix）")
     ap.add_argument("--severity", default="HIGH", choices=list(SEVERITY_ORDER))
     ap.add_argument("--json", action="store_true", dest="as_json")
@@ -151,46 +248,47 @@ def main() -> int:
     args = ap.parse_args()
 
     root = find_project_root(args.path) or Path(args.path).resolve()
-    langs = detect_languages(root)
-    eco_map = {"java": "maven", "typescript": "node", "python": "python", "rust": "rust"}
-    ecosystems = sorted({eco_map[l] for l in langs if l in eco_map})
+
+    # 参数错误必须先于任何扫描器启动被拒绝：否则会先花掉一次真实扫描再报错。
+    # 退出码用独立的 EXIT_USAGE，避免被调用方读成「存在漏洞」或「无法验证」。
     if args.ecosystem:
         # 显式指定优先：不依赖语言检测结果
-        ecosystems = [args.ecosystem]
+        canonical = canonical_ecosystem(args.ecosystem)
+        if canonical is None:
+            print(f"[codeguard-cve] 未知生态 {args.ecosystem!r}；可接受：{ecosystem_choices()}",
+                  file=sys.stderr)
+            return EXIT_USAGE
+        ecosystems = [canonical]
+    else:
+        langs = detect_languages(root)
+        eco_map = language_ecosystem_map()
+        ecosystems = sorted({eco_map[l] for l in langs if l in eco_map})
+        if langs and not ecosystems:
+            # 识别到了语言但都不属于原生生态（go/php/ruby…）→ 通用兜底给出结论，
+            # 而不是报「无可扫描生态」。原生生态存在时不并行兜底（替换而非追加）；
+            # 一个语言都没识别到的目录不算「无原生扫描器的语言」，仍报无可扫描。
+            ecosystems = ["universal"]
 
     print(f"[codeguard-cve] project: {root}")
     print(f"[codeguard-cve] ecosystems: {ecosystems or '(none detected)'}")
 
     results = []
     for eco in ecosystems:
-        ok, why = precheck(root, eco)
-        if not ok:
+        spec = ECOSYSTEM_SCANNERS[eco]
+        scannable, why = precheck(root, eco)
+        if not scannable:
             results.append({"ecosystem": eco, "tool": eco, "exit": 127,
                             "summary_tail": f"无法验证: {why}", "fix_hint": "确认项目类型后重试"})
             print(f"  {eco:8s} SKIP（{why}）")
             continue
-        if eco == "maven":
-            r = scan_maven(root, SEVERITY_ORDER[args.severity] + 1)  # fail on >= threshold
-        elif eco == "node":
-            r = scan_node(root, args.severity, args.fix)
-            if args.fix and r.get("failed"):
-                print("[codeguard-cve] npm audit fix ...")
-                frc, _, _ = run(["npm", "audit", "fix"], cwd=root, timeout=900)
-                r2 = scan_node(root, args.severity, False)
-                r["after_fix"] = r2
-        elif eco == "python":
-            r = scan_pip(root)
-        elif eco == "rust":
-            r = scan_cargo(root)
-        else:
-            continue
+        r = spec["scan"](root, args.severity, args.fix)
         results.append(r)
         status = "PASS" if r["exit"] == 0 else f"FAILED(exit={r['exit']})"
         print(f"  {eco:8s} {r['tool']:28s} {status}")
 
     if not results:
         print("[codeguard-cve] 无可扫描生态（或对应工具未安装）")
-        return 1
+        return EXIT_UNVERIFIED
 
     failed = [r for r in results if r["exit"] not in (0, 127) or r.get("failed")]
     unverifiable = [r for r in results if r["exit"] == 127]
@@ -206,12 +304,12 @@ def main() -> int:
     if failed:
         n = len(failed)
         print(f"\n[codeguard-cve] {n} 个生态存在漏洞——检查出来了就得修，禁止带洞提交")
-        return 2
+        return EXIT_FINDINGS
     if unverifiable:
         print("\n[codeguard-cve] ⚠️ 存在无法验证的生态（工具缺失）——不能视为通过")
-        return 1
+        return EXIT_UNVERIFIED
     print("[codeguard-cve] ✅ 所有生态 CVE 检查通过")
-    return 0
+    return EXIT_PASS
 
 
 if __name__ == "__main__":

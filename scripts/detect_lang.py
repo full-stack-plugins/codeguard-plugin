@@ -230,7 +230,9 @@ def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
 def _run_probe_cmd(probe: list, timeout: int) -> tuple[bool, str]:
     import subprocess
     try:
-        proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout)
+        # stdin=DEVNULL：探活命令绝不消费宿主 stdin；--format 类探活靠 EOF 立即返回
+        proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout,
+                              stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return False, f"探活超时: {' '.join(probe)}"
     except OSError as exc:
