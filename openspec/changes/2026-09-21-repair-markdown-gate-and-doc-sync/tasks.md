@@ -19,7 +19,7 @@
 - [x] 3.1 `scripts/languages.json` 为 markdown 声明 `requiresConfig`。
 - [x] 3.2 `scripts/languages.json` 为 yaml 声明 `requiresConfig`。
 - [x] 3.3 重新表述 `tests/run_all.py` 中「无 requiresConfig 视为已接入」这条断言——它记录的是「未声明时不做限制」，不是「不得声明」。
-- [x] 3.4 新增用例：未接入 → 未验证且不阻塞；已接入 → 正常检查。
+- [x] 3.4 新增用例：未接入 → 未验证且不阻塞；已接入 → 正常检查（工具缺失时断言「未验证」分支，CI 无 markdownlint 亦稳定）。
 - [x] 3.5 新增用例：未声明前置条件的语言行为不变（防回归）。
 
 ## 4. 生成器可复现

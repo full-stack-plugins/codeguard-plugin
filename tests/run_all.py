@@ -302,7 +302,9 @@ def test_unit():
     cfg_yaml = _dl.LANG_COMMANDS["yaml"]
     ok("markdown 已声明 requiresConfig", bool(cfg_md.get("requiresConfig")))
     ok("yaml 已声明 requiresConfig", bool(cfg_yaml.get("requiresConfig")))
-    ok("markdown 探活可用（--format + stdin=DEVNULL）", _dl.probe_toolchain(cfg_md)[0])
+    md_available = _dl.probe_toolchain(cfg_md)[0]
+    ok("markdown 探活语义正确（装了→可用；没装→不可用且原因含探活退出）",
+       md_available or "探活" in _dl.probe_toolchain(cfg_md)[1])
     bare = Path(tempfile.mkdtemp())
     _dl._TOOL_CACHE.clear()
     # 前面 {file} 用例遗留的 monkeypatch 会让 requiresConfig 分支永不可达——先还原真身
@@ -317,9 +319,15 @@ def test_unit():
         (bare / "bad.md").write_text("text   \n")  # 行尾空格 → MD009，配置在→真跑
         _dl._TOOL_CACHE.clear()
         f2, s2 = _run_gate(bare, {})
-        ok("已接入→markdown 真跑（advisory 告警进 skipped）",
-           not f2 and any(x.startswith("markdown") and "告警" in x for x in s2),
-           f"failures={f2} skipped={s2}")
+        if md_available:
+            ok("已接入→markdown 真跑（advisory 告警进 skipped）",
+               not f2 and any(x.startswith("markdown") and "告警" in x for x in s2),
+               f"failures={f2} skipped={s2}")
+        else:
+            # CI 无 markdownlint：已接入但工具缺失 → 未验证（不冒充检查过）
+            ok("已接入但工具缺失→未验证不阻塞",
+               not f2 and any(x.startswith("markdown") and "不可用" in x for x in s2),
+               f"failures={f2} skipped={s2}")
         ok("已接入→yaml 仍未接入（无 .yamllint 配置）",
            any(x.startswith("yaml") and "未接入" in x for x in s2))
     finally:
