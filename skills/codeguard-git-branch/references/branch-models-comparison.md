@@ -7,7 +7,7 @@
 | 维度 | Gitflow | Gitflow+（团队） | GitLab 分支规范（团队变体） | GitHub Flow | GitLab Flow | Trunk-Based | OneFlow | Release Flow |
 |---|---|---|---|---|---|---|---|---|
 | 长期分支 | master, develop | master, develop, test | 主干（默认分支）+ env/* | main | main + 环境/发布分支 | trunk/main | main | main + release/v* |
-| 临时分支 | feature, release, hotfix | feature, fix, hotfix | feature/*, *-stable | feature（短命） | feature（短命） | <2 天短命分支（或直推） | feature, release(可选), hotfix | feature（短命） |
+| 临时分支 | feature, release, hotfix | feature, fix, hotfix | feature/*,*-stable | feature（短命） | feature（短命） | <2 天短命分支（或直推） | feature, release(可选), hotfix | feature（短命） |
 | 发布方式 | release → master → tag | test 回归 → release → master → tag | *-stable 分支 → PROD | 合并 main 即部署 | 环境晋升 / release 分支 | 每次提交可发布（feature flag） | main 打 tag | release/v* 维护 |
 | 热修复 | master→hotfix→master+develop | master→hotfix→master（+develop） | feature 修复走 MR | main 直修 | cherry-pick 下游 | trunk 直修（flag 关闭） | main→hotfix→main | main 修 + cherry-pick 回 release |
 | 合并方向门禁 | 严格 | 严格 | feature/*→主干 | feature→main | 上游→下游 | 全部→trunk | feature→main | 开发在 main，release 只收 cherry-pick |

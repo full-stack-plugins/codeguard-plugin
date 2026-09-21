@@ -79,7 +79,7 @@ compatibility: 需要本地项目、对应语言工具链和仓库既有 lint �
 | 探测命令 | `使用命令查找与项目配置检查` |
 | lint | `clang-tidy --quiet '{file}'` |
 | format/fix | `clang-format -i '{file}'` |
-| 项目级 gate | `bash -c 'find . -name '"'"'*.cu'"'"' | xargs -r clang-tidy --quiet'` |
+| 项目级 gate | `bash -c 'find . -name '"'"'*.cu'"'"' \| xargs -r clang-tidy --quiet'` |
 
 
 ## 标准 Workflow
@@ -148,7 +148,7 @@ CUDA Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — CUDA 文件同时受主机编译器与 nvcc 约束；clang-tidy 不能替代真实 CUDA 构建。
+7. **领域陷阱** — CUDA 文件同时受主机编译器与 nvcc 约束；clang-tidy 不能替代真实 CUDA 构建。
 
 ## 信息不足时
 

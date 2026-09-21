@@ -148,7 +148,7 @@ GraphQL Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — GraphQL lint 依赖 schema；无 schema 时只能验证有限的文档规则。
+7. **领域陷阱** — GraphQL lint 依赖 schema；无 schema 时只能验证有限的文档规则。
 
 ## 信息不足时
 

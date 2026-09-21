@@ -79,7 +79,7 @@ compatibility: 需要本地项目、对应语言工具链和仓库既有 lint �
 | 探测命令 | `使用命令查找与项目配置检查` |
 | lint | `php -l '{file}'` |
 | format/fix | `php-cs-fixer fix` |
-| 项目级 gate | `bash -c 'find . -name '"'"'*.php'"'"' -type f -not -path '"'"'*/vendor/*'"'"' -print0 | xargs -0 -n1 php -l'` |
+| 项目级 gate | `bash -c 'find . -name '"'"'*.php'"'"' -type f -not -path '"'"'*/vendor/*'"'"' -print0 \| xargs -0 -n1 php -l'` |
 
 
 ## 标准 Workflow
@@ -148,7 +148,7 @@ PHP Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — `php -l` 只验证语法，不覆盖类型、风格或框架规则；不要把语法通过写成质量全绿。
+7. **领域陷阱** — `php -l` 只验证语法，不覆盖类型、风格或框架规则；不要把语法通过写成质量全绿。
 
 ## 信息不足时
 

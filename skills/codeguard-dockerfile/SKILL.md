@@ -79,7 +79,7 @@ compatibility: 需要本地项目、对应语言工具链和仓库既有 lint �
 | 探测命令 | `使用命令查找与项目配置检查` |
 | lint | `hadolint '{file}'` |
 | format/fix | `hadolint` |
-| 项目级 gate | `bash -c 'find . \( -name '"'"'Dockerfile'"'"' -o -name '"'"'Dockerfile.*'"'"' -o -name '"'"'Containerfile'"'"' \) -type f -not -path '"'"'*/node_modules/*'"'"' -print0 | xargs -0 -r hadolint'` |
+| 项目级 gate | `bash -c 'find . \( -name '"'"'Dockerfile'"'"' -o -name '"'"'Dockerfile.*'"'"' -o -name '"'"'Containerfile'"'"' \) -type f -not -path '"'"'*/node_modules/*'"'"' -print0 \| xargs -0 -r hadolint'` |
 
 
 ## 标准 Workflow
@@ -148,7 +148,7 @@ Dockerfile Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — Hadolint 通过不证明镜像安全；仍需检查基础镜像摘要、SBOM 与漏洞扫描结果。
+7. **领域陷阱** — Hadolint 通过不证明镜像安全；仍需检查基础镜像摘要、SBOM 与漏洞扫描结果。
 
 ## 信息不足时
 

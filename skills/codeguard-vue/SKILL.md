@@ -148,7 +148,7 @@ Vue Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — Vue SFC 需要匹配 Vue 版本的 parser/plugin；普通 ESLint 配置可能跳过 `<template>`。
+7. **领域陷阱** — Vue SFC 需要匹配 Vue 版本的 parser/plugin；普通 ESLint 配置可能跳过 `<template>`。
 
 ## 信息不足时
 

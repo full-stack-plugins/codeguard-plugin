@@ -148,7 +148,7 @@ Protobuf Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — Buf lint 通过后仍应检查 breaking changes；风格合规不等于 wire compatibility。
+7. **领域陷阱** — Buf lint 通过后仍应检查 breaking changes；风格合规不等于 wire compatibility。
 
 ## 信息不足时
 
