@@ -43,13 +43,13 @@
 ## 7. 上游收口（跨仓，本变更不修改锁定内容）
 
 - [x] 7.1 在 `full-stack-skills/codeguard-skills` 修 `skills/**` 下 80 条 markdown：66 `MD029/ol-prefix`、13 `MD056/table-column-count`、1 `MD037`。
-- [ ] 7.2 发布不可变 tag。
-- [ ] 7.3 插件侧更新 `skills.lock.json` 的 ref 并重跑 vendor。
-- [ ] 7.4 确认本仓 markdown 门禁转绿（此时 `npx --no-install markdownlint-cli2 "**/*.md"` 应为 0 问题）。
+- [x] 7.2 发布不可变 tag。
+- [x] 7.3 插件侧更新 `skills.lock.json` 的 ref 并重跑 vendor。
+- [x] 7.4 确认本仓 markdown 门禁转绿（此时 `npx --no-install markdownlint-cli2 "**/*.md"` 应为 0 问题）。
 
 ## 8. 发布
 
-- [ ] 8.1 运行 `python3 scripts/vendor/skill_vendor.py check --offline` 与在线 `check`。
-- [ ] 8.2 按 AGENTS.md 执行 `node scripts/bump-plugin.mjs codeguard minor`（含行为变更）。
-- [ ] 8.3 同步市场仓 `full-stack-plugins` 的 catalog 版本并重新生成三平台清单。
-- [ ] 8.4 提交并推送插件仓与市场仓。
+- [x] 8.1 运行 `python3 scripts/vendor/skill_vendor.py check --offline` 与在线 `check`。
+- [x] 8.2 按 AGENTS.md 执行 `node scripts/bump-plugin.mjs codeguard minor`（含行为变更）。
+- [x] 8.3 同步市场仓 `full-stack-plugins` 的 catalog 版本并重新生成三平台清单。
+- [x] 8.4 提交并推送插件仓与市场仓。
