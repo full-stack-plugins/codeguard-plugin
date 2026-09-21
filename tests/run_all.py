@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """codeguard 测试集：语言规则结构审计 + 对话级钩子触发模拟 + 报告结构断言。
 
-三个子集（可单独跑，缺省全跑）：
+可按子集单独跑（缺省全跑）：
   python3 tests/run_all.py          # 全量
   python3 tests/run_all.py langs    # 语言注册表结构审计（纯结构，不依赖工具安装）
   python3 tests/run_all.py hooks    # 钩子级模拟（构造临时 git 仓，按宿主协议 stdin JSON 触发）
   python3 tests/run_all.py unit     # 纯函数单测（glob/requiresConfig、{file} 兜底、多 cd 边界、综述≠细节）
+  python3 tests/run_all.py cve      # CVE 生态标识、别名归一化与参数校验退出码
 
 钩子模拟的原理 = 完全复刻宿主行为：把 ZCode/Claude 会发给钩子的 JSON payload
 通过 stdin 喂给真实钩子脚本，断言退出码与输出协议（exit 0 JSON / exit 2 stderr）。
@@ -251,9 +252,9 @@ def test_hooks():
 
 def test_unit():
     print("\n[3] 纯函数单测")
-    from detect_lang import project_uses_linter, probe_toolchain
     import gate_lib
     import pre_tool_git_guard as guard
+    from detect_lang import probe_toolchain, project_uses_linter
 
     # requiresConfig glob 支持
     tmp = Path(tempfile.mkdtemp())
@@ -293,6 +294,50 @@ def test_unit():
     ok("无 git 段返回空", guard.resolve_project_roots("ls -la && echo done") == [])
     ok("is_guarded 词法匹配不误伤 echo", not guard.is_guarded('echo "git push 是危险命令"'))
     ok("is_guarded 命中真实 git push", guard.is_guarded("cd r && git push origin main"))
+
+    # ── C2-3.4：requiresConfig 语义 —— 未接入→未验证不阻塞；已接入→真实检查 ──
+    import detect_lang as _dl
+    from gate_lib import run_gate as _run_gate
+    cfg_md = _dl.LANG_COMMANDS["markdown"]
+    cfg_yaml = _dl.LANG_COMMANDS["yaml"]
+    ok("markdown 已声明 requiresConfig", bool(cfg_md.get("requiresConfig")))
+    ok("yaml 已声明 requiresConfig", bool(cfg_yaml.get("requiresConfig")))
+    md_available = _dl.probe_toolchain(cfg_md)[0]
+    ok("markdown 探活语义正确（装了→可用；没装→不可用且原因含探活退出）",
+       md_available or "探活" in _dl.probe_toolchain(cfg_md)[1])
+    bare = Path(tempfile.mkdtemp())
+    _dl._TOOL_CACHE.clear()
+    # 前面 {file} 用例遗留的 monkeypatch 会让 requiresConfig 分支永不可达——先还原真身
+    gate_lib.detect_languages = lambda root: ["markdown", "yaml"]
+    gate_lib.project_uses_linter = _dl.project_uses_linter
+    gate_lib.probe_toolchain = _dl.probe_toolchain
+    try:
+        f1, s1 = _run_gate(bare, {})
+        ok("未接入→未验证且不阻塞", not f1 and any("未接入" in x for x in s1),
+           f"failures={f1} skipped={s1}")
+        (bare / ".markdownlint-cli2.jsonc").write_text("{}")
+        (bare / "bad.md").write_text("text   \n")  # 行尾空格 → MD009，配置在→真跑
+        _dl._TOOL_CACHE.clear()
+        f2, s2 = _run_gate(bare, {})
+        if md_available:
+            ok("已接入→markdown 真跑（advisory 告警进 skipped）",
+               not f2 and any(x.startswith("markdown") and "告警" in x for x in s2),
+               f"failures={f2} skipped={s2}")
+        else:
+            # CI 无 markdownlint：已接入但工具缺失 → 未验证（不冒充检查过）
+            ok("已接入但工具缺失→未验证不阻塞",
+               not f2 and any(x.startswith("markdown") and "不可用" in x for x in s2),
+               f"failures={f2} skipped={s2}")
+        ok("已接入→yaml 仍未接入（无 .yamllint 配置）",
+           any(x.startswith("yaml") and "未接入" in x for x in s2))
+    finally:
+        _dl._TOOL_CACHE.clear()
+        shutil.rmtree(bare, ignore_errors=True)
+
+    # ── C2-3.5：未声明前置条件的语言不受影响（typescript 原有声明保持）──
+    ok("typescript 仍声明 requiresConfig（行为不变对照）",
+       bool(_dl.LANG_COMMANDS["typescript"].get("requiresConfig")))
+
     shutil.rmtree(tmp)
 
 
@@ -462,7 +507,6 @@ def test_field_regressions():
 
 def test_perf():
     print("\n[5] 性能与健壮性（缓存/去重/兜底/冷却）")
-    import io as _io
 
     # ── 探活去重：eslint 系 4 语言只真探 1 次 ──
     import detect_lang as dl
@@ -535,6 +579,7 @@ def test_perf():
 
     # ── 通知冷却：同语言 60s 内只弹一次 ──
     import importlib
+
     import post_tool_lint as ptl
     importlib.reload(ptl)
     tmp_state = Path(tempfile.mkdtemp()) / ".session_state.json"
@@ -547,6 +592,158 @@ def test_perf():
     _sh2.rmtree(repo, ignore_errors=True)
 
 
+# ══════════════════════ 子集 6：CVE 生态标识与参数校验 ══════════════════════
+
+def run_cve(args: list[str], cwd: Path):
+    """按 CLI 契约调用 codeguard cve：返回 (exit, stdout, stderr)"""
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    return subprocess.run(
+        [sys.executable, str(PLUGIN / "scripts" / "cve_check.py"), *args],
+        capture_output=True, text=True, cwd=cwd, timeout=120, env=env, check=False,
+    )
+
+
+def test_cve():
+    print("\n[6] CVE 生态标识与参数校验")
+    import cve_check as cve
+
+    tmp = Path(tempfile.mkdtemp())
+
+    # 权威映射结构：每条自带全部要素；别名不得与规范标识冲突或彼此重复
+    ok("映射条目含全部要素",
+       all({"aliases", "languages", "markers", "scan"} <= set(spec)
+           for spec in cve.ECOSYSTEM_SCANNERS.values()))
+    aliases = [a for spec in cve.ECOSYSTEM_SCANNERS.values() for a in spec["aliases"]]
+    conflicts = [a for a in aliases if a in cve.ECOSYSTEM_SCANNERS]
+    ok("别名不冲突且不重复", not conflicts and len(aliases) == len(set(aliases)),
+       f"{conflicts} {aliases}")
+
+    # 1.3：文档化的 java 必须归一到 maven（修复前它被派发 else 静默丢弃）
+    ok("java 归一到 maven", cve.canonical_ecosystem("java") == "maven")
+    ok("trivy 归一到 universal", cve.canonical_ecosystem("trivy") == "universal")
+    ok("规范标识自身可解析", cve.canonical_ecosystem("python") == "python")
+    ok("大小写不敏感", cve.canonical_ecosystem("JAVA") == "maven")
+    ok("未声明标识返回 None", cve.canonical_ecosystem("go") is None)
+    ok("可接受值含别名", "java" in cve.ecosystem_choices() and "trivy" in cve.ecosystem_choices())
+
+    # 1.2：前置条件从权威映射派生，独立死表已移除
+    ok("死表 ECOSYSTEM_PRECHECK 已移除", not hasattr(cve, "ECOSYSTEM_PRECHECK"))
+    ok("缺标志文件→不可扫描", cve.precheck(tmp, "rust")[0] is False)
+    (tmp / "Cargo.lock").write_text("")
+    ok("有标志文件→可扫描", cve.precheck(tmp, "rust")[0] is True)
+    ok("无前置条件生态直接可扫描", cve.precheck(tmp, "universal")[0] is True)
+    ok("语言映射值均为规范标识",
+       all(v in cve.ECOSYSTEM_SCANNERS for v in cve.language_ecosystem_map().values()))
+
+    # 5.2：未知生态在扫描前拒绝，退出码 3，且不混用其他结论文案
+    r = run_cve(["--ecosystem", "go", str(tmp)], tmp)
+    out = r.stdout + r.stderr
+    ok("未知生态退出码=3", r.returncode == 3, f"rc={r.returncode}")
+    ok("退出码与「存在漏洞」「无法验证」不重叠", r.returncode not in (1, 2))
+    ok("错误信息列出可接受值", "可接受" in out and "java" in out)
+    ok("不误报「无可扫描生态」", "无可扫描生态" not in out)
+    ok("不误报存在漏洞", "存在漏洞" not in out and "有漏洞" not in out)
+
+    # 5.1：--ecosystem java 真正进入 maven 派发
+    r = run_cve(["--ecosystem", "java", str(tmp)], tmp)
+    ok("java 别名进入 maven 派发", "ecosystems: ['maven']" in r.stdout, r.stdout.strip()[:120])
+    ok("java 未被当成未知生态", r.returncode != 3)
+
+    # ── C1-5.3：severity 展开为「阈值及以上」（回归被丢弃的档位）──
+    ok("LOW 展开为全部四级", cve.severities_at_and_above("LOW") == ["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+    ok("MEDIUM 不再丢 HIGH", cve.severities_at_and_above("MEDIUM") == ["MEDIUM", "HIGH", "CRITICAL"])
+    ok("HIGH 默认两档", cve.severities_at_and_above("HIGH") == ["HIGH", "CRITICAL"])
+    ok("CRITICAL 单档", cve.severities_at_and_above("CRITICAL") == ["CRITICAL"])
+    captured = {}
+    orig_run = cve.run
+    cve.run = lambda cmd, cwd, timeout=600: (captured.update(cmd=cmd), (0, "", ""))[1]
+    try:
+        cve.scan_trivy(tmp, "MEDIUM")
+    finally:
+        cve.run = orig_run
+    ok("trivy 收到完整级别集合",
+       captured.get("cmd", []).count("MEDIUM,HIGH,CRITICAL") == 1, str(captured.get("cmd")))
+
+    # ── C1-3.2：maven 数值阈值与其余扫描器同一 intent（HIGH⇒CVSS 7，不是旧映射的 3）──
+    seen = {}
+    orig_mv = cve.scan_maven
+    cve.scan_maven = lambda root, th, _s=seen: (_s.update(th=th), {"ecosystem": "maven", "tool": "fake", "exit": 0})[1]
+    try:
+        cve._scan_maven_ecosystem(tmp, "HIGH", False)
+        ok("HIGH ⇒ failBuildOnCVSS=7", seen.get("th") == 7, f"th={seen.get('th')}")
+        cve._scan_maven_ecosystem(tmp, "MEDIUM", False)
+        ok("MEDIUM ⇒ failBuildOnCVSS=4", seen.get("th") == 4, f"th={seen.get('th')}")
+    finally:
+        cve.scan_maven = orig_mv
+
+    # ── C1-5.6：四个原生生态派发不回归（mock 扫描器，不依赖真实工具/网络）──
+    for eco, marker in (("maven", "pom.xml"), ("node", "package.json"),
+                        ("python", "pyproject.toml"), ("rust", "Cargo.lock")):
+        d = Path(tempfile.mkdtemp())
+        (d / marker).write_text("")
+        calls = []
+        orig_scan = cve.ECOSYSTEM_SCANNERS[eco]["scan"]
+        cve.ECOSYSTEM_SCANNERS[eco]["scan"] = (
+            lambda root, sev, fix, _c=calls, _e=eco: (_c.append(sev), {"ecosystem": _e, "tool": "fake", "exit": 0})[1])
+        old_argv = sys.argv
+        try:
+            sys.argv = ["cve_check.py", "--ecosystem", eco, str(d)]
+            rc = cve.main()
+        finally:
+            sys.argv = old_argv
+            cve.ECOSYSTEM_SCANNERS[eco]["scan"] = orig_scan
+        ok(f"{eco} 原生派发且 severity 透传", rc == 0 and calls == ["HIGH"], f"rc={rc} calls={calls}")
+
+    # ── C1-4.3：存在漏洞优先于无法验证 ──
+    d = Path(tempfile.mkdtemp())
+    (d / "package.json").write_text("{}")
+    (d / "Cargo.lock").write_text("")
+    orig_node = cve.ECOSYSTEM_SCANNERS["node"]["scan"]
+    orig_rust = cve.ECOSYSTEM_SCANNERS["rust"]["scan"]
+    cve.ECOSYSTEM_SCANNERS["node"]["scan"] = lambda root, sev, fix: {"ecosystem": "node", "tool": "fake", "exit": 1, "failed": True}
+    cve.ECOSYSTEM_SCANNERS["rust"]["scan"] = lambda root, sev, fix: {"ecosystem": "rust", "tool": "fake", "exit": 127}
+    try:
+        sys.argv = ["cve_check.py", str(d)]
+        rc_mixed = cve.main()
+    finally:
+        sys.argv = ["cve_check.py"]
+        cve.ECOSYSTEM_SCANNERS["node"]["scan"] = orig_node
+        cve.ECOSYSTEM_SCANNERS["rust"]["scan"] = orig_rust
+    ok("漏洞(2) 优先于无法验证(1)", rc_mixed == 2, f"rc={rc_mixed}")
+
+    # ── C1-5.4/5.5：无原生扫描器的语言自动落兜底；trivy 缺失=无法验证而非漏洞 ──
+    d = Path(tempfile.mkdtemp())
+    (d / "go.mod").write_text("module x\n\ngo 1.21\n")
+    (d / "main.go").write_text("package main\n")
+    r = run_cve([str(d)], d)
+    out = r.stdout + r.stderr
+    ok("go 项目自动走 universal 兜底", "ecosystems: ['universal']" in r.stdout, r.stdout.strip()[:120])
+    ok("trivy 缺失 → 无法验证(1) 而非漏洞(2)", r.returncode == 1, f"rc={r.returncode}")
+    ok("兜底路径不误报「有漏洞」", "有漏洞" not in out)
+
+    shutil.rmtree(tmp)
+
+
+# ══════════════════════ 子集 7：文档与注册表可复现同步 ══════════════════════
+
+def test_doc_sync():
+    print("\n[7] 文档与注册表可复现同步")
+    import gen_language_docs as gen
+
+    reg = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))
+    expected = "\n".join(gen.build_lines(reg["languages"])) + "\n"
+    actual = (PLUGIN / "docs" / "LANGUAGES.md").read_text(encoding="utf-8")
+    if expected == actual:
+        ok("docs/LANGUAGES.md 与注册表完全可复现（双向一致）", True)
+    else:
+        import difflib
+        diff = [ln for ln in difflib.unified_diff(
+            actual.splitlines(), expected.splitlines(),
+            "docs/LANGUAGES.md", "registry-generated", n=0, lineterm="")]
+        ok("docs/LANGUAGES.md 与注册表完全可复现（双向一致）", False,
+           f"{len(diff)} 行差异，首 6 行: {diff[:6]}")
+
+
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     print(f"codeguard 测试集  plugin={PLUGIN.name}")
@@ -556,6 +753,8 @@ def main():
     if which in ("all", "edges"): test_edges()
     if which in ("all", "perf"): test_perf()
     if which in ("all", "field"): test_field_regressions()
+    if which in ("all", "cve"): test_cve()
+    if which in ("all", "doc"): test_doc_sync()
     print(f"\n═══ 结果: {len(PASS)} 通过 / {len(FAIL)} 失败 / {len(SKIP)} 跳过 ═══")
     if FAIL:
         print("失败项:", *FAIL, sep="\n  - ")

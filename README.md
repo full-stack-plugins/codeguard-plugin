@@ -79,8 +79,15 @@ AI code that passes lint on first try
 | Status | Languages |
 |---|---|
 | **Stable** (53, auto-enforced) | Java, Rust, TypeScript/JavaScript, Python, Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS, Markdown, SQL, TOML, HTML, Protobuf, Terraform/OpenTofu, Nix, Dart, Solidity, Ansible-playbooks, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia (format-only), Pascal (format-only), Elm, Lua, Luau, C++ (clang-tidy), Objective-C, CUDA, GraphQL, Protobuf digest, VB.NET, Erlang, R, CFML — and more; see LANGUAGES.md |
+
+> **Markdown / YAML opt-in semantics**: both declare `requiresConfig` — without a root linter config
+> (e.g. `.markdownlint-cli2.jsonc` / `.yamllint`) the project counts as not opted in: safely skipped,
+> never blocked, never swept by tool default rules. The markdown gate is advisory (reported in skipped, non-blocking).
+> Its lint command previously lacked a glob and always exited with a usage error; it now returns real results.
+> `codeguard init` copies the lenient config template.
 | **Planned** (4, no independent CLI linter) | Metal, ArkTS (HarmonyOS), COBOL, Liquid (Shopify theme-check 已列为工具，待接通) |
-## Governance skills (Git & Security) (Git & Security)
+
+## Governance skills (Git & Security)
 
 Beyond linting, codeguard ships standalone governance skills sourced from the team's engineering-standards wiki:
 
@@ -150,11 +157,15 @@ ln -s $PWD/bin/codeguard /usr/local/bin/codeguard
 
 codeguard check                     # multi-language lint gate
 codeguard fix                       # auto-fix lint issues
-codeguard cve                       # CVE dependency scan (Maven/npm/Python/Rust orchestration)
+codeguard cve                       # CVE dependency scan (Maven/npm/Python/Rust + universal trivy fallback)
 codeguard cve --fix                 # scan + auto-fix (npm audit fix)
-codeguard cve --severity MEDIUM     # gate threshold down to medium
+codeguard cve --severity MEDIUM     # threshold-and-above: MEDIUM+HIGH+CRITICAL fail
+codeguard cve --ecosystem java      # alias for maven; unknown values exit 3 before any scan
 codeguard detect                    # detect project languages
 ```
+
+CVE exit codes: `0` pass, `1` unverifiable (tool missing / nothing scannable), `2` findings, `3` usage error.
+Ecosystems without a native scanner fall back to `trivy fs --scanners vuln` when detected; native tools are never replaced by the fallback. Severity means threshold-and-above on every scanner (maven maps to CVSS band floors: HIGH⇒7).
 
 Maven CVE scanning uses OWASP dependency-check (pom snippet in
 `linters/maven/dependency-check-pom-snippet.xml`; build fails at `CVSS>=7`).

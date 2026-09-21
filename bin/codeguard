@@ -4,7 +4,10 @@
 # 用法:
 #   codeguard check      [--lang LANG] [--timeout N] [path]   # 跑代码规范 lint（多语言）
 #   codeguard fix        [--lang LANG] [path]                 # 自动修复 lint 问题
-#   codeguard cve        [--json] [--severity S] [path]       # CVE 依赖漏洞扫描（多生态编排）
+#   codeguard cve        [--ecosystem E] [--severity S] [--fix] [--json] [path]
+#                                                              # CVE 依赖漏洞扫描
+#   # 生态: maven(别名 java) / node / python / rust / universal(别名 trivy)
+#   # 退出码: 0 通过 / 1 无法验证 / 2 存在漏洞 / 3 参数错误
 #   codeguard dockerfile [--json] [path]                      # Dockerfile 安全风险检查（hadolint + trivy config）
 #   codeguard detect     [path]                               # 检测项目语言
 #

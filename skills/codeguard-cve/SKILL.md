@@ -1,7 +1,7 @@
 ---
 name: codeguard-cve
 license: Apache-2.0
-description: 编排 Maven、Node、Python 和 Rust 依赖的 CVE 扫描与门禁；当用户要求扫漏洞、依赖安全检查、发布前审查、解释 HIGH/CRITICAL 发现或设计抑制策略时使用。必须保留工具、阈值、依赖路径与复扫证据。
+description: 编排 Maven、Node、Python 和 Rust 依赖的 CVE 扫描与门禁；未被原生扫描器覆盖的语言自动落 trivy 通用兜底（原生工具缺失时保持无法验证，不用兜底顶替）；当用户要求扫漏洞、依赖安全检查、发布前审查、解释 HIGH/CRITICAL 发现或设计抑制策略时使用。必须保留工具、阈值、依赖路径与复扫证据。
 compatibility: 需要目标生态的锁文件、扫描工具及可用漏洞数据源；默认不升级依赖、不自动接受抑制。
 ---
 
@@ -11,15 +11,19 @@ compatibility: 需要目标生态的锁文件、扫描工具及可用漏洞数�
 
 ### ✅ Strengths
 1. 自动检测生态，编排对应扫描工具
-2. 阈值门禁（`--severity MEDIUM/HIGH/CRITICAL`）
-3. `--fix` 自动修复（npm audit fix）；其余生态输出修复指引
-4. 三态退出码：0=通过 / 1=无法验证（工具缺失）/ 2=发现漏洞
+2. 识别到语言但无原生生态映射 → 自动落 `universal`（trivy fs --scanners vuln）；原生生态存在时不并行兜底
+3. `--severity` 为「该级别及以上」，在所有扫描器上同一语义（maven 按 CVSS 档位下界换算，HIGH⇒7）
+4. 退出码：0 通过 / 1 无法验证 / 2 存在漏洞 / 3 参数错误（未声明 --ecosystem 在任何扫描前拒绝）
+5. 阈值门禁（`--severity MEDIUM/HIGH/CRITICAL`）
+6. `--fix` 自动修复（npm audit fix）；其余生态输出修复指引
+7. 三态退出码：0=通过 / 1=无法验证（工具缺失）/ 2=发现漏洞
 
 ### ⚠️ Prerequisites
 1. Maven：mvn + 网络（首跑下载 NVD 库，建议申请 NVD_API_KEY）
 2. Node：npm + package-lock.json
 3. Python：pip-audit（`pip install pip-audit`）
 4. Rust：cargo-audit（`cargo install cargo-audit`）
+5. 通用兜底：trivy（`brew install trivy`）——仅在检测到无原生扫描器的语言（Go/PHP/Ruby 等）时触发
 
 ### ❌ Out of Scope
 1. 镜像内 OS 包 CVE → trivy image（可后续接入）

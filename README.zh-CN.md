@@ -79,6 +79,11 @@ AI 一次写出就过 lint 的代码
 | 状态 | 语言 |
 |---|---|
 | **Stable**（53 种，默认强制） | Java、Rust、TypeScript/JavaScript、Python、Go、C#、Kotlin、Swift、PHP、Ruby、Scala、Shell、Dockerfile、YAML、Elixir、CSS/SCSS、Markdown、SQL、TOML、HTML、Protobuf、Terraform/OpenTofu、Nix、Dart、Solidity、Ansible、Perl、Groovy、Clojure、PowerShell、Zig、Nim、Crystal、Julia（仅格式化）、Pascal（仅格式化）、Elm、Lua、Luau、C++（clang-tidy）、Objective-C、CUDA、GraphQL、VB.NET、Erlang、R、CFML 等，详见 LANGUAGES.md |
+
+> **Markdown / YAML 接入语义**：二者声明了 `requiresConfig`——项目根没有对应 linter 配置
+> （如 `.markdownlint-cli2.jsonc` / `.yamllint`）时视为**未接入**，安全跳过、不阻塞提交，
+> 不会被工具默认规则全仓报错。Markdown 门禁为 advisory（告警进 skipped，不拦截）；
+> 此前其 lint 命令缺 glob、恒以用法错误退出，现已返回真实结论。`codeguard init` 会拷入宽松配置模板。
 | **Planned**（4 种，无独立 CLI linter） | Metal、ArkTS（HarmonyOS）、COBOL、Liquid（theme-check 待接通） |
 
 ## 外部技能来源
@@ -136,11 +141,15 @@ ln -s $PWD/bin/codeguard /usr/local/bin/codeguard
 
 codeguard check                     # 跑多语言 lint 门禁
 codeguard fix                       # 自动修复 lint 问题
-codeguard cve                       # CVE 依赖漏洞扫描（Maven/npm/Python/Rust 编排）
+codeguard cve                       # CVE 依赖漏洞扫描（Maven/npm/Python/Rust + universal trivy 兜底）
 codeguard cve --fix                 # 扫描并自动修复（npm audit fix）
-codeguard cve --severity MEDIUM     # 门禁阈值调到中危
+codeguard cve --severity MEDIUM     # 「该级别及以上」：MEDIUM/HIGH/CRITICAL 都算失败
+codeguard cve --ecosystem java      # maven 的别名；未声明生态在任何扫描前退出码 3 拒绝
 codeguard detect                    # 检测项目语言
 ```
+
+CVE 退出码：`0` 通过 / `1` 无法验证（工具缺失或无可扫描生态） / `2` 存在漏洞 / `3` 参数错误。
+未被原生扫描器覆盖的语言自动落 `trivy fs --scanners vuln` 通用兜底；原生工具缺失时保持「无法验证」，不用兜底顶替。`--severity` 在所有扫描器上都是「阈值及以上」（maven 按 CVSS 档位下界换算：HIGH⇒7）。
 
 Maven 项目 CVE 扫描使用 OWASP dependency-check（pom 配置模板见
 `linters/maven/dependency-check-pom-snippet.xml`；`CVSS>=7 构建失败`）。

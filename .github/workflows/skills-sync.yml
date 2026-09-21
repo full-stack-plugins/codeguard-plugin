@@ -24,13 +24,13 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.SKILLS_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.FULL_STACK_SKILLS_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
       REQUESTED_REF: ${{ github.event.client_payload.ref || inputs.ref }}
       REQUESTED_SHA: ${{ github.event.client_payload.sha || inputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.SKILLS_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.FULL_STACK_SKILLS_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -59,6 +59,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin refs/heads/chore/skills-sync:refs/remotes/origin/chore/skills-sync || true
           git checkout -B chore/skills-sync
           git add skills/ skills.lock.json
           git commit -m "chore: sync vendored skills from codeguard-skills ${REQUESTED_REF:-current-lock}"
@@ -74,5 +75,4 @@ jobs:
           gh pr create \
             --title "chore: sync vendored Codeguard skills ${REQUESTED_REF:-current-lock}" \
             --body "Automated refresh of the checksummed skill snapshot from skills.lock.json. Requested release: ${REQUESTED_REF:-current lock}; expected commit: ${REQUESTED_SHA:-already pinned}. Externally managed skills come from full-stack-skills/codeguard-skills; plugin-local exceptions must be declared in plugin-local-skills.json." \
-            --head chore/skills-sync --base main \
-            --label skills-sync
+            --head chore/skills-sync --base main

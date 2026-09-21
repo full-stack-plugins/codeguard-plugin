@@ -79,7 +79,7 @@ compatibility: 需要本地项目、对应语言工具链和仓库既有 lint �
 | 探测命令 | `npx --no-install htmlhint --version` |
 | lint | `npx --no-install htmlhint '{file}'` |
 | format/fix | `prettier --write` |
-| 项目级 gate | `bash -c 'find . \( -name '"'"'*.html'"'"' -o -name '"'"'*.htm'"'"' \) -type f -not -path '"'"'*/node_modules/*'"'"' -exec grep -L '"'"'<%'"'"' {} + | xargs -0 -r npx --no-install htmlhint'` |
+| 项目级 gate | `bash -c 'find . \( -name '"'"'*.html'"'"' -o -name '"'"'*.htm'"'"' \) -type f -not -path '"'"'*/node_modules/*'"'"' -exec grep -L '"'"'<%'"'"' {} + \| xargs -0 -r npx --no-install htmlhint'` |
 
 
 ## 标准 Workflow
@@ -148,7 +148,7 @@ HTML Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — 模板文件可能包含服务端语法；HTMLHint 解析失败时先确认是否应交给模板专用工具。
+7. **领域陷阱** — 模板文件可能包含服务端语法；HTMLHint 解析失败时先确认是否应交给模板专用工具。
 
 ## 信息不足时
 

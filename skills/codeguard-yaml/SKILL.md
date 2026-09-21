@@ -148,7 +148,7 @@ YAML Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — YAML 语法正确不等于 Kubernetes、Compose 或 CI schema 正确；需要对应 schema 校验。
+7. **领域陷阱** — YAML 语法正确不等于 Kubernetes、Compose 或 CI schema 正确；需要对应 schema 校验。
 
 ## 信息不足时
 

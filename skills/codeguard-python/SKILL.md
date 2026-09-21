@@ -148,8 +148,8 @@ Python Codeguard 结果
 4. **占位符不是字面参数** — `{file}` 必须替换为真实、已授权路径。
 5. **自动修复可能扩大 diff** — 修复后先审查 diff，再运行回归门禁。
 6. **生成与 vendor 目录需显式策略** — 不得随意全仓扫描或修改第三方内容。
-1. **领域陷阱** — Ruff 的 `check --fix` 与 `format` 职责不同；需要格式化时两者应分别执行。
-2. **领域陷阱** — 先读取 `pyproject.toml` 的 target-version 与 per-file-ignores，不能用全局默认覆盖项目契约。
+7. **领域陷阱** — Ruff 的 `check --fix` 与 `format` 职责不同；需要格式化时两者应分别执行。
+8. **领域陷阱** — 先读取 `pyproject.toml` 的 target-version 与 per-file-ignores，不能用全局默认覆盖项目契约。
 
 ## 信息不足时
 
