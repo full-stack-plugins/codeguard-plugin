@@ -1458,7 +1458,7 @@
         "ansible.cfg",
         "playbook.yml"
       ],
-      "status": "planned",
+      "status": "stable",
       "since": "V0.3",
       "lint": [
         "ansible-lint"

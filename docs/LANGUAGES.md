@@ -1,11 +1,11 @@
 # partme-codeguard-plugin 支持的语言
 
-> 覆盖 **55 种编程语言**（注册表 57 条，含 Dockerfile/Ansible 等文件类型条目）。所有语言均可被 `detect_lang` 识别；其中 **53 条**已接入 linter 强制门禁（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。
+> 覆盖 **55 种编程语言**（注册表 57 条，含 Dockerfile/Ansible 等文件类型条目）。所有语言均可被 `detect_lang` 识别；其中 **54 条**已接入 linter 强制门禁（Stable / Beta），其余列入路线图（Planned，钩子检测到后安全跳过）。
 >
 > 本文档由 `scripts/languages.json` 注册表自动生成（`scripts/gen_language_docs.py`）；新增/调整语言请改注册表后重新生成。
 
 
-## Stable（默认强制，V0.1 起）（53 种）
+## Stable（默认强制，V0.1 起）（54 种）
 
 | 语言 | 扩展名 | Lint 命令 | Format 命令 | 安装说明 |
 |---|---|---|---|---|
@@ -62,15 +62,15 @@
 | Erlang | `.erl` `.hrl` | `elvis rock` | `erlfmt` | rebar3 plugins / escript |
 | Liquid (Shopify) | `.liquid` | `theme-check .` | — | gem install theme-check |
 | CUDA | `.cu` `.cuh` | `clang-tidy --quiet {file}` | `clang-format -i {file}` | CUDA Toolkit + clangd |
+| Ansible | （文件名匹配） | `ansible-lint` | `ansible-lint --fix` | playbook 检查由 ansible-lint 承接（yaml 通道）；语义级检查待集成 |
 
-## Planned（已识别，linter 在路线图上）（4 种）
+## Planned（已识别，linter 在路线图上）（3 种）
 
 | 语言 | 扩展名 | 计划 Linter | 目标版本 |
 |---|---|---|---|
 | COBOL | `.cbl` `.cob` `.cpy` | 无独立 CLI linter（依赖平台 IDE 诊断） | V0.5 |
 | ArkTS (HarmonyOS) | `.ets` | 无独立 CLI linter（依赖平台 IDE 诊断） | V0.5 |
 | Metal | `.metal` | 无独立 CLI linter（依赖平台 IDE 诊断） | V0.5 |
-| Ansible | — | playbook 检查由 ansible-lint 承接（yaml 通道）；语义级检查待集成 | V0.3 |
 
 ## 检测机制
 
