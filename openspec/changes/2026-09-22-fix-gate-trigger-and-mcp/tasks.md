@@ -13,7 +13,7 @@
 
 ## 3. MCP server
 
-- [x] 3.1 Add root `requirements.txt` with `mcp>=1.0` and install it in skills-check.yml before unittest.
+- [x] 3.1 Add root `requirements.txt` with `mcp>=1.0,<2` (mcp 2.x changed the decorator API; pin to the tested major) and install it in skills-check.yml before unittest.
 - [x] 3.2 Replace `scripts/run_check.py:mcp_main()` with a real `mcp.server.Server` that registers `check_code_style`, `auto_fix`, `list_languages` tools over stdio JSON-RPC.
 - [x] 3.3 Ensure `check_code_style` returns a structured `{language, passed, exit_code, stderr_path}` payload and writes full stderr to `out/.codeguard-last.log`.
 - [x] 3.4 Ensure `auto_fix` invokes the formatter chain and re-runs `check_code_style` before returning.

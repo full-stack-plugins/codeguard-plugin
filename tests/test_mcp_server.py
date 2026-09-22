@@ -62,7 +62,7 @@ def _read_until(proc: subprocess.Popen, want_id: int, timeout: float = 30.0) -> 
     sel.close()
     if deadline_line is None:
         err = proc.stderr.read() if proc.stderr else ""
-        raise AssertionError(f"no response for id={want_id}; stderr={err[:500]!r}")
+        raise AssertionError(f"no response for id={want_id}; stderr={err[:2000]!r}")
     return deadline_line
 
 
