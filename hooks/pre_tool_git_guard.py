@@ -146,6 +146,34 @@ def resolve_project_roots(command: str) -> list[Path]:
     return roots
 
 
+def _fallback_roots(cwd: Path) -> list[Path]:
+    """cwd 不是 git 仓时，扫 cwd 一层子目录找 git 仓作兜底（monorepo 模式）。
+
+    返回去重后保序的 git 仓列表（不含 cwd 自身）。
+
+    实现注：`_is_git_repo(p)` 调 `git -C p rev-parse --git-dir` —— git 在
+    p 不是仓时会沿父目录递归找 .git 并返回成功；这会让 cwd 是任何子目录时
+    全部子目录被错判为 git 仓。fallback 必须用更严格的"仓内 .git 存在"判定：
+    `(child / ".git").exists()`。`_is_git_repo` 在主流程只在 cwd 自身或显式
+    cd 后的目标目录上调用，子目录递归副作用在主流程可控；这里只暴露 cwd
+    自身的判定语义，故 fallback 走自己独立的"子目录级 .git 存在"检查。
+    """
+    if not cwd.is_dir():
+        return []
+    cwd_resolved = cwd.resolve()
+    found: list[Path] = []
+    for child in sorted(cwd.iterdir(), key=lambda p: p.name):
+        if not child.is_dir():
+            continue
+        child_resolved = child.resolve()
+        if child_resolved == cwd_resolved:
+            continue
+        # 严格子目录级检查：仓根的 .git 必须真在该子目录里
+        if (child / ".git").exists():
+            found.append(child_resolved)
+    return found
+
+
 _ASSIGN_RE = None  # 延迟编译，保持模块零顶层 re 依赖
 _ASSIGN_PATTERN = r"^[A-Za-z_][A-Za-z0-9_.-]*="
 _BARE_WRAPPERS = ("env", "sudo", "nohup", "command", "time", "nice", "ionice", "setsid", "stdbuf")
@@ -460,8 +488,29 @@ def main() -> int:
     cfg = load_user_config()
     mode = _guarded_mode(command) or "commit"
     roots = resolve_project_roots(command)
+    # 静默跳过漏报修复：roots=[] 时扫描 cwd 一层子目录找 git 仓作兜底
+    # （monorepo 模式：workspace 根目录下多仓时，从根目录直跑 git push 不
+    # 经 cd 也能被覆盖）。找不到则向 #2 抛错，让 Agent 知晓绕过发生。
+    fallback_note: str | None = None
     if not roots:
-        return 0
+        fallback = _fallback_roots(Path(os.getcwd()))
+        if fallback:
+            roots = fallback
+            fallback_note = (
+                f"未检测到显式 cd 仓；兜底扫描 cwd 一层子目录找到 {len(fallback)} 个 git 仓"
+            )
+        else:
+            # 输出明确错误而非静默 exit 0：避免 Agent/用户误以为门禁执行过。
+            print(
+                f"[codeguard] 未检测到任何 git 仓：cwd={os.getcwd()} 且命令链中无 cd <仓>。"
+                f"请在 git push 前先 cd <仓路径>，或在仓库根设置 git config codeguard.skipGate true。"
+                f"（已用兜底扫描 cwd 一层子目录，无 git 仓。）",
+                file=sys.stderr,
+            )
+            return 2
+    if fallback_note:
+        # 兜底走通：仅在会话状态记录（不进 stderr，避免噪音），Stop 摘要可见
+        record_skip_event("monorepo-fallback", roots[0])
     if any(skip_gate_via_git_config(r) for r in roots):
         record_skip_event("skipGate", roots[0])
         return 0

@@ -12,6 +12,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -465,9 +466,16 @@ def _run_gate_uncached(
                 text=True, timeout=timeout,
             )
         except subprocess.TimeoutExpired:
+            # 超时 = 不可证伪，路由到 skipped 而非 failures。上游 run_gate 把
+            # timeout 当失败会把 Maven install -DskipTests 冷缓存（普遍 >2 分钟）
+            # 误报为阻断；报告 skip + 指引加长 timeout，不阻塞硬门禁。
             return 124, "", f"timeout after {timeout}s"
         except FileNotFoundError:
             return 127, "", f"{lang} linter 未安装（安装: {hint}）"
+        # exit 124 = subprocess 自身用 124 报 timeout（与上面的 TimeoutExpired
+        # 区分：后者是 _run_one 自身超时，subprocess.run 不抛），同样不可证伪。
+        if proc.returncode == 124:
+            return 124, proc.stdout or "", f"subprocess timeout after {timeout}s"
         return proc.returncode, proc.stdout or "", proc.stderr or ""
 
     results = []
@@ -483,7 +491,47 @@ def _run_gate_uncached(
             failures.append(failure)
         if skip:
             skipped.append(skip)
+    # OpenSpec validate：项目使用 OpenSpec 管理 change proposal 时，跨语言 lint
+    # 通过后再核验 openspec/changes/* 是否仍合法（DRAFT/REVIEW_REQUIRED 提案
+    # 实施时此步提醒 agent 评审未通过）。OpenSpec 未安装或项目无 config 时跳过。
+    try:
+        openspec_check = _openspec_validate(project_root)
+        for entry in openspec_check["failures"]:
+            failures.append(entry)
+        if openspec_check["skipped"]:
+            skipped.append(openspec_check["skipped"])
+    except (OSError, ValueError) as exc:
+        skipped.append(f"openspec UNVERIFIED：{exc}")
     return failures, skipped
+
+
+def _openspec_validate(project_root: Path) -> dict:
+    """若仓根有 openspec/config.yaml 且 openspec CLI 可用，跑 strict validate。
+
+    报告：failures=[("openspec", detail, 修复命令, install_hint), ...]
+          skipped="…" 或 None（无 openspec 项目或 CLI 缺失时）。
+    """
+    cfg_path = project_root / "openspec" / "config.yaml"
+    if not cfg_path.is_file():
+        return {"failures": [], "skipped": None}
+    cli = shutil.which("openspec")
+    if cli is None:
+        return {"failures": [], "skipped": "openspec CLI 未安装，跳过验证"}
+    timeout_seconds = cfg.get("lint_timeout_seconds", 300) if isinstance(cfg, dict) else 300
+    try:
+        proc = subprocess.run(
+            [cli, "validate", "--all", "--strict", "--no-interactive", "--json"],
+            cwd=project_root, capture_output=True, text=True,
+            check=False, timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return {"failures": [], "skipped": "openspec validate 超时（lint_timeout_seconds）"}
+    if proc.returncode == 0:
+        return {"failures": [], "skipped": None}
+    detail = _truncate_detail((proc.stdout or "") + (proc.stderr or ""), project_root, "openspec")
+    fix = f"{cli} validate --all --strict --no-interactive"
+    hint = "见 https://openspec.dev 或 `npm i -g @fission-ai/openspec`"
+    return {"failures": [("openspec", detail, fix, hint)], "skipped": None}
 
 def skip_gate_via_git_config(project_root: Path) -> bool:
     """仓库级豁免：git config codeguard.skipGate true。
