@@ -334,3 +334,180 @@ class EventDedupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ══════════ 2026-09-22 push-face batch（2026-09-22-push-face-delta）══════════
+
+class GuardedModeTests(unittest.TestCase):
+    """面判定与命中判定同源：直接与一层间接都必须选出正确的面。"""
+
+    def test_direct_faces(self) -> None:
+        self.assertEqual(guard._guarded_mode("git commit -m x"), "commit")
+        self.assertEqual(guard._guarded_mode("cd r && git push"), "push")
+
+    def test_chained_takes_push_face(self) -> None:
+        self.assertEqual(
+            guard._guarded_mode("git add -A && git commit -m x && git push"), "push"
+        )
+
+    def test_not_guarded_returns_none(self) -> None:
+        self.assertIsNone(guard._guarded_mode('echo "git push"'))
+        self.assertIsNone(guard._guarded_mode("git status"))
+
+    def test_indirect_script_face(self) -> None:
+        script = Path(tempfile.mkdtemp(prefix="cg-face-")) / "release.sh"
+        script.write_text("set -e\ngit push origin main\n", encoding="utf-8")
+        self.assertEqual(guard._guarded_mode(f"bash {script}"), "push")
+
+
+def _pushable_repo() -> Path:
+    """bare 远端 + 工作克隆 + 一个绕过门禁的坏提交（工作树干净）。"""
+    import shutil
+    bare = Path(tempfile.mkdtemp(prefix="cg-bare-"))
+    work = Path(tempfile.mkdtemp(prefix="cg-work-"))
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], capture_output=True)
+    _git(work, "config", "user.email", "t@t")
+    _git(work, "config", "user.name", "t")
+    (work / "good.txt").write_text("ok\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-q", "-m", "init")
+    r = subprocess.run(
+        ["git", "push", "-q", "-u", "origin", "HEAD"], cwd=work,
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    # 绕过门禁（模拟用户手动提交/装插件前的提交）：坏 shell 文件入库
+    (work / "bad.sh").write_text("#!/bin/bash\nif [ $x = y ]; then true; fi\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-q", "-m", "bad commit outside the gate")
+    shutil.rmtree(bare, ignore_errors=True)  # 远端留否无所谓：upstream 已建立
+    return work
+
+
+class PushFaceTests(unittest.TestCase):
+    """0.8.0 引入的空洞：坏提交入史后工作树干净，push 门禁曾得到空集。"""
+
+    def test_changed_files_faces(self) -> None:
+        work = _pushable_repo()
+        self.assertEqual(scope.changed_files(work, mode="commit"), [])
+        self.assertEqual(scope.changed_files(work, mode="push"), ["bad.sh"])
+
+    @unittest.skipUnless(
+        __import__("shutil").which("shellcheck"), "shellcheck 未安装"
+    )
+    def test_push_is_blocked_and_commit_is_not(self) -> None:
+        import shutil
+        work = _pushable_repo()
+        env_extra = {"CODEGUARD_HOME": str(Path(tempfile.mkdtemp(prefix="cg-home-")))}
+        r_push = _run_hook(
+            "pre_tool_git_guard.py",
+            {"tool_name": "Bash", "tool_input": {"command": "git push"}},
+            work, env_extra=env_extra,
+        )
+        self.assertEqual(r_push.returncode, 2, r_push.stderr[:400])
+        self.assertIn("shell", r_push.stderr)
+        r_commit = _run_hook(
+            "pre_tool_git_guard.py",
+            {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}},
+            work, env_extra=env_extra,
+        )
+        # commit 面空集：历史里已入库的东西不该拦"下一次干净提交"
+        self.assertEqual(r_commit.returncode, 0, r_commit.stderr[:400])
+        shutil.rmtree(work, ignore_errors=True)
+
+    def test_ups_uses_push_face_for_push_intent(self) -> None:
+        import shutil
+        work = _pushable_repo()
+        env_extra = {"CODEGUARD_HOME": str(Path(tempfile.mkdtemp(prefix="cg-home-")))}
+        r_push = _run_hook(
+            "user_prompt_validator.py", {"user_prompt": "请帮我 push"}, work,
+            env_extra=env_extra,
+        )
+        self.assertEqual(r_push.returncode, 0)
+        self.assertIn("codeguard ❌", r_push.stdout, "push 意图必须走 push 面并报出问题")
+        r_commit = _run_hook(
+            "user_prompt_validator.py", {"user_prompt": "提交代码"}, work,
+            env_extra=env_extra,
+        )
+        self.assertIn("✅", r_commit.stdout, "commit 意图走空的 commit 面应通过")
+        shutil.rmtree(work, ignore_errors=True)
+
+
+class UnverifiedParityTests(unittest.TestCase):
+    """rc2/127 按场景分流：rc2 = unverified（两处一致）；rc127 = 故意分歧。
+
+    check CLI 是 CI/健康面——工具缺失必须红（环境无关性由 test_mcp_server
+    的失败日志/安静模式用例依赖）；交互钩子对 127 归 skipped 不挡工作。
+    这是有意设计，本测试锁住它，防止再被"统一"。
+    """
+
+    @staticmethod
+    def _fake_run(returncode: int):
+        import run_per_language as rpl
+
+        class _Fake:
+            pass
+
+        _Fake.returncode = returncode
+        _Fake.stdout = ""
+        _Fake.stderr = "boom" if returncode != 0 else ""
+        original = rpl.subprocess.run
+        rpl.subprocess.run = lambda *a, **k: _Fake()
+        return original
+
+    def test_rc_127_is_failure_in_cli(self) -> None:
+        import run_per_language as rpl
+
+        original = self._fake_run(127)
+        try:
+            results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-127-")))
+        finally:
+            rpl.subprocess.run = original
+        self.assertFalse(results[0]["passed"], "CLI 面工具缺失必须报失败")
+        self.assertNotIn("unverified", results[0])
+
+    def test_rc_2_is_unverified_in_cli(self) -> None:
+        import run_per_language as rpl
+
+        original = self._fake_run(2)
+        try:
+            results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-2-")))
+        finally:
+            rpl.subprocess.run = original
+        self.assertTrue(results[0]["passed"])
+        self.assertIn("exit 2", results[0].get("unverified", ""))
+
+
+class FourHookDedupTests(unittest.TestCase):
+    """SessionStart/Stop 也按 session_id 去重（四钩子同一规则）。"""
+
+    def setUp(self) -> None:
+        self.home = Path(tempfile.mkdtemp(prefix="cg-home-"))
+        self.env = {"CODEGUARD_HOME": str(self.home)}
+
+    def test_session_start_second_copy_silent(self) -> None:
+        repo = _fresh_repo()
+        (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        payload = {"session_id": "s-dedup-1"}
+        first = _run_hook("env_check.py", payload, repo, env_extra=self.env)
+        second = _run_hook("env_check.py", payload, repo, env_extra=self.env)
+        self.assertEqual(first.returncode, 0)
+        self.assertTrue(first.stdout.strip(), "第一份必须正常输出")
+        self.assertEqual(second.returncode, 0)
+        self.assertEqual(second.stdout.strip(), "", "同会话第二份必须静默")
+
+    def test_stop_second_copy_silent(self) -> None:
+        repo = _fresh_repo()
+        payload = {"session_id": "s-dedup-2"}
+        first = _run_hook("stop_summary.py", payload, repo, env_extra=self.env)
+        second = _run_hook("stop_summary.py", payload, repo, env_extra=self.env)
+        self.assertTrue(first.stdout.strip())
+        self.assertEqual(second.stdout.strip(), "", "同会话第二份必须静默")
+
+    def test_different_sessions_not_deduped(self) -> None:
+        repo = _fresh_repo()
+        a = _run_hook("stop_summary.py", {"session_id": "s-a"}, repo, env_extra=self.env)
+        b = _run_hook("stop_summary.py", {"session_id": "s-b"}, repo, env_extra=self.env)
+        self.assertTrue(a.stdout.strip())
+        self.assertTrue(b.stdout.strip())

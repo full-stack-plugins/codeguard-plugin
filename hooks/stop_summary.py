@@ -75,7 +75,13 @@ def _skipgate_left_enabled() -> bool:
         return False
 
 
-def main() -> int:
+def main(payload: dict | None = None) -> int:
+    from gate_lib import should_suppress_event
+
+    session_id = (payload or {}).get("session_id")
+    if session_id and should_suppress_event(f"stop:{session_id}"):
+        # 双副本：统计与清理由第一份完成，第二份静默（避免摘要×2、清两次）。
+        return 0
     state = load_state()
     print(summarize(state))
     if _skipgate_left_enabled():
@@ -92,7 +98,15 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        payload: dict = {}
+        if not sys.stdin.isatty():
+            try:
+                data = json.loads(sys.stdin.read())
+                if isinstance(data, dict):
+                    payload = data
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+        sys.exit(main(payload))
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流

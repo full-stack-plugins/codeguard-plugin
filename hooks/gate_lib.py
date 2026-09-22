@@ -139,8 +139,11 @@ def _worktree_fingerprint(project_root: Path) -> str:
     return h.hexdigest()[:16]
 
 
-def _gate_cache_key(project_root: Path, languages: list) -> str | None:
-    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹。任一变化即失效。"""
+def _gate_cache_key(project_root: Path, languages: list, *, mode: str = "commit") -> str | None:
+    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹 + 门禁面（mode）。
+
+    同一 HEAD/工作树下 commit 面与 push 面看到的文件集不同（push 面含未推送
+    提交），不带 mode 会互相污染缓存。"""
     head = _git(project_root, "rev-parse", "HEAD")
     if head is None:
         return None
@@ -151,14 +154,20 @@ def _gate_cache_key(project_root: Path, languages: list) -> str | None:
         return None
     return (
         f"{head.strip()}|{idx_sig}|{_worktree_fingerprint(project_root)}"
-        f"|{','.join(sorted(languages))}"
+        f"|{mode}|{','.join(sorted(languages))}"
     )
 
 
 GATE_CACHE_TTL = 60  # 秒：UPS 软门禁与紧随的 PreToolUse 硬门禁之间复用
 
 
-def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tuple[list, list]:
+def run_gate(
+    project_root: Path,
+    cfg: dict,
+    languages: list | None = None,
+    *,
+    mode: str = "commit",
+) -> tuple[list, list]:
     """运行 linter 门禁（跨进程结果缓存 + 并行执行）。
 
     `languages` 可选：调用方（UserPromptSubmit）可传入用户消息里提到的
@@ -179,7 +188,7 @@ def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tu
         return [], []
     # 作用域：项目可用 codeguard.json gate_scope 覆盖；缺省 = git 仓 delta、
     # 非 git 目录全量。delta 只检查本次改动涉及的文件——存量问题不拦新提交。
-    changed = changed_files(project_root)
+    changed = changed_files(project_root, mode=mode)
     scope = (get_overrides(project_root) or {}).get("gate_scope") or (
         "delta" if changed is not None else "repo"
     )
@@ -187,7 +196,7 @@ def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tu
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    ck = _gate_cache_key(project_root, languages)
+    ck = _gate_cache_key(project_root, languages, mode=mode)
     cache_file = _gate_cache_path(project_root)
     if ck:
         try:
@@ -274,11 +283,15 @@ def _run_gate_uncached(
             return (lang, None, f"{lang} 未配置项目级 gate 命令（lint 为单文件模式），本次未验证")
         timeout = cfg.get("lint_timeout_seconds", 120)
         hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
+        # 「未接入」先于「工具不可用」：requiresConfig 是纯文件系统判定（快、
+        # 不起进程），且是更根本的原因——项目没接这个 linter 时，装没装工具
+        # 都不该影响结论；反过来会把"未接入"报成"工具不可用"（本机无 yamllint
+        # 时既有 yaml 测试即因此失败）。
+        if not project_uses_linter(cmd_def, project_root):
+            return (lang, None, f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
         ok, reason = probe_toolchain(cmd_def)
         if not ok:
             return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
-        if not project_uses_linter(cmd_def, project_root):
-            return (lang, None, f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
 
         outputs: list[tuple[int, str, str]] = []
         if scope == "delta" and uses_delta_files and "{file}" in " ".join(base_cmd or []):

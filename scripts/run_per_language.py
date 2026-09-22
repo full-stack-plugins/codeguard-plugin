@@ -58,8 +58,13 @@ def run_check(languages: list[str], project_root: Path,
         lint_cmd = scope_cmd(lint_cmd, project_root, full_excludes=True)
         rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
         if rc == 2:
-            # exit 2 = 用法/依赖/配置崩溃，与仓库内容无关（house 规则：
-            # 无法验证 ≠ 验证失败）。不触发 fix、不写失败日志。
+            # exit 2 = 用法/依赖/配置崩溃，与仓库内容无关 → unverified
+            # （不计失败、不触发 fix、不写失败日志）。
+            # exit 127（命令不存在）**故意保持失败**：check CLI 是 CI/健康面，
+            # "工具没装"在那里就该红——test_mcp_server 的失败日志与安静模式用例
+            # 依赖这条环境无关性（CI 无 ruff，靠 127=失败才进得了失败路径）。
+            # 交互钩子路径对 127 归 skipped（不挡人工作）：按场景的有意分歧，
+            # 不是口径 bug（v0.8.1 曾误统一过一次，本提交修正）。
             results.append({
                 "language": lang,
                 "passed": True,

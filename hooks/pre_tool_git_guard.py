@@ -94,17 +94,21 @@ def resolve_project_roots(command: str) -> list[Path]:
     return roots
 
 
-def _segment_is_git_side_effect(seg: str) -> bool:
-    """单个命令段是不是 git commit/push：git 为分隔符后的命令词。
+def _git_side_effect_sub(seg: str) -> str | None:
+    """命令段段首为 git commit|push 时返回子命令（commit/push），否则 None。
 
     首 token 剥一层包裹引号（`bash -c "git commit …"` 切段后首词是 `"git`）。
     """
     tokens = seg.strip().split()
     if len(tokens) < 2:
-        return False
+        return None
     first = tokens[0].strip("\"'")
     second = tokens[1].strip("\"'")
-    return first == "git" and second in ("commit", "push")
+    return second if first == "git" and second in ("commit", "push") else None
+
+
+def _segment_is_git_side_effect(seg: str) -> bool:
+    return _git_side_effect_sub(seg) is not None
 
 
 _SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".py", ".mjs", ".js", ".ts")
@@ -153,18 +157,69 @@ def _command_indirect(command: str) -> bool:
     return False
 
 
+def _collect_subs(text: str) -> list[str]:
+    import re
+    return [
+        sub for seg in re.split(r"&&|\|\||;|\n", text)
+        if (sub := _git_side_effect_sub(seg))
+    ]
+
+
+def _guarded_mode(command: str) -> str | None:
+    """门禁命中时返回生效的门禁面：commit 或 push（push 优先——两面并存时
+    推送面是提交面的超集，按更宽的面检查）；未命中返回 None。
+
+    直接命令段先判定；未命中再走一层解释器间接（脚本/-c 内联）。
+    is_guarded 即本函数的存在性判断——面判定与命中判定共用同一套扫描，
+    避免"命中了却选错面"的分叉。
+    """
+    subs = _collect_subs(command)
+    if not subs:
+        import re
+        for seg in re.split(r"&&|\|\||;|\n", command):
+            tokens = seg.strip().split()
+            if not tokens:
+                continue
+            prog = tokens[0].rsplit("/", 1)[-1]
+            if prog not in _INTERPRETERS:
+                continue
+            rest = tokens[1:]
+            if "-c" in rest:
+                body = " ".join(rest[rest.index("-c") + 1:])
+                subs = _collect_subs(body)
+                if subs:
+                    break
+                continue
+            for tok in rest:
+                if tok.startswith("-"):
+                    continue
+                target = Path(tok)
+                if not target.is_file() or target.suffix not in _SCRIPT_SUFFIXES:
+                    break
+                try:
+                    if target.stat().st_size > 1_000_000:
+                        break
+                    body = target.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    break
+                subs = _collect_subs(body)
+                break
+            if subs:
+                break
+    if not subs:
+        return None
+    return "push" if "push" in subs else "commit"
+
+
 def is_guarded(command: str) -> bool:
     """精确匹配 git commit/push：直接命令 + 一层解释器间接。
 
     直接：子串匹配会误伤命令文本里的数据（payload、调试脚本内容含
     "git push" 字面量），所以按分隔符切段、git 必须是段首命令词。
-    间接：解释器执行的脚本/内联代码按同规则扫一层（见 _command_indirect）。
+    间接：解释器执行的脚本/内联代码按同规则扫一层。
+    命中后面（commit/push）由 _guarded_mode 决定，供门禁选 delta 面。
     """
-    import re
-    if any(_segment_is_git_side_effect(seg)
-           for seg in re.split(r"&&|\|\||;|\n", command)):
-        return True
-    return _command_indirect(command)
+    return _guarded_mode(command) is not None
 
 
 def main() -> int:
@@ -185,6 +240,7 @@ def main() -> int:
         return 0
 
     cfg = load_user_config()
+    mode = _guarded_mode(command) or "commit"
     roots = resolve_project_roots(command)
     if not roots:
         return 0
@@ -196,11 +252,10 @@ def main() -> int:
     # （commit 查暂存区；push 查未推送提交的 diff，防已提交未发现的坏文件）
     reports = []
     for project_root in roots:
-        failures, _skipped = run_gate(project_root, cfg)
+        failures, _skipped = run_gate(project_root, cfg, mode=mode)
         if failures:
             reports.append(gate_directive(failures))
-        safety_mode = "push" if "git push" in command.lower() else "commit"
-        violations = check_commit_safety(project_root, safety_mode)
+        violations = check_commit_safety(project_root, mode)
         if violations:
             reports.append(format_safety_report(violations) + (
                 "\n\n**给 AI 的强制指令**：先把上述文件移出版本库"

@@ -7,6 +7,7 @@
 3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codeguard 管理的项目里
 """
 import contextlib
+import json
 import os
 import subprocess
 import sys
@@ -58,7 +59,15 @@ def detect_linter_config(project_root: Path) -> dict:
     return found
 
 
-def main() -> int:
+def main(payload: dict | None = None) -> int:
+    # 双副本去重：宿主提供 session_id 时，同会话第二个副本静默（第一份的
+    # 摘要已注入；两份都打 = 同一段"项目记忆"重复两遍）。payload 缺字段
+    # （测试协议/其它宿主）时不去重，保持旧行为。
+    from gate_lib import should_suppress_event
+
+    session_id = (payload or {}).get("session_id")
+    if session_id and should_suppress_event(f"start:{session_id}"):
+        return 0
     ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录，先补齐再盘点
     project_root = find_project_root(os.getcwd())
     if project_root is None:
@@ -142,7 +151,15 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        payload: dict = {}
+        if not sys.stdin.isatty():
+            try:
+                data = json.loads(sys.stdin.read())
+                if isinstance(data, dict):
+                    payload = data
+            except (json.JSONDecodeError, ValueError):
+                payload = {}
+        sys.exit(main(payload))
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
