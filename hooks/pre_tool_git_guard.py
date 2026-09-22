@@ -617,11 +617,21 @@ def main() -> int:
     # 无残留），放行并留审计明细——比仓库级 config 更不易"忘记恢复"。
     if inline_skip_gate(command):
         record_skip_event("inline-skipGate", roots[0])
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "additionalContext":
+            "codeguard: 已通过内联豁免 `-c codeguard.skipGate` 放行本次提交"
+            "（已审计记录，Stop 摘要可见）。"}}
+        ))
         return 0
     # 链内设置豁免：`git config codeguard.skipGate true && … && git config --unset …`
     # 是文档推荐的自清理写法；此前整链被拦连 set 段都没跑成（首用必败）。
     if chain_skip_gate(command):
         record_skip_event("chain-skipGate", roots[0])
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "additionalContext":
+            "codeguard: 已通过链式豁免（set→提交→unset 同链）放行本次提交"
+            "（已审计记录，Stop 摘要可见）。"}}
+        ))
         return 0
 
     # 按命令链预测实际提交面（纯 commit → 仅 staged；add -A/-a → 三路），

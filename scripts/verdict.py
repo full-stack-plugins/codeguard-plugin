@@ -26,17 +26,66 @@ _ENV_ERROR = re.compile(
 )
 
 
+def _strip_dialect_blocks(output: str) -> str:
+    """剥离 ShellCheck 方言不支持(SC1071)的诊断块，保留同批其余诊断。
+
+    shellcheck 输出按 `In <file> line N:` 分块；SC1071 是"工具不支持该方言"
+    的固有限制，整块丢弃。不得因此掩盖同批 .sh 的真问题——剥离后仍有剩余
+    诊断就按剩余内容重判。
+    """
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for ln in output.splitlines():
+        if ln.startswith("In ") and " line " in ln and current:
+            blocks.append(current)
+            current = [ln]
+        else:
+            current.append(ln)
+    if current:
+        blocks.append(current)
+    kept = [ln for blk in blocks if not any("SC1071" in x for x in blk) for ln in blk]
+    return "\n".join(kept).strip()
+
+
+_CODE_RE = re.compile(r"\b([A-Z]{1,4}\d{2,4})\b")
+
+
+def finding_signatures(output: str) -> set[str]:
+    """从 linter 输出提取可跨运行比较的"发现签名"集合。
+
+    优先用工具规则码（SC2086/F401/…）；无规则码的工具回退"归一化描述行"
+    （剥 file:line:col 前缀与数字）——同一发现在改动前后必须签名一致，
+    基线比对才有意义。提不出签名时返回空集，由调用方拒绝豁免。
+    """
+    sigs = set(_CODE_RE.findall(output))
+    if sigs:
+        return sigs
+    for ln in output.splitlines():
+        s = ln.strip()
+        if not s or s.startswith(("In ", "^", "~", "#!")):
+            continue
+        norm = re.sub(r"[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]+:\d+(:\d+)?", "", s)
+        norm = re.sub(r"\d+", "#", norm).strip()
+        if norm:
+            sigs.add(norm)
+    return sigs
+
+
 def lint_verdict(rc: int, command: list[str], output: str = "") -> tuple[str, str]:
     """按工具契约归一结论；只允许明确的成功返回 PASS。"""
     if rc == 0:
         return PASS, "检查执行成功"
+    # ShellCheck 不支持 zsh/dash 之外的方言（SC1071 是 error 级固有限制）：
+    # 先剥离这些诊断块——只有剥离后**无剩余**才算"方言能力边界"归 UNVERIFIED；
+    # 仍有剩余诊断就按剩余内容判，不许掩盖同批真问题。
+    if "SC1071" in output:
+        rest = _strip_dialect_blocks(output)
+        if not rest:
+            return UNVERIFIED, "ShellCheck 不支持该脚本方言（SC1071）"
+        output = rest
     if rc in (124, 127) or rc < 0 or _ENV_ERROR.search(output):
         reason = {124: "检查超时", 127: "工具不存在"}.get(rc, "工具链执行异常")
         return UNVERIFIED, reason
-    # ShellCheck 不支持 zsh/dash 之外的方言（SC1071 是 error 级固有限制）——
-    # 把 .zsh 送进 shellcheck 必然报错，那不是代码违规而是工具能力边界。
-    if "SC1071" in output:
-        return UNVERIFIED, "ShellCheck 不支持该脚本方言（SC1071）"
     tool = Path(command[0]).name if command else ""
     # pylint 的 2 为 error 位；不得沿用 ESLint/ruff 的配置错误语义。
     if tool == "pylint":

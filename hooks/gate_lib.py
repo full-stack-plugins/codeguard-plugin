@@ -283,6 +283,7 @@ def run_gate(
     failures, skipped = _run_gate_uncached(
         project_root, cfg, languages,
         scope=scope, changed=changed if scope == "delta" else None,
+        baseline_ref="@{upstream}" if mode == "push" else "HEAD",
     )
 
     if ck:
@@ -359,6 +360,7 @@ def _run_gate_uncached(
     *,
     scope: str = "repo",
     changed: list[str] | None = None,
+    baseline_ref: str = "HEAD",
 ) -> tuple[list, list]:
     """单次门禁（多语言并行，结果顺序保持语言表顺序）。
 
@@ -385,7 +387,8 @@ def _run_gate_uncached(
             detail = _truncate_detail(outcome.get("stdout_tail", "") + outcome.get("stderr_tail", ""), project_root, lang)
             if outcome.get("log_path"):
                 detail += f"\n完整输出: {outcome['log_path']}"
-            return (lang, (lang, detail, "按 Java 影响计划修复并复跑 verify/check", "优先项目 wrapper"), None)
+            return (lang, (lang, detail, "按 Java 影响计划修复并复跑 verify/check",
+                           "无需安装工具；用项目自带 mvnw/gradlew 与匹配 JDK 复跑"), None)
         lang_files: list[str] = []
         if scope == "delta":
             lang_files = [
@@ -427,6 +430,7 @@ def _run_gate_uncached(
             return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
 
         outputs: list[tuple[int, str, str]] = []
+        stale_notes: list[str] = []
         # 项目级命令（mvn/gradle 等，无 {file} 占位符）不追加文件路径——
         # 文件被当 goal 会报 `Unknown lifecycle phase` 造成假失败；文件列表
         # 只用来决定跑不跑（delta 上面已按语言过滤）。
@@ -434,9 +438,21 @@ def _run_gate_uncached(
         if scope == "delta" and uses_delta_files and "{file}" in " ".join(base_cmd or []):
             for f in lang_files:
                 cmd = scope_cmd(base_cmd, project_root, single_file=f)
-                outputs.append(_run_one(cmd, timeout, lang, hint))
-                if outputs[-1][0] not in (0,):
-                    break
+                rc_f, out_f, err_f = _run_one(cmd, timeout, lang, hint)
+                if rc_f == 0:
+                    outputs.append((rc_f, out_f, err_f))
+                    continue
+                # 失败先做双跑基线：HEAD 版本同命令同工具已有相同发现 → 存量
+                # 豁免（本次未引入新问题）；否则按新增违规拦截。exact 快照目录
+                # 非 git 仓，git show 失败 → 不豁免（宁可误拦不误放行）。
+                stale = baseline_stale_finding(
+                    project_root, f, base_cmd, (out_f or "") + (err_f or ""), timeout,
+                    baseline_ref=baseline_ref)
+                if stale is not None:
+                    stale_notes.append(f"{f}: {stale}")
+                    continue
+                outputs.append((rc_f, out_f, err_f))
+                break
         else:
             if scope == "delta":
                 # files=None（delta 超 50 文件回退全量命令）时同样要剔除构建产物——
@@ -452,14 +468,25 @@ def _run_gate_uncached(
             outputs.append(_run_one(cmd, timeout, lang, hint))
 
         # 任一后续文件失败都不能被首个文件的成功覆盖。
+        if not outputs:
+            # 所有失败项都比对为存量 → 放行，但必须明示豁免内容
+            record_gate_decision(project_root, lang, base_cmd, 0, "PASS", "存量问题豁免（基线比对）")
+            return (lang, None, f"{lang} 存量问题已豁免（基线同命令同工具比对）："
+                                + "；".join(stale_notes[:3]))
         rc, out, err = next((entry for entry in outputs if entry[0] != 0), outputs[0])
         if rc == 0:
+            record_gate_decision(project_root, lang, base_cmd, 0, "PASS", "检查执行成功")
+            if stale_notes:
+                return (lang, None, f"{lang} 存量问题已豁免（基线比对）："
+                                    + "；".join(stale_notes[:3]))
             return None
         from verdict import UNVERIFIED, lint_verdict
         status, reason = lint_verdict(rc, base_cmd, out + err)
         if status == UNVERIFIED:
+            record_gate_decision(project_root, lang, base_cmd, rc, "UNVERIFIED", reason)
             return (lang, None, f"{lang} 工具链异常未验证：{reason} (exit {rc})")
         if lang == "markdown":
+            record_gate_decision(project_root, lang, base_cmd, rc, "SKIPPED", "markdown 风格告警")
             return (lang, None, "markdown 风格告警（不阻塞提交）")
         full = "\n".join(seg for seg in ((out or "").rstrip(), (err or "").rstrip()) if seg)
         if scope == "delta" and lang_files:
@@ -472,6 +499,7 @@ def _run_gate_uncached(
         if dep_hint:
             detail += f"\n{dep_hint}"
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
+        record_gate_decision(project_root, lang, base_cmd, rc, "FAIL", "检查发现违规")
         return (lang, (lang, detail, fix, hint), None)
 
     def _run_one(cmd: list[str], timeout: int, lang: str, hint: str) -> tuple[int, str, str]:
@@ -515,8 +543,8 @@ def _run_gate_uncached(
         failures.extend(openspec_check["failures"])
         if openspec_check["skipped"]:
             skipped.append(openspec_check["skipped"])
-    except (OSError, ValueError) as exc:
-        skipped.append(f"openspec UNVERIFIED：{exc}")
+    except Exception as exc:  # noqa: BLE001 — 调用面异常同样归"未验证"，不静默吞
+        skipped.append(f"openspec UNVERIFIED：{exc!r}")
     return failures, skipped
 
 
@@ -540,6 +568,8 @@ def _openspec_validate(project_root: Path, timeout_seconds: int = 300) -> dict:
         )
     except subprocess.TimeoutExpired:
         return {"failures": [], "skipped": "openspec validate 超时（lint_timeout_seconds）"}
+    except Exception as exc:  # noqa: BLE001 — validate 自身异常归"未验证"，绝不逃逸成 fail-open 静默吞
+        return {"failures": [], "skipped": f"openspec validate 异常未验证: {exc!r}"}
     if proc.returncode == 0:
         return {"failures": [], "skipped": None}
     detail = _truncate_detail((proc.stdout or "") + (proc.stderr or ""), project_root, "openspec")
@@ -553,25 +583,31 @@ def skip_gate_via_git_config(project_root: Path) -> bool:
     CODEGUARD_SKIP_GATE 环境变量设在用户 shell，传不进宿主起的 hook 子进程
     （宿主环境独立）；git config 由钩子进程在项目根读取，任何调用形态可用。
 
-    读取失败（超时/OSError）**不静默**：记 skipGate-read-error 审计事件后按
-    "未豁免"处理——门禁误拦 vs 误放行之间宁可误拦，但必须留痕可排障。
+    读取失败（超时/OSError）**不静默**：低超时（3s）重试一次后仍失败才按
+    "未豁免"处理，并记 skipGate-read-error 审计事件——门禁误拦 vs 误放行之间
+    宁可误拦，但必须留痕可排障（此前 timeout=10s 静默 False，门禁满负载时
+    高概率误判"没豁免"且无痕迹）。
     """
-    try:
-        proc = subprocess.run(
-            ["git", "config", "--get", "codeguard.skipGate"],
-            cwd=project_root, capture_output=True, check=False, text=True, timeout=10,
-        )
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        record_skip_event("skipGate-read-error", project_root)
-        with contextlib.suppress(OSError, ValueError):
-            path = session_state_path()
-            state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-            events = state.get("_skip", {}).get("events", [])
-            if events:
-                events[-1]["detail"] = f"git config 读取失败: {exc!r}"
-                path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        return False
-    return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
+    last_exc: Exception | None = None
+    for _attempt in (1, 2):
+        try:
+            proc = subprocess.run(
+                ["git", "config", "--get", "codeguard.skipGate"],
+                cwd=project_root, capture_output=True, check=False, text=True, timeout=3,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            last_exc = exc
+            continue
+        return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
+    record_skip_event("skipGate-read-error", project_root)
+    with contextlib.suppress(OSError, ValueError):
+        path = session_state_path()
+        state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        events = state.get("_skip", {}).get("events", [])
+        if events:
+            events[-1]["detail"] = f"git config 读取失败(重试2次): {last_exc!r}"
+            path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    return False
 
 
 def codeguard_home() -> Path:
@@ -600,6 +636,79 @@ def _dependency_resolution_hint(lang: str, full: str) -> str | None:
         "提示：依赖构件不可解析（如 samples 模块 maven.install.skip=true 未入本地仓）。"
         "先在仓根执行 mvn install -DskipTests（必要时加 -Dmaven.install.skip=false）再重试门禁。"
     )
+
+
+def baseline_stale_finding(
+    project_root: Path, rel_path: str, base_cmd: list[str], output: str, timeout: int = 60,
+    *,
+    baseline_ref: str = "HEAD",
+) -> str | None:
+    """同命令同工具跑**改动前版本**：基线已存在相同发现 → 存量豁免说明；否则 None。
+
+    verdict-integrity 既有原则：**无基线证据绝不豁免**（`_stale_attribution` 因
+    此恒返回 None）。本函数首次落地"双跑基线"：把 baseline_ref:<path> 的内容
+    写到临时文件、用同一条 linter 命令跑一遍，两次输出各取 finding_signatures；
+    新发现 ⊆ 基线发现 → 全是存量（本次改动未引入新问题）；基线为空/提不出
+    签名/基线跑不起来 → 一律不豁免，宁可误拦不误放行。
+
+    baseline_ref 必须是"改动前"：commit 面（工作树/暂存改动）用 HEAD；push 面
+    （检查未推送提交）必须用 @{upstream}——坏提交已经进了 HEAD，拿 HEAD 当基线
+    会把本次新引入的坏内容误判成存量（实测踩过：push 面坏提交被豁免放行）。
+    """
+    from verdict import finding_signatures
+    pre = _git(project_root, "show", f"{baseline_ref}:{rel_path}")
+    if pre is None:
+        return None
+    new_sigs = finding_signatures(output)
+    if not new_sigs:
+        return None
+    import tempfile as _tf
+    with _tf.TemporaryDirectory(prefix="cg-baseline-") as td:
+        tmp = Path(td) / ("baseline" + (Path(rel_path).suffix or ".txt"))
+        try:
+            tmp.write_text(pre, encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        joined = " ".join(base_cmd)
+        cmd = ([c.replace("{file}", str(tmp)) for c in base_cmd] if "{file}" in joined
+               else list(base_cmd) + [str(tmp)])
+        try:
+            proc = subprocess.run(
+                cmd, cwd=project_root, capture_output=True, check=False,
+                text=True, timeout=timeout,
+            )
+        except (subprocess.TimeoutExpired, OSError, FileNotFoundError):
+            return None
+        base_sigs = finding_signatures((proc.stdout or "") + (proc.stderr or ""))
+    if not base_sigs:
+        return None
+    return "存量问题（基线同命令同工具已存在）" if new_sigs <= base_sigs else None
+
+
+def record_gate_decision(project_root: Path, lang: str, cmd: list[str], rc: int,
+                         status: str, reason: str, limit: int = 500) -> None:
+    """门禁决策落盘（gate-decisions.jsonl）：哪个语言、跑了什么命令、rc、结论。
+
+    只有 skip 事件有明细时，事后无法回答"这个仓这次提交门禁为什么放行/拦截"
+    ——决策日志是排障与回归对比的证据链。写失败不影响门禁主流程。
+    """
+    entry = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "repo": project_root.name,
+        "lang": lang,
+        "cmd": list(cmd),
+        "rc": rc,
+        "status": status,
+        "reason": reason,
+    }
+    with contextlib.suppress(OSError):
+        path = codeguard_home() / "gate-decisions.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines: list[str] = []
+        if path.exists():
+            lines = path.read_text(encoding="utf-8").splitlines()
+        lines.append(json.dumps(entry, ensure_ascii=False))
+        path.write_text("\n".join(lines[-limit:]) + "\n", encoding="utf-8")
 
 
 def record_skip_event(kind: str, project_root: Path | None = None) -> None:

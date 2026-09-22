@@ -31,3 +31,22 @@
 - [x] 5.3 `python3 tests/run_all.py` 141 通过 / 0 失败
 - [x] 5.4 端到端 4 场景实证（hook stdin JSON 驱动）：内联豁免留痕、.zsh 放行+明示未验证、敏感文件仍 exit 2、Maven POM 4.1.0 归 UNVERIFIED 放行
 - [x] 5.5 `ruff check hooks/ scripts/ tests/` 全绿；`validate_languages_json` 11 规则通过
+
+## 6. 第二批：误拦治理深化 + 可审计（2026-09-22 追加）
+
+- [x] 6.1 `verdict._strip_dialect_blocks`：SC1071 剥离后重判，不掩盖同批真问题
+- [x] 6.2 `verdict.finding_signatures`：规则码优先、无码归一化描述行的可比较签名
+- [x] 6.3 `gate_lib.baseline_stale_finding`：双跑基线豁免（无基线绝不豁免；commit→HEAD、push→@{upstream}——push 面拿 HEAD 当基线会把新引入坏内容误判成存量，实测踩过后收紧）
+- [x] 6.4 `gate_lib.record_gate_decision`：gate-decisions.jsonl 决策日志（lang/cmd/rc/status/reason，滚动 500 条）
+- [x] 6.5 `skip_gate_via_git_config`：3s 超时 ×2 次重试，两次失败才审计 skipGate-read-error（此前 timeout=10s 静默 False）
+- [x] 6.6 `_openspec_validate` 及调用点 except 扩宽到 Exception（异常归未验证，不 fail-open 静默吞）
+- [x] 6.7 Java install_hint 语义修正（无需安装工具；用项目自带 wrapper 与匹配 JDK）
+- [x] 6.8 `scope._project_python_target` + `ruff_config_args`：按 requires-python/.python-version 自适应 `--target-version`（注入配置硬编码 py310 会把老项目按 3.10 目标刷 UP 假违规）
+- [x] 6.9 `tests/test_gate_hardening_batch2.py`：18 用例（14 落地 + 4 待接线）
+- [x] 6.10 全量 unittest + run_all 141 + ruff 全绿（与 3.6/3.7 链式豁免改动合并验证）
+
+## 7. 让位项（pre_tool_git_guard.py 并行修改活跃期，避免竞争写入）
+
+- [ ] 7.1 `match_pathspec`：git status pathspec 引擎解析 add 目标（glob/目录/等价语法）接进 staging_intent（测试已备标 skip；当前手工 resolve 对 glob/目录按字面子处理 → 提交面算窄）
+- [ ] 7.2 内联/链式豁免放行的用户即时明示（hookSpecificOutput 提醒，测试已备标 skip）
+- [ ] 7.3 双副本判定一致性核对（partme-ai 0.3.4 悬挂 hook 已用 fail-open 占位止血——宿主仍执行已删除的 hook 致全部 Bash 报错；根治=宿主禁用 codeguard@partme-ai 旧副本）
