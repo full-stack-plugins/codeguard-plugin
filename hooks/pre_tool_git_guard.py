@@ -641,9 +641,7 @@ def main() -> int:
 
     # 每个被操作的仓库独立跑：linter 门禁 + 提交内容安全检查
     # （commit 查暂存区；push 查未推送提交的 diff，防已提交未发现的坏文件）
-    from gate_lib import CODEGUARD_VERSION
     reports = []
-    version_tag = "[codeguard v" + CODEGUARD_VERSION + "]\n"
     for project_root in roots:
         # 保留删除路径用于影响分析；单文件 linter 自行过滤不存在的文件。
         root_extra = list(extra)
@@ -652,7 +650,9 @@ def main() -> int:
             exact=True, pending_commit=pending_commit,
         )
         if failures:
-            reports.append(version_tag + gate_directive(failures))
+            # 版本自标识由 gate_directive 首行综述之后的第二行承担——
+            # 此处不再前置横幅：stderr 首行必须是综述（三个契约测试锁定）。
+            reports.append(gate_directive(failures))
         unknown = [s for s in _skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
                    and "markdown 风格告警" not in s]
         if unknown:
