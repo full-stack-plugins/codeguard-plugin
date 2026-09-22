@@ -21,6 +21,8 @@ jobs:
         run: python3 scripts/vendor/skill_vendor.py check
       - name: Exercise vendor and manifest behavior
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Validate languages.json schema
+        run: python3 scripts/validate_languages_json.py
       - name: Run plugin regression suite
         run: python3 tests/run_all.py
       - name: Reject direct edits to externally managed skills

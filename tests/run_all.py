@@ -95,6 +95,7 @@ def test_languages():
             lint[0] in {
                 "mvn", "cargo", "gradlew", "swiftlint", "dart", "tflint", "ameba",
                 "rubocop", "dotnet", "buf", "mix", "crystal", "elm-review", "elvis",
+                "ansible-lint",
             }
             or (len(lint) > 1 and lint[1] in {"fmt", "rock", "analyze"} and lint[0] in {"zig", "scalafmt"})
             or "markdownlint-cli2" in cs
