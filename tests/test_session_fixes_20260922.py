@@ -341,7 +341,7 @@ class AppendFilesTests(unittest.TestCase):
 
     def test_registry_marks_project_level_commands(self) -> None:
         reg = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))
-        by_id = {l["id"]: l for l in reg["languages"]}
+        by_id = {lang["id"]: lang for lang in reg["languages"]}
         for lid in ("java", "kotlin", "rust", "go", "csharp", "vbnet",
                     "terraform", "protobuf", "elm"):
             with self.subTest(lang=lid):
