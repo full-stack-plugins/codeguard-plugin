@@ -67,7 +67,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.8.0` |
+| Current version | `0.8.1` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | Published: stdio server via the official SDK (`check_code_style` / `auto_fix` / `list_languages`); see Quick start |
@@ -233,9 +233,32 @@ codeguard:
 | Key | Default | Effect |
 |---|---|---|
 | `enabled_languages` | `auto` (detect) | Restrict which linters run |
-| `strict_mode` | `true` | Whether lint failure blocks AI |
+| `strict_mode` | `true` | Reserved, currently unwired: PostToolUse never blocks (always exit 0, see `hooks/__protocol__.md`) |
 | `auto_fix_on_save` | `true` | Whether to attempt auto-fix before reporting failure |
 | `lint_timeout_seconds` | `120` | Per-linter timeout |
+
+### Gate scope, escape audit, and unverified verdicts
+
+Gate scanning is scoped to **what you are about to change**, decided by git state:
+
+- **Commit face** (`staged + unstaged + untracked`): checked before `git commit`.
+  Pre-existing issues in HEAD do not block an unrelated new commit.
+- **Push face** (commit face ∪ unpushed commits, `up...HEAD`): checked before
+  `git push`, so a bad commit made outside the gate is still caught on the way out.
+- Project-level `codeguard.json` (repo root) overrides the default:
+  `{"gate_scope": "repo"}` restores full-repository scanning; `extensions` and
+  `exclude` customize language detection. Full scans always skip vendor/build
+  snapshots (immutable supply-chain content).
+
+Verdict honesty: a linter crashing with exit 2 (usage/dependency failure) or
+exit 127 (command missing) is reported as **unverified**, never as a lint failure
+— "cannot verify" is not "verified bad". A tool crash never triggers auto-fix.
+
+Escape hatch: `git config codeguard.skipGate true` bypasses both the soft and
+hard gate for one repository; every bypass is counted and surfaced by the Stop
+summary, which also warns when the flag is left enabled. Shared hook state lives
+under `CODEGUARD_HOME` (default `~/.codeguard`): session lint statistics,
+double-install dedup keys, and the skip audit.
 
 ## Repository layout
 

@@ -86,8 +86,12 @@ if __name__ == "__main__":
 **一致性约束**：`UserPromptSubmit` 软门禁与本硬门禁共用同一条 skipGate 豁免，
 且**都不得在非 git 目录回退成"扫描 cwd"**——UPS 对非 git 目录输出一行
 `_non_git_note` 说明并 exit 0（工作区根被回退扫描 = 上百无关仓的存量 lint
-变成永久红，实测）。双副本事件去重键：PreToolUse 用 `tool_use_id`、UPS 用
-`session_id + 文本`；payload 不带这些字段（测试协议）时不去重。
+变成永久红，实测）。双副本事件去重键（四个钩子同一规则）：PreToolUse 用 `tool_use_id`、
+UserPromptSubmit 用 `session_id + 文本前缀`、SessionStart/Stop 用 `session_id`；
+payload 不带这些字段（测试协议/其它宿主）时不去重，保持旧行为。
+推送语义：门禁面由 `_guarded_mode` 统一判定——直接命令与一层间接共用同一套
+扫描；commit 面=暂存+未暂存+未跟踪，push 面=并集未推送提交（`up...HEAD`）；
+UserPromptSubmit 按提示词里的 `push/推送` 选同一套面，软硬两门永远看同一组文件。
 
 ---
 

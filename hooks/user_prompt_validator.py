@@ -179,9 +179,12 @@ def main() -> int:
     # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
     detected = detect_languages(project_root)
     subset = _detect_languages_in_text(user_text, detected)
-    failures, skipped = run_gate(project_root, cfg, languages=(subset or None))
+    # 推送意图走 push 面（含未推送提交），提交意图走 commit 面（暂存+工作区）——
+    # 与硬门禁的 _guarded_mode 同一套语义，软硬两门看到同一组文件。
+    mode = "push" if _re.search(r"\bpush\b|推送", user_text, _re.IGNORECASE) else "commit"
+    failures, skipped = run_gate(project_root, cfg, languages=(subset or None), mode=mode)
     # 提交内容安全检查：.venv/node_modules/.env/密钥等不应入库
-    violations = check_commit_safety(project_root, "commit")
+    violations = check_commit_safety(project_root, mode)
 
     if failures or violations:
         # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交

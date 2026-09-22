@@ -67,7 +67,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.8.0` |
+| 当前版本 | `0.8.1` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | 已发布：官方 SDK stdio 服务（`check_code_style` / `auto_fix` / `list_languages`）；见快速开始 |
@@ -217,9 +217,30 @@ codeguard:
 | 键 | 默认 | 作用 |
 |---|---|---|
 | `enabled_languages` | `auto`（自动检测） | 限定只跑哪些语言的 linter |
-| `strict_mode` | `true` | lint 失败时是否阻塞 AI |
+| `strict_mode` | `true` | 保留字段，当前未接线：PostToolUse 从不阻塞（恒 exit 0，见 `hooks/__protocol__.md`） |
 | `auto_fix_on_save` | `true` | 是否在报错前先尝试自动修复 |
 | `lint_timeout_seconds` | `120` | 每次 linter 调用的超时秒数 |
+
+### 门禁作用域、绕过审计与未验证判定
+
+门禁只扫描**你即将改动的东西**，由 git 状态决定：
+
+- **提交面**（staged + 未暂存 + 未跟踪）：`git commit` 前检查。HEAD 里的存量
+  问题不会拦截无关的新提交。
+- **推送面**（提交面 ∪ 未推送提交，`up...HEAD`）：`git push` 前检查——绕过门禁
+  提交进历史的坏改动，出门时仍会被拦下。
+- 项目根的 `codeguard.json` 可覆盖缺省：`{"gate_scope": "repo"}` 恢复全仓扫描；
+  `extensions` 与 `exclude` 自定义语言识别。全仓扫描始终剔除 vendor/build
+  快照（供应链不可变内容）。
+
+判定诚实性：linter 以 exit 2（用法/依赖崩溃）或 exit 127（命令不存在）退出时
+按**未验证**上报，绝不计为 lint 失败——"无法验证"不等于"验证失败"；工具崩溃
+也不会触发自动修复。
+
+逃生门：`git config codeguard.skipGate true` 对单仓同时豁免软门与硬门；每次
+绕过都会计数并由 Stop 汇总展示，标志遗留未清时也会提醒。钩子共享状态位于
+`CODEGUARD_HOME`（缺省 `~/.codeguard`）：会话 lint 统计、双副本去重键与绕过
+审计。
 
 ## 仓库结构
 

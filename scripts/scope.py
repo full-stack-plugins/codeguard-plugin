@@ -94,11 +94,50 @@ def scope_cmd(
     return out
 
 
-def changed_files(project_root: str | Path) -> list[str] | None:
-    """本次改动涉及的文件（staged + 未暂存 + 未跟踪）；非 git 仓返回 None。
+def _git_out(root: Path, *args: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=root, capture_output=True, check=False, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
 
-    门禁的 delta 作用域据此判定"这次要检查什么"：存量问题不拦新提交，
-    不可编辑的 vendor 快照没动就不会被扫。排序去重，路径相对仓根。
+
+def _unpushed_files(root: Path) -> list[str]:
+    """push 面：相对上游「我这侧」的合并分歧文件（up...HEAD 三点差）。
+
+    无 upstream 时按 origin/<当前分支> → origin/main → origin/master 逐个尝试；
+    全部不可解析（如首次推送前的裸仓）返回空——不猜测、不崩（既有
+    「push 无 upstream 不崩」行为保持）。
+    """
+    ranges: list[str] = []
+    upstream = _git_out(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+    if upstream:
+        ranges.append(f"{upstream.strip()}...HEAD")
+    else:
+        branch = _git_out(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if branch and branch.strip() not in ("HEAD",):
+            ranges.append(f"origin/{branch.strip()}...HEAD")
+        ranges += ["origin/main...HEAD", "origin/master...HEAD"]
+    for rng in ranges:
+        out = _git_out(root, "diff", "--name-only", rng)
+        if out is not None:
+            return [line for line in out.splitlines() if line.strip()]
+    return []
+
+
+def changed_files(
+    project_root: str | Path, *, mode: str = "commit",
+) -> list[str] | None:
+    """本次改动涉及的文件；非 git 仓返回 None。
+
+    mode="commit"（提交面）：staged + 未暂存 + 未跟踪——"这次要提交什么"。
+    mode="push"（推送面）：在提交面基础上**并集未推送提交的文件**
+    （up...HEAD）——工作树干净但本地领先时，坏改动已入库、提交面为空，
+    推送面必须接管，否则 push 门禁形同虚设（实测：坏提交入史后
+    changed_files 返回 []）。排序去重，路径相对仓根。
     """
     root = Path(project_root)
     try:
@@ -116,13 +155,9 @@ def changed_files(project_root: str | Path) -> list[str] | None:
         ("diff", "--name-only"),
         ("ls-files", "--others", "--exclude-standard"),
     ):
-        try:
-            out = subprocess.run(
-                ["git", *args],
-                cwd=root, capture_output=True, check=False, text=True, timeout=15,
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            continue
-        if out.returncode == 0 and out.stdout:
-            names.update(line for line in out.stdout.splitlines() if line.strip())
+        out = _git_out(root, *args)
+        if out:
+            names.update(line for line in out.splitlines() if line.strip())
+    if mode == "push":
+        names.update(_unpushed_files(root))
     return sorted(names)
