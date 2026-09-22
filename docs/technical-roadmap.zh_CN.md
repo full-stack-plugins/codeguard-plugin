@@ -1,4 +1,4 @@
-# 5、partme-codeguard-plugin 技术方案与路线
+# PartMe CodeGuard 技术方案与路线
 
 > **文档说明**：本文档描述 partme-codeguard-plugin 插件的技术选型、关键决策、ADR（架构决策记录）和版本路线图。
 >
