@@ -17,19 +17,13 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import (
     LANG_COMMANDS,
+    REGISTRY,
     detect_languages,
     ensure_user_path,
     find_project_root,
     load_user_config,
     probe_toolchain,
 )
-
-LINTER_CONFIG_FILES = [
-    ("java", [".pre-commit-config.yaml", "checkstyle.xml", "pmd.xml"]),
-    ("rust", [".pre-commit-config.yaml", "clippy.toml", ".clippy.toml"]),
-    ("typescript", [".pre-commit-config.yaml", "eslint.config.js", ".eslintrc.json", ".eslintrc.js"]),
-    ("python", [".pre-commit-config.yaml", "ruff.toml", ".ruff.toml", "pyproject.toml"]),
-]
 
 
 def notify(title: str, message: str) -> None:
@@ -49,12 +43,20 @@ def notify(title: str, message: str) -> None:
 
 
 def detect_linter_config(project_root: Path) -> dict:
-    """返回 {language: [存在的 linter 配置文件]}"""
+    """返回 {language: [存在的 linter 配置文件]}，由 languages.json 驱动。
+
+    每条 languages.json 条目的 `linter_config_files` 字段声明该语言的 linter
+    配置文件路径（glob 模式允许，与 requiresConfig 同语义）。新增语言只需
+    在注册表里填字段，env_check 自动盘点——不再有硬编码常量的同步陷阱。
+    """
     found = {}
-    for lang, files in LINTER_CONFIG_FILES:
+    for lang_id, lang_def in REGISTRY.items():
+        files = lang_def.get("linter_config_files") or []
+        if not files:
+            continue
         present = [f for f in files if (project_root / f).exists()]
         if present:
-            found[lang] = present
+            found[lang_id] = present
     return found
 
 

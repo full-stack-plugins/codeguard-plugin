@@ -36,6 +36,11 @@
         "build.gradle",
         "build.gradle.kts",
         "settings.gradle"
+      ],
+      "linter_config_files": [
+        ".pre-commit-config.yaml",
+        "checkstyle.xml",
+        "pmd.xml"
       ]
     },
     {
@@ -64,6 +69,11 @@
       "install_hint": null,
       "requiresConfig": [
         "Cargo.toml"
+      ],
+      "linter_config_files": [
+        ".pre-commit-config.yaml",
+        "clippy.toml",
+        ".clippy.toml"
       ]
     },
     {
@@ -113,6 +123,12 @@
         "--no-install",
         "eslint",
         "--version"
+      ],
+      "linter_config_files": [
+        ".pre-commit-config.yaml",
+        "eslint.config.js",
+        ".eslintrc.json",
+        ".eslintrc.js"
       ]
     },
     {
@@ -139,7 +155,13 @@
         ".",
         "--fix"
       ],
-      "install_hint": "pip install ruff"
+      "install_hint": "pip install ruff",
+      "linter_config_files": [
+        ".pre-commit-config.yaml",
+        "ruff.toml",
+        ".ruff.toml",
+        "pyproject.toml"
+      ]
     },
     {
       "id": "go",

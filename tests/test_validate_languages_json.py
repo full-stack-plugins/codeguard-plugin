@@ -101,3 +101,13 @@ class LanguagesJsonValidatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class LinterConfigFilesRuleTest(unittest.TestCase):
+    def test_linter_config_files_must_be_list_of_str(self) -> None:
+        reg = _mutate(_baseline(), "python", linter_config_files="ruff.toml")
+        errs = check(reg)
+        self.assertTrue(any("python:linter_config_files" in e for e in errs), errs)
+
+    def test_linter_config_files_can_be_empty(self) -> None:
+        reg = _mutate(_baseline(), "rust", linter_config_files=[])
+        self.assertEqual([], check(reg))

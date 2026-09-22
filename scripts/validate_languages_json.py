@@ -156,6 +156,20 @@ def _check_requires_config(reg: dict) -> list[str]:
     return errs
 
 
+def _check_linter_config_files(reg: dict) -> list[str]:
+    errs: list[str] = []
+    for lang in reg.get("languages", []):
+        if not isinstance(lang, dict):
+            continue
+        lid = lang.get("id", "<?>")
+        cf = lang.get("linter_config_files")
+        if cf is None:
+            continue
+        if not isinstance(cf, list) or not all(isinstance(s, str) for s in cf):
+            errs.append(f"{lid}:linter_config_files: must be list of strings")
+    return errs
+
+
 def _check_since(reg: dict) -> list[str]:
     errs: list[str] = []
     for lang in reg.get("languages", []):
@@ -182,6 +196,7 @@ def check(registry: dict) -> list[str]:
     errs += _check_lint_format_shape(registry)
     errs += _check_status_command_presence(registry)
     errs += _check_requires_config(registry)
+    errs += _check_linter_config_files(registry)
     errs += _check_since(registry)
     return errs
 
