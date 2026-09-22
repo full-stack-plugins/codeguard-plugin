@@ -18,6 +18,11 @@ import sys
 import time
 from pathlib import Path
 
+try:  # Windows 无 fcntl——锁降级为可选，原子替换仍生效
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
@@ -155,8 +160,10 @@ def _worktree_fingerprint(project_root: Path) -> str:
         h.update(("\n".join(names)).encode("utf-8", "replace"))
         if args[:2] == ("diff", "--name-only"):
             # 未暂存已跟踪文件：内容改动名字不变，必须叠加 stat 指纹
-            # （staged 路不需要——暂存内容变化必动 index，由键内 idx_sig 兜底）
-            for name in names[:500]:
+            # （staged 路不需要——暂存内容变化必动 index，由键内 idx_sig 兜底）。
+            # 名字集合不截断：截断会让第 N+1 个文件的修复在缓存窗口内被旧
+            # 指纹掩盖（retry-timing 陷阱对大改动面复活）。stat 本身足够便宜。
+            for name in names:
                 try:
                     st = (project_root / name).stat()
                     h.update(f"{name}:{st.st_size}:{st.st_mtime_ns}".encode("utf-8", "replace"))
@@ -164,9 +171,12 @@ def _worktree_fingerprint(project_root: Path) -> str:
                     h.update(name.encode("utf-8", "replace"))
     # 未跟踪文件：ls-files 只给文件名——内容改动名字不变，必须叠加 stat 指纹
     others = (_git(project_root, "ls-files", "--others") or "").splitlines()
-    for name in sorted(others)[:500]:
-        if not name.strip():
-            continue
+    for name in sorted(n for n in others if n.strip()):
+        try:
+            st = (project_root / name).stat()
+            h.update(f"{name}:{st.st_size}:{st.st_mtime_ns}".encode("utf-8", "replace"))
+        except OSError:
+            h.update(name.encode("utf-8", "replace"))
         try:
             st = (project_root / name).stat()
             h.update(f"{name}:{st.st_size}:{st.st_mtime_ns}".encode("utf-8", "replace"))
@@ -288,9 +298,13 @@ def run_gate(
 
     if ck:
         with contextlib.suppress(OSError):
-            cache_file.write_text(json.dumps(
+            # 原子替换：UPS 与 PreToolUse 并发写同一 cache 文件时，
+            # 裸 write_text 可能让对方读到半截 JSON（ValueError → 缓存失效重扫）。
+            tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(
                 {"key": ck, "ts": _time.time(), "failures": failures, "skipped": skipped},
                 ensure_ascii=False))
+            os.replace(tmp, cache_file)
     return failures, skipped
 
 
@@ -769,26 +783,33 @@ def should_suppress_event(key: str, window: float = 2.0) -> bool:
     import hashlib
     import time as _time
     path = codeguard_home() / "hook_dedup.json"
-    now = _time.monotonic()
+    now = _time.time()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        dedup = {}
-        if path.exists():
-            dedup = json.loads(path.read_text(encoding="utf-8"))
-        h = hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:24]
-        last = dedup.get(h) or {}
-        stale = [k for k, v in dedup.items() if now - v.get("ts", 0) > 60]
-        for k in stale:
-            dedup.pop(k, None)
-        if now - last.get("ts", 0) < window:
-            dedup[h] = last
-            path.write_text(json.dumps(dedup), encoding="utf-8")
-            return True
-        dedup[h] = {"ts": now}
-        path.write_text(json.dumps(dedup), encoding="utf-8")
+        # 并发安全：UPS 与 PreToolUse 两条钩子在数秒窗口内先后读写本文件，
+        # 裸 read-modify-write 会互相覆盖（丢抑制事件 → 双份报告）或读到半截
+        # JSON（ValueError → 去重静默失效）。进程锁 + tmp+replace 原子替换。
+        # 时间戳用墙钟：monotonic 跨重启回绕，持久化文件不能存。
+        lock_path = path.with_name(path.name + ".lock")
+        with open(lock_path, "w") as lock:
+            if fcntl:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            dedup = {}
+            if path.exists():
+                dedup = json.loads(path.read_text(encoding="utf-8"))
+            h = hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:24]
+            last = dedup.get(h) or {}
+            stale = [k for k, v in dedup.items() if now - v.get("ts", 0) > 60]
+            for k in stale:
+                dedup.pop(k, None)
+            suppress = now - last.get("ts", 0) < window
+            dedup[h] = {"ts": last.get("ts", now)} if suppress else {"ts": now}
+            tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(dedup), encoding="utf-8")
+            os.replace(tmp, path)
+        return suppress
     except (OSError, ValueError):
         return False
-    return False
 
 
 def summarize_failures(failures: list) -> str:
