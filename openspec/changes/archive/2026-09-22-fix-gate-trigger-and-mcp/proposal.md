@@ -27,5 +27,5 @@ None.
 
 - `hooks/user_prompt_validator.py`：触发判定与语言选择逻辑改动；外部行为变化仅在误触发场景（更少误触发为正向变化）。
 - `scripts/run_check.py`：新增官方 SDK 依赖（`mcp` 包需写入 `requirements.txt` 或类似清单），新增 `out/.codeguard-last.log` 落盘逻辑，删除占位 `mcp_main` 分支。
-- 新建根 `requirements.txt` 声明 `mcp>=1.0`（本仓当前没有任何 requirements 文件；`mcp` 1.26.0 已在开发环境安装，CI 需显式安装）。
+- 新建根 `requirements.txt` 声明 `mcp>=1.0,<2`（2.x 更改了装饰器 API；本仓此前无 requirements 文件，CI 显式安装）。
 - 不修改 vendored 技能（codeguard-* 走 vendor 流程）；不修改 marketplace 清单。
