@@ -317,11 +317,32 @@ def _log_path(project_root: Path, lang: str) -> Path:
     return Path(tempfile.gettempdir()) / f"codeguard-gate-{key}-{lang}.log"
 
 
+def _rule_summary(full: str) -> str:
+    """ruff/checkstyle 输出的规则聚合计数行（如 "EXE001×3 UP009×1"）。
+
+    2026-09-23 opencli 会话实测：门禁输出被截断后 AI 修一个才暴露下一个
+    （whack-a-mole 升级版），聚合计数让 AI 一次看到问题全集与规模。
+    非 linter 标准行格式（无规则码锚）时返回空串。
+    """
+    import re as _re
+    counts: dict[str, int] = {}
+    for line in full.splitlines():
+        m = _re.search(r"\b([A-Z]{2,5}\d{3,4})\b", line)
+        if m and (":" in line or "-->" in line):
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    if not counts:
+        return ""
+    return "规则汇总: " + " ".join(f"{k}×{v}" for k, v in sorted(counts.items()))
+
+
 def _truncate_detail(full: str, project_root: Path, lang: str) -> str:
     """节选 + 总量 + 完整日志路径：截断只留头 600 字符会让 AI 一次修 3 个、
     重试再看 3 个（whack-a-mole）；必须给出"共几行、完整在哪"。"""
     lines = [ln for ln in full.splitlines() if ln.strip()]
+    summary_line = _rule_summary(full)
     detail = full[:600]
+    if summary_line:
+        detail = summary_line + "\n" + detail
     if len(lines) > 8 or len(full) > 600:
         try:
             path = _log_path(project_root, lang)
@@ -415,7 +436,9 @@ def _run_gate_uncached(
             if outcome["status"] == "PASS":
                 return None
             if outcome["status"] != "FAIL":
-                return (lang, None, f"java {outcome['status']}: {outcome['reason']}")
+                hint_extra = "；若 wrapper 缺执行位：chmod +x mvnw" \
+                    if "不可执行" in outcome.get("reason", "") else ""
+                return (lang, None, f"java {outcome['status']}: {outcome['reason']}{hint_extra}")
             detail = _truncate_detail(outcome.get("stdout_tail", "") + outcome.get("stderr_tail", ""), project_root, lang)
             if outcome.get("log_path"):
                 detail += f"\n完整输出: {outcome['log_path']}"
@@ -470,7 +493,7 @@ def _run_gate_uncached(
                     return (lang, None,
                             (f"{lang} 项目分析 UNVERIFIED（{_jp.get('build_system', '?')}），"
                              f"原因: {'; '.join(_jp.get('reasons', []))}，本次未验证"))
-                exe = _jp.get("executable")
+                exe = _java_executable_from_plan(_jp)
                 if exe and base_cmd and base_cmd[0] in ("mvn", "gradle"):
                     base_cmd = [exe] + base_cmd[1:]
             except Exception as exc:  # noqa: BLE001 — 分析失败不阻塞门禁，走原路径
@@ -626,6 +649,26 @@ def _openspec_validate(project_root: Path, timeout_seconds: int = 300) -> dict:
     fix = f"{cli} validate --all --strict --no-interactive"
     hint = "见 https://openspec.dev 或 `npm i -g @fission-ai/openspec`"
     return {"failures": [("openspec", detail, fix, hint)], "skipped": None}
+
+def _java_executable_from_plan(plan: dict) -> str | None:
+    """从 java_project.analyze 的产物里解析构建可执行文件。
+
+    两条来源按优先级：
+    1. 顶层 ``executable`` 键（java_project 正常产出）；
+    2. 回退 ``commands[0].argv[0]``——历史版本的 java_project 只把
+       wrapper 体现在计划命令里（实测 68c8a37 曾因此让 mvnw 感知成为
+       死代码：消费者读的键生产者从不写）。
+    非 mvn/gradle wrapper（如 codeguard.json 显式命令）不参与替换。
+    """
+    exe = plan.get("executable")
+    if exe:
+        return exe
+    for cmd in plan.get("commands", []) or []:
+        argv = cmd.get("argv") or []
+        if argv and Path(argv[0]).name in ("mvnw", "gradlew"):
+            return argv[0]
+    return None
+
 
 def skip_gate_via_git_config(project_root: Path) -> bool:
     """仓库级豁免：git config codeguard.skipGate true。
@@ -861,6 +904,8 @@ def _failure_detail_blocks(failures: list, *, fix_first: bool = False) -> list[s
             f"  ▶ 怎么修: {fix}",
             f"  ▶ 未安装工具时先安装: {hint}",
         ]
+        if lang == "python" and "[*]" in (detail or ""):
+            tail.append("  ▶ 含 [*] 可自动修复项: ruff check --fix <涉及路径>")
         body = detail if detail else "  lint 退出码非零，无文本输出"
         if fix_first:
             block += tail + [body]
@@ -886,8 +931,12 @@ def format_failure_report(failures: list) -> str:
     return "\n".join(lines)
 
 
-def gate_directive(failures: list) -> str:
+def gate_directive(failures: list, project_root: Path | str | None = None) -> str:
     """给 AI 的行动指令：收到后应立即修复并重新提交，而不是询问用户。
+
+    project_root：本次门禁的目标仓库根——cwd 漂移会让钩子扫到"非目标仓"
+    （实测：在 codex 仓 cwd 下提交 opencli，POM 4.1.0 报错让人以为改错了
+    文件），首行显式标注目标仓库可第一时间发现扫错对象。
 
     结构 = 综述（首行契约）→ 强制指令（前置！）→ 每语言细节（fix 先于
     detail）→ 修复入口；整体压到 REPORT_MAX_CHARS 内。指令必须前置：宿主把
@@ -895,10 +944,11 @@ def gate_directive(failures: list) -> str:
     报错、「拆两次调用」与 skipGate 逃生门全部丢失（实测）。首行仍为综述、
     综述不重复、含「具体问题」——run_all/硬门禁契约保持。
     """
+    head_repo = f"本次门禁目标仓库: {Path(project_root).resolve()}\n" if project_root else ""
     header = [
         summarize_failures(failures),
         f"codeguard v{CODEGUARD_VERSION}",
-        "─" * 60,
+        head_repo + "─" * 60,
         "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
         + "**⚠️ 整个工具调用没有执行**：被拦截的是一次包含 git commit/push 的完整 Bash "
         "调用——其中非 git 的前序步骤（写文件、跑脚本）也全部未运行。请把「修复」与"
@@ -914,7 +964,8 @@ def gate_directive(failures: list) -> str:
         + "确需绕过（仅用户明确要求时）：**单次豁免**用 `git -c codeguard.skipGate=true commit …`"
         "（不落配置、无残留，推荐）；**仓库级豁免**在该仓库执行 git config codeguard.skipGate true，"
         "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
-        "只对手动直调 run_check 有效（无法传入宿主钩子进程）。两种豁免都会记入会话审计明细。",
+        "只对手动直调 run_check 有效（无法传入宿主钩子进程）。两种豁免都会记入会话审计明细。"
+        "注意：仓库级豁免对该克隆**所有分支**生效且跨会话残留，务必按上方说明 unset 恢复。",
         "─" * 60,
     ]
     footer = f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py"

@@ -50,6 +50,31 @@ FULL_SCAN_EXCLUDES = (
 )
 
 
+def is_git_repo(root: str | Path) -> bool:
+    """路径自身是否为 git 仓（.git 存在）。"""
+    return (Path(root) / ".git").exists()
+
+
+def child_git_repo_names(root: str | Path) -> list[str]:
+    """扫描根**不是** git 仓（典型：会话工作区根）时，列出其下自带 .git
+    的直接子目录名。
+
+    这些子目录是独立仓库、由它们各自的提交门禁负责；非 git 根的全量扫描
+    若把它们一并扫进去，就会出现"提交 A 仓却被 B 仓的存量问题拦截"的
+    跨仓误伤（2026-09-23 opencli-java-sdk 会话实测：workspace 根的
+    push-all-branches.sh 触发门禁时，根级脚本与子仓文件混在同一份报告里）。
+    根级别的散文件（不属于任何子仓）仍保留在扫描面内——它们没有别的门禁。
+    """
+    out: list[str] = []
+    try:
+        for child in sorted(Path(root).iterdir()):
+            if child.is_dir() and (child / ".git").exists():
+                out.append(child.name)
+    except OSError:
+        pass
+    return out
+
+
 def is_build_artifact(path: str | Path) -> bool:
     """路径是否落在构建产物/依赖快照目录下（任一段命中即算）。
 
@@ -63,7 +88,7 @@ def is_build_artifact(path: str | Path) -> bool:
 _RUFF_SNIPPET = Path(__file__).resolve().parents[1] / "linters" / "ruff" / "ruff.toml"
 
 
-def _inject_find_excludes(expr: str) -> str:
+def _inject_find_excludes(expr: str, excludes: tuple[str, ...] | list[str] = FULL_SCAN_EXCLUDES) -> str:
     """给 `find …` 型 gate 表达式注入构建产物目录排除（-not -path）。
 
     覆盖三种实测形态——只认一种就有整族门禁漏网：
@@ -79,7 +104,7 @@ def _inject_find_excludes(expr: str) -> str:
         return expr
     additions = "".join(
         f" -not -path '*/{d}/*'"
-        for d in FULL_SCAN_EXCLUDES
+        for d in excludes
         if f"'*/{d}/*'" not in expr and f"'*/{d}'" not in expr
     )
     if not additions:
@@ -179,16 +204,22 @@ def scope_cmd(
     if not out:
         return out
     targets = [single_file] if single_file else list(files or [])
+    root = Path(project_root)
+    # 非 git 根（会话工作区）的全量扫描：排除子 git 仓——它们由各自的
+    # 提交门禁负责，混进来就是跨仓误伤（见 child_git_repo_names）。
+    scan_excludes = list(FULL_SCAN_EXCLUDES)
+    if full_excludes and not is_git_repo(root):
+        scan_excludes += child_git_repo_names(root)
     if "{file}" in " ".join(out):
         return [c.replace("{file}", single_file or "") for c in out]
     if out[0] == "ruff":
         args = ruff_config_args(out, project_root)
         out = [out[0]] + args + out[1:]
         if full_excludes:
-            for d in FULL_SCAN_EXCLUDES:
+            for d in scan_excludes:
                 out += ["--exclude", d]
     elif full_excludes:
-        out = [_inject_find_excludes(c) if isinstance(c, str) else c for c in out]
+        out = [_inject_find_excludes(c, scan_excludes) if isinstance(c, str) else c for c in out]
     scan_idx = [i for i, tok in enumerate(out[1:], 1) if tok == "." or "**" in tok]
     if targets and scan_idx:
         flags = [tok for i, tok in enumerate(out) if i not in scan_idx and not tok.startswith("#")]
