@@ -9,20 +9,20 @@
       "source": {
         "source": "url",
         "url": "https://github.com/partme-ai/partme-codeguard-plugin.git",
-        "ref": "v0.6.0"
+        "ref": "v0.6.1"
       },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_USE"
       },
       "category": "Developer Tools",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
-      "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.6.0/assets/official-logo.png",
+      "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.6.1/assets/official-logo.png",
       "interface": {
         "displayName": "代码规范守卫",
         "shortDescription": "Make AI-written code pass lint on first try",
-        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.6.0/assets/official-logo.png"
+        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.6.1/assets/official-logo.png"
       }
     }
   ]

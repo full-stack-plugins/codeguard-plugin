@@ -1,4 +1,4 @@
-"""detect_lang.py：项目语言检测 + 用户配置加载 + linter 命令表。
+"""detect_lang.py：项目语言检测 + linter 命令表（事实源 `scripts/languages.json`）。
 
 实现逻辑（借鉴 codegraph 的统一注册表管线）：
 1. **单一事实源** `scripts/languages.json`：每语言一条注册（id/name/extensions/
@@ -8,93 +8,51 @@
    默认（如 `{ "extensions": { ".dota_lua": "lua" } }`），`exclude` 数组排除文件模式；
 4. **安全降级**：注册表中 lint/format 为 null 的语言（Planned 状态）安全跳过。
 
+职责边界（见 openspec/changes/add-detect-lang-splits）：
+- PATH 补齐：`scripts/paths.py::ensure_user_path`
+- 用户/项目配置：`scripts/user_config.py::load_user_config / load_project_overrides / get_overrides`
+- 本文件 re-export 上述符号以保持外部 API 不变。
+
 被 hooks/、commands/、skills/ 共享。
 """
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any
 
+# === 跨职责 re-export（保持外部 API 不变） ===
+from paths import ensure_user_path
+from user_config import (
+    get_overrides,
+    load_project_overrides,
+    load_user_config,
+)
+
+__all__ = [
+    "EXT_LANG_MAP",
+    "FILE_LANG_MAP",
+    "LANG_COMMANDS",
+    "LANG_INSTALL_HINTS",
+    "LANG_STATUS",
+    "PROJECT_MARKERS",
+    "REGISTRY",
+    "detect_language",
+    "detect_languages",
+    "ensure_user_path",
+    "extract_tool_binaries",
+    "find_project_root",
+    "get_overrides",
+    "load_project_overrides",
+    "load_user_config",
+    "probe_toolchain",
+    "project_uses_linter",
+]
+
+
 REGISTRY_PATH = Path(__file__).resolve().parent / "languages.json"
-
-
-def ensure_user_path(from_login_shell: bool = False) -> None:
-    """补齐 hook 进程的 PATH。
-
-    ZCode 等桌面宿主以 GUI 方式启动，hook 子进程继承的 PATH 往往缺少
-    用户级工具目录（pip --user → ~/.local/bin、cargo → ~/.cargo/bin、
-    nvm/fnm 的 node、homebrew），导致已安装的 linter 被误报「未安装」。
-
-    始终补充常见静态目录；from_login_shell=True 时额外从用户登录 shell
-    继承完整 PATH（覆盖 nvm 等动态目录，约 100-300ms，只适合低频钩子）。
-    """
-    static_dirs = [
-        "/opt/homebrew/bin", "/usr/local/bin",
-        str(Path.home() / ".local" / "bin"),
-        str(Path.home() / ".cargo" / "bin"),
-        str(Path.home() / "go" / "bin"),
-        str(Path.home() / ".local" / "pipx" / "bin"),
-    ]
-    cur = os.environ.get("PATH", "")
-    parts = cur.split(":")
-    for d in reversed(static_dirs):
-        if Path(d).exists() and d not in parts:
-            parts.insert(0, d)
-    os.environ["PATH"] = ":".join(parts)
-
-    # node/npx 不可用且静态目录未覆盖时，自动降级登录 shell 继承一次
-    # （覆盖 nvm/fnm/Kimi runtime 等非标准 node 安装；约 100-300ms）
-    def _node_available() -> bool:
-        for d in os.environ.get("PATH", "").split(":"):
-            if d and (Path(d) / "node").exists():
-                return True
-        return False
-
-    if not from_login_shell and not _node_available():
-        ensure_user_path(from_login_shell=True)
-        return
-
-    if not from_login_shell:
-        return
-    # 登录 shell 继承结果缓存（跨进程文件，10 分钟 TTL）——
-    # 每条含触发词的消息/每次门禁都要补 PATH，不缓存则每次 spawn zsh（100-300ms）
-    import time as _time
-    cache_file = Path(tempfile.gettempdir()) / f"codeguard-path-cache-{os.getuid()}"
-    now = _time.time()
-    if cache_file.exists():
-        try:
-            age = now - cache_file.stat().st_mtime
-            cached = cache_file.read_text().strip()
-            if age < 600 and ":" in cached:
-                os.environ["PATH"] = cached
-                return
-        except OSError:
-            pass
-    try:
-        shell = os.environ.get("SHELL") or "/bin/zsh"
-        proc = subprocess.run(
-            [shell, "-lc", "printf '%s' \"$PATH\""],
-            capture_output=True, text=True, timeout=5,
-        )
-        if proc.returncode == 0:
-            inherited = proc.stdout.strip().splitlines()
-            if inherited:
-                # 即使登录 shell 没提供更丰富的 PATH，也缓存这次探测结果。
-                # Linux CI 的 login shell 常与当前 PATH 等价；若不写缓存，
-                # 每次钩子都会重复 spawn shell，违背十分钟缓存契约。
-                resolved = inherited[-1] if inherited[-1].count(":") > cur.count(":") else os.environ["PATH"]
-                os.environ["PATH"] = resolved
-                try:
-                    cache_file.write_text(resolved)
-                except OSError:
-                    pass
-    except (OSError, subprocess.SubprocessError):
-        pass
 
 
 def _load_registry() -> dict[str, dict[str, Any]]:
@@ -208,8 +166,6 @@ def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
     返回 (ok, 失败原因)。失败即工具链问题（运行时缺失/包未装/命令损坏），
     该语言本轮无法检查——归 skipped，绝不能算 lint 失败拦提交。
     """
-    import shutil
-    import subprocess
 
     def _cached(key: tuple, fn):
         if key not in _TOOL_CACHE:
@@ -228,7 +184,6 @@ def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
 
 
 def _run_probe_cmd(probe: list, timeout: int) -> tuple[bool, str]:
-    import subprocess
     try:
         # stdin=DEVNULL：探活命令绝不消费宿主 stdin；--format 类探活靠 EOF 立即返回
         proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout,
@@ -245,7 +200,6 @@ def _run_probe_cmd(probe: list, timeout: int) -> tuple[bool, str]:
 
 def _probe_binary(b: str, timeout: int) -> tuple[bool, str]:
     import shutil
-    import subprocess
     if shutil.which(b) is None:
         return False, f"{b} 不在 PATH"
     try:
@@ -261,29 +215,7 @@ def _probe_binary(b: str, timeout: int) -> tuple[bool, str]:
 
 
 # === 项目根 codeguard.json 自定义扩展映射（借鉴 codegraph.json 设计） ===
-_OVERRIDES_CACHE: dict[str, dict] = {}
-
-
-def load_project_overrides(project_root: str | Path) -> dict:
-    """读取项目根 codeguard.json 的 extensions/exclude 自定义映射"""
-    cfg = Path(project_root) / "codeguard.json"
-    if not cfg.exists():
-        return {}
-    try:
-        data = json.loads(cfg.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return {
-        "extensions": {k.lower(): v for k, v in (data.get("extensions") or {}).items()},
-        "exclude": list(data.get("exclude") or []),
-    }
-
-
-def get_overrides(project_root: str | Path) -> dict:
-    key = str(Path(project_root).resolve())
-    if key not in _OVERRIDES_CACHE:
-        _OVERRIDES_CACHE[key] = load_project_overrides(project_root)
-    return _OVERRIDES_CACHE[key]
+# 实现已迁至 scripts/user_config.py；re-export 见顶部 import 段。
 
 
 def detect_language(file_path: str | Path, project_root: Path | None = None) -> str | None:
@@ -329,7 +261,6 @@ def detect_languages(project_root: str | Path) -> list[str]:
     project_root = Path(project_root)
     overrides = get_overrides(project_root)
     exclude = overrides.get("exclude", [])
-    ext_map = {**EXT_LANG_MAP, **overrides.get("extensions", {})}
 
     langs: set[str] = set()
     # 1) 标记文件
@@ -355,40 +286,6 @@ def detect_languages(project_root: str | Path) -> list[str]:
             if lang:
                 langs.add(lang)
     return sorted(langs)
-
-
-def load_user_config() -> dict:
-    """从 ~/.zcode/settings.local.yaml 读插件配置（简化版：正则抠块，不依赖 yaml 库）"""
-    cfg_path = Path.home() / ".zcode" / "settings.local.yaml"
-    defaults = {
-        "enabled_languages": [],
-        "strict_mode": True,
-        "auto_fix_on_save": True,
-        "lint_timeout_seconds": 120,
-    }
-    if not cfg_path.exists():
-        return defaults
-    try:
-        text = cfg_path.read_text()
-    except OSError:
-        return defaults
-    cfg = dict(defaults)
-    m = re.search(r"codeguard:\s*(\{.*?\n\})", text, re.DOTALL)
-    if not m:
-        return cfg
-    block = m.group(1)
-    for key in ("strict_mode", "auto_fix_on_save"):
-        mm = re.search(rf"{key}:\s*(true|false)", block)
-        if mm:
-            cfg[key] = mm.group(1) == "true"
-    mm = re.search(r"lint_timeout_seconds:\s*(\d+)", block)
-    if mm:
-        cfg["lint_timeout_seconds"] = int(mm.group(1))
-    mm = re.search(r"enabled_languages:\s*\[([^\]]*)\]", block)
-    if mm:
-        items = [s.strip().strip("\"'") for s in mm.group(1).split(",") if s.strip()]
-        cfg["enabled_languages"] = items
-    return cfg
 
 
 if __name__ == "__main__":
