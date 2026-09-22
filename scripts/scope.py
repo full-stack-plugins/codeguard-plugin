@@ -23,27 +23,54 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# 门禁/CI 全量模式下默认剔除的目录（不可编辑的依赖快照与构建产物）。
-# 与 hooks/gate_lib.GUARD_EXCLUDE_DIRS 语义重叠但职责不同：那边管"能否入库"，
-# 这边管"扫不扫"。vendor 快照是供应链不可变内容，扫它只会得到"永久红"；
-# 构建产物（target/ 下的 maven-javadoc javadoc.sh 等）是生成物，扫它得到的
-# 也是与仓库内容无关的"永久红"（实测：java 门禁自己生成的 javadoc.sh 让
-# shell 门禁必红——两个 gate 步骤互相矛盾）。ruff 走 --exclude，
-# find 型 gate 注入 -not -path，两侧共用这一份清单。
+# 构建产物/依赖快照的**单一事实源**——"哪些目录不需要检测"由这里回答。
+# 语义边界：gate_lib.GUARD_EXCLUDE_DIRS 管"能否入库"（= 本清单 + IDE 目录，
+# 从本清单派生），本清单管"扫不扫"；两侧永不漂移（改这里即两侧同变）。
+# 为什么必须完备（两类实测永久红）：target/ 下 maven-javadoc 生成的
+# javadoc.sh 让 shell 门禁必红（java 与 shell 两个 gate 步骤互相矛盾）；
+# target/site/jacoco 与 target/apidocs 的生成 HTML 让 html 门禁必红——生成物
+# 不会被"修复"，下次构建就重写，扫描它们得到的永远是与仓库内容无关的红。
+# vendor/upstream 是供应链依赖快照，内容不可编辑，同理只产"永久红"。
+# 生效通道必须四条全覆盖（缺一条就漏一类门禁）：
+#   1) ruff --exclude（全量）
+#   2) find 型 gate 注入 -not -path（-print0/-exec/无 NUL 锚三形态）
+#   3) PostToolUse 对产物路径静默跳过（写 target/ 的生成物不检查）
+#   4) changed_files 过滤产物路径（force-add 的 target 文件不进 delta 面）
 FULL_SCAN_EXCLUDES = (
-    ".venv", "venv", "node_modules", "vendor", "upstream", "build", "dist",
-    "target", ".tox", "__pycache__",
+    ".venv", "venv", "env", "node_modules", "vendor", "upstream",
+    "build", "dist", "target", "out", ".next", ".nuxt", ".gradle",
+    "coverage", ".terraform", ".tox", ".eggs", "htmlcov", ".turbo",
+    ".parcel-cache", "__pycache__", ".pytest_cache", ".mypy_cache",
+    ".ruff_cache",
 )
+
+
+def is_build_artifact(path: str | Path) -> bool:
+    """路径是否落在构建产物/依赖快照目录下（任一段命中即算）。
+
+    单一事实源的谓词形态，供 PostToolUse（生成物不检查）与 changed_files
+    （产物不进 delta 面）复用同一份认知，避免两处各写一遍目录名。
+    注意不能用 lstrip("./")——会把 `.tox` 的点一起剥掉（实测踩点）。
+    """
+    parts = [seg for seg in str(path).replace("\\", "/").split("/")
+             if seg not in ("", ".")]
+    return any(seg in FULL_SCAN_EXCLUDES for seg in parts)
 _RUFF_SNIPPET = Path(__file__).resolve().parents[1] / "linters" / "ruff" / "ruff.toml"
 
 
 def _inject_find_excludes(expr: str) -> str:
-    """给 `find … -print0` 表达式注入构建产物目录排除（-not -path）。
+    """给 `find …` 型 gate 表达式注入构建产物目录排除（-not -path）。
 
+    覆盖三种实测形态——只认一种就有整族门禁漏网：
+    - `find … -print0 | xargs -0 …`（shell/php/sql 等主流）→ 锚在 ` -print0` 前；
+    - `find … -exec … {} +`（旧 html gate 形态，曾经因此漏掉 target HTML）→
+      锚在 ` -exec` 前；
+    - `find . -name … | xargs …`（c/objc/cuda 无 NUL 锚）→ 锚在
+      `find <path>` 之后（要求 languages.json 中 -o 组已加括号——否则
+      `-not -path … -name a -o -name b` 的 OR 优先级会让排除形同虚设）。
     幂等：已声明同类排除（'*/target/*' 或 '*/target'）的目录不重复注入。
-    只在首个 -print0 前插入，保持 xargs 管道段不动。
     """
-    if "-print0" not in expr or "find " not in expr:
+    if "find " not in expr:
         return expr
     additions = "".join(
         f" -not -path '*/{d}/*'"
@@ -52,7 +79,14 @@ def _inject_find_excludes(expr: str) -> str:
     )
     if not additions:
         return expr
-    return expr.replace(" -print0", f"{additions} -print0", 1)
+    import re as _re
+    for anchor in (" -print0", " -exec"):
+        if anchor in expr:
+            return expr.replace(anchor, additions + anchor, 1)
+    m = _re.search(r"find\s+\S+\s+", expr)
+    if m:
+        return expr[:m.end()] + additions[1:] + " " + expr[m.end():]
+    return expr
 
 
 def ruff_config_args(cmd: list, project_root: str | Path) -> list:
@@ -209,4 +243,6 @@ def changed_files(
             names.add(p)
     if mode == "push":
         names.update(_unpushed_files(root))
-    return sorted(names)
+    # 构建产物不进任何面：force-add 进索引的 target 文件、未被 gitignore 的
+    # 生成物，对 linter 只是"下次构建就重写"的假红（单一事实源谓词过滤）
+    return sorted(n for n in names if not is_build_artifact(n))
