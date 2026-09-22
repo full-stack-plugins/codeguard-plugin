@@ -42,6 +42,11 @@ FULL_SCAN_EXCLUDES = (
     "coverage", ".terraform", ".tox", ".eggs", "htmlcov", ".turbo",
     ".parcel-cache", "__pycache__", ".pytest_cache", ".mypy_cache",
     ".ruff_cache",
+    # Agent/宿主工具工作目录：会话实测 .mimosa/（含源码快照）与 .worktrees/
+    # （git 子工作树）曾被 git add -A 带进暂存区——既不该入库，也不该被全量
+    # 扫描重复检查（子工作树是同一份源码，扫两遍 = 双份误报）。
+    ".mimosa", ".worktrees", ".code-review-graph", ".kimi-code",
+    ".zcode", ".codex-plugin", ".agents",
 )
 
 

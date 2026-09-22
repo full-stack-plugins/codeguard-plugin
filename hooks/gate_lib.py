@@ -180,14 +180,19 @@ def _gate_cache_key(
     mode: str = "commit",
     lanes: tuple[str, ...] | list[str] | None = None,
     extra: tuple[str, ...] | list[str] | None = None,
+    scope: str = "delta",
 ) -> str | None:
-    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹 + 门禁面（mode）+ 文件面（lanes/extra）。
+    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹 + 门禁面（mode）+ 文件面（lanes/extra）+ 作用域（scope）。
 
     同一 HEAD/工作树下 commit 面与 push 面看到的文件集不同（push 面含未推送
     提交），不带 mode 会互相污染缓存。**lanes/extra 必须进键**：纯 `git commit`
     （仅 staged）与 `git add -A && git commit`（三路）在同一工作树状态下看到
     不同文件集——只按工作树指纹，先跑的窄面结果会把宽面查询喂给同一缓存条目
     （staged 干净 + 未暂存有病 → 窄面 pass 被宽面复用 = 绕过）。
+    **scope 必须进键**：UPS 软门禁可能按 repo 全量扫（gate_scope 覆盖或非 git
+    目录），硬门禁按 delta——同一文件面同一 HEAD 下，repo 全量的存量失败会被
+    delta 查询复用，本次改动无关的旧文件就误拦提交（会话实测：UPS 全量扫出的
+    .zsh SC1071 被 60s 内的 delta 提交面复用，尽管本次提交没碰任何 .zsh）。
     """
     head = _git(project_root, "rev-parse", "HEAD")
     if head is None:
@@ -200,7 +205,7 @@ def _gate_cache_key(
     face = ",".join(lanes or ()) + "|" + ",".join(sorted(extra or ()))
     return (
         f"{head.strip()}|{idx_sig}|{_worktree_fingerprint(project_root)}"
-        f"|{mode}|{','.join(sorted(languages))}|{face}"
+        f"|{mode}|{','.join(sorted(languages))}|{face}|{scope}"
     )
 
 
@@ -264,7 +269,8 @@ def run_gate(
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    ck = _gate_cache_key(project_root, languages, mode=mode, lanes=lanes, extra=extra)
+    ck = _gate_cache_key(project_root, languages, mode=mode, lanes=lanes, extra=extra,
+                         scope=scope)
     cache_file = _gate_cache_path(project_root)
     if ck:
         try:
@@ -386,6 +392,15 @@ def _run_gate_uncached(
                 f for f in (changed or [])
                 if detect_language(f, project_root) == lang and (project_root / f).is_file()
             ]
+            # ShellCheck 不支持 zsh（SC1071 是 error 级固有限制）——.zsh 送检
+            # 必红且不是代码违规。从目标面剔除并明示"未验证"，不静默丢弃。
+            if lang == "shell":
+                zsh_files = [f for f in lang_files if f.endswith(".zsh")]
+                if zsh_files:
+                    lang_files = [f for f in lang_files if not f.endswith(".zsh")]
+                    if not lang_files:
+                        return (lang, None,
+                                f"shell {len(zsh_files)} 个 zsh 文件未验证（ShellCheck 不支持 zsh）")
             if not lang_files:
                 return (lang, None, f"{lang} 本次改动未涉及，跳过")
         uses_delta_files = bool(lang_files) and len(lang_files) <= 50
@@ -537,13 +552,24 @@ def skip_gate_via_git_config(project_root: Path) -> bool:
 
     CODEGUARD_SKIP_GATE 环境变量设在用户 shell，传不进宿主起的 hook 子进程
     （宿主环境独立）；git config 由钩子进程在项目根读取，任何调用形态可用。
+
+    读取失败（超时/OSError）**不静默**：记 skipGate-read-error 审计事件后按
+    "未豁免"处理——门禁误拦 vs 误放行之间宁可误拦，但必须留痕可排障。
     """
     try:
         proc = subprocess.run(
             ["git", "config", "--get", "codeguard.skipGate"],
             cwd=project_root, capture_output=True, check=False, text=True, timeout=10,
         )
-    except (subprocess.TimeoutExpired, OSError):
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        record_skip_event("skipGate-read-error", project_root)
+        with contextlib.suppress(OSError, ValueError):
+            path = session_state_path()
+            state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            events = state.get("_skip", {}).get("events", [])
+            if events:
+                events[-1]["detail"] = f"git config 读取失败: {exc!r}"
+                path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
         return False
     return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
 
@@ -714,9 +740,10 @@ def gate_directive(failures: list) -> str:
         "2) 纯 lint 类修复可直接继续、不必逐项追问；但凡涉及付费、发布、删除、"
         "密钥、或跨出本仓的操作，必须先征得用户同意再执行；"
         "3) 修复完成后重新执行用户要做的提交操作。\n"
-        + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
+        + "确需绕过（仅用户明确要求时）：**单次豁免**用 `git -c codeguard.skipGate=true commit …`"
+        "（不落配置、无残留，推荐）；**仓库级豁免**在该仓库执行 git config codeguard.skipGate true，"
         "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
-        "只对手动直调 run_check 有效（无法传入宿主钩子进程）。",
+        "只对手动直调 run_check 有效（无法传入宿主钩子进程）。两种豁免都会记入会话审计明细。",
         "─" * 60,
     ]
     footer = f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py"

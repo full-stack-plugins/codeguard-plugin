@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import selectors
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,9 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 
 MCP_AVAILABLE = importlib.util.find_spec("mcp") is not None
+# CLI 失败日志用例需要真实 linter 产生 FAIL 结果——ruff 缺失时只会得到
+# UNVERIFIED（工具不存在），失败路径无法覆盖（无法验证 ≠ 验证失败）。
+RUFF_AVAILABLE = shutil.which("ruff") is not None
 RUN_CHECK = PLUGIN / "scripts" / "run_check.py"
 
 
@@ -173,6 +177,7 @@ class FailureLogTests(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    @unittest.skipUnless(RUFF_AVAILABLE, "ruff not installed (pip install ruff) — 需真实 linter 制造 FAIL")
     def test_cli_failure_prints_log_path(self):
         """4.2 (CLI): terminal gets a summary line + absolute log path."""
         tmp, root = self._bad_python_project()
@@ -191,6 +196,7 @@ class FailureLogTests(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    @unittest.skipUnless(RUFF_AVAILABLE, "ruff not installed (pip install ruff) — 需真实 linter 制造 FAIL")
     def test_cli_quiet_suppresses_log_and_summary(self):
         """4.3: --quiet writes no log and prints no log summary line."""
         tmp, root = self._bad_python_project()
