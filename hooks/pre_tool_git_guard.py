@@ -298,7 +298,7 @@ def main() -> int:
     if not roots:
         return 0
     if any(skip_gate_via_git_config(r) for r in roots):
-        record_skip_event("skipGate")
+        record_skip_event("skipGate", roots[0])
         return 0
 
     # 每个被操作的仓库独立跑：linter 门禁 + 提交内容安全检查
