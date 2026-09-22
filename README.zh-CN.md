@@ -67,7 +67,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.8.3` |
+| 当前版本 | `0.10.1` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | 已发布：官方 SDK stdio 服务（`check_code_style` / `auto_fix` / `list_languages`）；见快速开始 |
@@ -231,7 +231,11 @@ codeguard:
   提交进历史的坏改动，出门时仍会被拦下。
 - 项目根的 `codeguard.json` 可覆盖缺省：`{"gate_scope": "repo"}` 恢复全仓扫描；
   `extensions` 与 `exclude` 自定义语言识别。全仓扫描始终剔除 vendor/build
-  快照（供应链不可变内容）。
+  快照（供应链不可变内容）与构建产物目录（`target`、`dist`、`build` 等，
+  含 `find -print0` 型 gate——生成物如 maven-javadoc 的 `javadoc.sh` 不再让
+  shell 门禁误红）。delta 超 50 文件回退全量命令时同样剔除。
+  Java 门禁报依赖解析失败时附行动指引（`mvn install` 前置说明），而非只留
+  maven 堆栈尾部。
 
 判定诚实性：linter 以 exit 2（用法/依赖崩溃）退出时按**未验证**上报，绝不计
 为 lint 失败——"无法验证"不等于"验证失败"，工具崩溃也不会触发自动修复。
@@ -239,7 +243,8 @@ exit 127（命令不存在）**按场景有意分流**：交互钩子跳过它�
 `check`/CI 面按**失败**处理——健康面在工具缺失时就该变红。
 
 逃生门：`git config codeguard.skipGate true` 对单仓同时豁免软门与硬门；每次
-绕过都会计数并由 Stop 汇总展示，标志遗留未清时也会提醒。钩子共享状态位于
+绕过都会计数并由 Stop 汇总展示，标志遗留未清时也会提醒，审计还保留最近 20
+条明细（时间 + 仓库 + 类型）。钩子共享状态位于
 `CODEGUARD_HOME`（缺省 `~/.codeguard`）：会话 lint 统计、双副本去重键与绕过
 审计。
 

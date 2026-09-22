@@ -466,7 +466,7 @@ def main() -> int:
     if not roots:
         return 0
     if any(skip_gate_via_git_config(r) for r in roots):
-        record_skip_event("skipGate")
+        record_skip_event("skipGate", roots[0])
         return 0
 
     # 按命令链预测实际提交面（纯 commit → 仅 staged；add -A/-a → 三路），

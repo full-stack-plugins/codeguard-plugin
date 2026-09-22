@@ -9,10 +9,11 @@ detect_lang 只暴露语言检测与命令表 API，不得混入配置/路径/�
   ruff 原生格式，[tool.ruff] 包装的片段会被 TOML 解析拒绝）。
 - `scope_cmd`：物化命令——{file} 替换、全仓扫描 token 收敛为文件列表、
   裸命令追加文件（`append_files=False` 的项目级命令如 mvn 不追加）、
-  全量模式剔除依赖快照目录。
+  全量模式剔除依赖快照与构建产物目录（ruff 走 --exclude，
+  `find -print0` 型 gate 注入 -not -path）。
 - `changed_files`：git 仓的本次改动集；`lanes` 控制取哪几路
   （默认 staged+未暂存+未跟踪三路；硬门禁按命令链推断收窄到实际提交面），
-  `extra` 并入显式 git add 路径；非 git 目录返回 None（调用方退回全量）。
+  `extra` 并入显式 git add 路径；非 git 目录返回 None（调用方退回全量作用域）。
 
 被 hooks/gate_lib、hooks/post_tool_lint、scripts/run_per_language、
 scripts/fix 共用；detect_language 的按文件语言归属仍从 detect_lang 取。
@@ -22,14 +23,36 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# 门禁/CI 全量模式下 ruff 默认剔除的目录（不可编辑的依赖快照与构建产物）。
+# 门禁/CI 全量模式下默认剔除的目录（不可编辑的依赖快照与构建产物）。
 # 与 hooks/gate_lib.GUARD_EXCLUDE_DIRS 语义重叠但职责不同：那边管"能否入库"，
-# 这边管"扫不扫"。vendor 快照是供应链不可变内容，扫它只会得到"永久红"。
-_RUFF_FULL_EXCLUDES = (
+# 这边管"扫不扫"。vendor 快照是供应链不可变内容，扫它只会得到"永久红"；
+# 构建产物（target/ 下的 maven-javadoc javadoc.sh 等）是生成物，扫它得到的
+# 也是与仓库内容无关的"永久红"（实测：java 门禁自己生成的 javadoc.sh 让
+# shell 门禁必红——两个 gate 步骤互相矛盾）。ruff 走 --exclude，
+# find 型 gate 注入 -not -path，两侧共用这一份清单。
+FULL_SCAN_EXCLUDES = (
     ".venv", "venv", "node_modules", "vendor", "upstream", "build", "dist",
     "target", ".tox", "__pycache__",
 )
 _RUFF_SNIPPET = Path(__file__).resolve().parents[1] / "linters" / "ruff" / "ruff.toml"
+
+
+def _inject_find_excludes(expr: str) -> str:
+    """给 `find … -print0` 表达式注入构建产物目录排除（-not -path）。
+
+    幂等：已声明同类排除（'*/target/*' 或 '*/target'）的目录不重复注入。
+    只在首个 -print0 前插入，保持 xargs 管道段不动。
+    """
+    if "-print0" not in expr or "find " not in expr:
+        return expr
+    additions = "".join(
+        f" -not -path '*/{d}/*'"
+        for d in FULL_SCAN_EXCLUDES
+        if f"'*/{d}/*'" not in expr and f"'*/{d}'" not in expr
+    )
+    if not additions:
+        return expr
+    return expr.replace(" -print0", f"{additions} -print0", 1)
 
 
 def ruff_config_args(cmd: list, project_root: str | Path) -> list:
@@ -75,7 +98,8 @@ def scope_cmd(
       的项目级命令（mvn/gradle——文件路径会被当 goal 报
       `Unknown lifecycle phase` 误拦）保持原命令，文件列表只决定跑不跑；
     - ruff 命令注入 ruff_config_args 的默认配置；full_excludes=True（全量
-      模式）再追加 --exclude，剔除依赖快照与构建产物。
+      模式）时剔除依赖快照与构建产物：ruff 追加 --exclude，`find -print0`
+      型命令（bash -c find … | xargs 形态的 gate）注入 -not -path。
     """
     out = list(cmd)
     if not out:
@@ -87,8 +111,10 @@ def scope_cmd(
         args = ruff_config_args(out, project_root)
         out = [out[0]] + args + out[1:]
         if full_excludes:
-            for d in _RUFF_FULL_EXCLUDES:
+            for d in FULL_SCAN_EXCLUDES:
                 out += ["--exclude", d]
+    elif full_excludes:
+        out = [_inject_find_excludes(c) if isinstance(c, str) else c for c in out]
     scan_idx = [i for i, tok in enumerate(out[1:], 1) if tok == "." or "**" in tok]
     if targets and scan_idx:
         flags = [tok for i, tok in enumerate(out) if i not in scan_idx and not tok.startswith("#")]

@@ -67,7 +67,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.8.3` |
+| Current version | `0.10.1` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | Published: stdio server via the official SDK (`check_code_style` / `auto_fix` / `list_languages`); see Quick start |
@@ -248,7 +248,12 @@ Gate scanning is scoped to **what you are about to change**, decided by git stat
 - Project-level `codeguard.json` (repo root) overrides the default:
   `{"gate_scope": "repo"}` restores full-repository scanning; `extensions` and
   `exclude` customize language detection. Full scans always skip vendor/build
-  snapshots (immutable supply-chain content).
+  snapshots (immutable supply-chain content) and build-output directories
+  (`target`, `dist`, `build`, … — also injected into `find -print0` style gates,
+  so generated artifacts like maven-javadoc's `javadoc.sh` no longer trip the
+  shell gate). The >50-file delta fallback to a full command applies the same
+  exclusions. Java gate failures caused by unresolvable dependencies now carry
+  an actionable hint (run `mvn install` first) instead of a bare maven stack.
 
 Verdict honesty: a linter crashing with exit 2 (usage/dependency failure) is
 reported as **unverified**, never as a lint failure — "cannot verify" is not
@@ -259,7 +264,8 @@ health surface must go red when tooling is absent.
 
 Escape hatch: `git config codeguard.skipGate true` bypasses both the soft and
 hard gate for one repository; every bypass is counted and surfaced by the Stop
-summary, which also warns when the flag is left enabled. Shared hook state lives
+summary, which also warns when the flag is left enabled. The audit keeps the
+last 20 events (timestamp + repository + kind). Shared hook state lives
 under `CODEGUARD_HOME` (default `~/.codeguard`): session lint statistics,
 double-install dedup keys, and the skip audit.
 

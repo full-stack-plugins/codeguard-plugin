@@ -172,7 +172,7 @@ def main() -> int:
     if skip_gate_via_git_config(project_root):
         # 软门禁与硬门禁共用同一条仓库级豁免：此前 UPS 不认 skipGate，
         # 出现过"硬门放行、软门仍喊禁止提交"的自相矛盾。
-        record_skip_event("skipGate")
+        record_skip_event("skipGate", project_root)
         return 0
 
     cfg = load_user_config()
