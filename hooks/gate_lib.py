@@ -31,6 +31,12 @@ _DEP_RESOLUTION_RE = re.compile(
     r"Could not resolve dependencies|Could not find artifact|DependencyResolutionException"
 )
 
+# .zsh 送检剥离的统一话术：剥离不是静默丢弃——skipped 必须带上可执行的修复
+# 指令（ShellCheck 不支持 zsh 方言；文件头加方言声明注释后即可正常送检）。
+# delta/全量/UPS 三个面共用这一份认知（改这里即三处同变）。
+_ZSH_SKIP_NOTE = ("ShellCheck 不支持 zsh 方言，{n} 个 zsh 文件未送检。"
+                  "修复：在每个 .zsh 文件头添加 `# shellcheck shell=bash` 注释后重试")
+
 from detect_lang import (
     LANG_COMMANDS,
     detect_language,
@@ -424,6 +430,9 @@ def _run_gate_uncached(
     """
     from concurrent.futures import ThreadPoolExecutor
 
+    # 部分剥离场景的 skipped 备注（闭包列表：worker 线程 append，GIL 下安全）
+    zsh_notes: list[str] = []
+
     def check(lang: str):
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
@@ -451,14 +460,17 @@ def _run_gate_uncached(
                 if detect_language(f, project_root) == lang and (project_root / f).is_file()
             ]
             # ShellCheck 不支持 zsh（SC1071 是 error 级固有限制）——.zsh 送检
-            # 必红且不是代码违规。从目标面剔除并明示"未验证"，不静默丢弃。
+            # 必红且不是代码违规。从目标面剔除并明示"未验证"+ 可执行修复指令，
+            # 不静默丢弃。部分 zsh 场景备注进 zsh_skips，余下 .sh 照常送检
+            # （会话实测：静默剥离让提交方不知道有一部分文件压根没被检查）。
             if lang == "shell":
                 zsh_files = [f for f in lang_files if f.endswith(".zsh")]
                 if zsh_files:
                     lang_files = [f for f in lang_files if not f.endswith(".zsh")]
+                    note = _ZSH_SKIP_NOTE.format(n=len(zsh_files))
                     if not lang_files:
-                        return (lang, None,
-                                f"shell {len(zsh_files)} 个 zsh 文件未验证（ShellCheck 不支持 zsh）")
+                        return (lang, None, note)
+                    zsh_notes.append(note)
             if not lang_files:
                 return (lang, None, f"{lang} 本次改动未涉及，跳过")
         uses_delta_files = bool(lang_files) and len(lang_files) <= 50
@@ -618,7 +630,7 @@ def _run_gate_uncached(
             skipped.append(openspec_check["skipped"])
     except Exception as exc:  # noqa: BLE001 — 调用面异常同样归"未验证"，不静默吞
         skipped.append(f"openspec UNVERIFIED：{exc!r}")
-    return failures, skipped
+    return failures, skipped + zsh_notes
 
 
 def _openspec_validate(project_root: Path, timeout_seconds: int = 300) -> dict:
