@@ -179,8 +179,11 @@ def main() -> int:
     # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
     detected = detect_languages(project_root)
     subset = _detect_languages_in_text(user_text, detected)
-    # 推送意图走 push 面（含未推送提交），提交意图走 commit 面（暂存+工作区）——
-    # 与硬门禁的 _guarded_mode 同一套语义，软硬两门看到同一组文件。
+    # 推送意图走 push 面（含未推送提交），提交意图走 commit 面。
+    # 文件面：软门禁**不传 lanes** → 三路宽口径（staged+未暂存+未跟踪）——
+    # 此刻还没有待执行命令可预测，按"工作树有待提交改动就提醒"注入；硬门禁
+    # （PreToolUse）知道真实命令形态，按 staging_intent 收窄到实际提交面。
+    # 两者可以分歧：软门多提醒不算错（注入非阻断），硬门少拦才是底线。
     mode = "push" if _re.search(r"\bpush\b|推送", user_text, _re.IGNORECASE) else "commit"
     failures, skipped = run_gate(project_root, cfg, languages=(subset or None), mode=mode)
     # 提交内容安全检查：.venv/node_modules/.env/密钥等不应入库

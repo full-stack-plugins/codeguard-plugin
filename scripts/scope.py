@@ -8,9 +8,11 @@ detect_lang 只暴露语言检测与命令表 API，不得混入配置/路径/�
   （判定可复现性：规则集不能随机器上恰好装的 ruff 漂移；注入文件必须是
   ruff 原生格式，[tool.ruff] 包装的片段会被 TOML 解析拒绝）。
 - `scope_cmd`：物化命令——{file} 替换、全仓扫描 token 收敛为文件列表、
-  裸命令追加文件、全量模式剔除依赖快照目录。
-- `changed_files`：git 仓的本次改动集（staged + 未暂存 + 未跟踪）；
-  非 git 目录返回 None（调用方据此退回全量作用域）。
+  裸命令追加文件（`append_files=False` 的项目级命令如 mvn 不追加）、
+  全量模式剔除依赖快照目录。
+- `changed_files`：git 仓的本次改动集；`lanes` 控制取哪几路
+  （默认 staged+未暂存+未跟踪三路；硬门禁按命令链推断收窄到实际提交面），
+  `extra` 并入显式 git add 路径；非 git 目录返回 None（调用方退回全量）。
 
 被 hooks/gate_lib、hooks/post_tool_lint、scripts/run_per_language、
 scripts/fix 共用；detect_language 的按文件语言归属仍从 detect_lang 取。
@@ -61,6 +63,7 @@ def scope_cmd(
     files: list[str] | None = None,
     single_file: str | None = None,
     full_excludes: bool = False,
+    append_files: bool = True,
 ) -> list:
     """物化一条 linter 命令：占位符替换 + 作用域收敛 + ruff 配置注入。
 
@@ -68,7 +71,9 @@ def scope_cmd(
     - 全仓扫描 token（`.`、`**/*.md` 等；`#exclude` 辅助项一并处理）：
       给了 files/single_file 就替换成具体文件列表，没给则保留（全量模式）；
     - 既无占位符也无扫描 token 的裸命令：给了文件就**追加**（yamllint 这类
-      不带路径时读 stdin 恒"通过"，追加才检查得到东西）；
+      不带路径时读 stdin 恒"通过"，追加才检查得到东西）；`append_files=False`
+      的项目级命令（mvn/gradle——文件路径会被当 goal 报
+      `Unknown lifecycle phase` 误拦）保持原命令，文件列表只决定跑不跑；
     - ruff 命令注入 ruff_config_args 的默认配置；full_excludes=True（全量
       模式）再追加 --exclude，剔除依赖快照与构建产物。
     """
@@ -89,7 +94,7 @@ def scope_cmd(
         flags = [tok for i, tok in enumerate(out) if i not in scan_idx and not tok.startswith("#")]
         at = min(scan_idx)
         return flags[:at] + targets + flags[at:]
-    if targets and not scan_idx:
+    if targets and not scan_idx and append_files:
         return out + targets
     return out
 
@@ -128,12 +133,28 @@ def _unpushed_files(root: Path) -> list[str]:
     return []
 
 
+_LANE_ARGS = {
+    "staged": ("diff", "--cached", "--name-only"),
+    "unstaged": ("diff", "--name-only"),
+    "untracked": ("ls-files", "--others", "--exclude-standard"),
+}
+DEFAULT_LANES = ("staged", "unstaged", "untracked")
+
+
 def changed_files(
-    project_root: str | Path, *, mode: str = "commit",
+    project_root: str | Path, *,
+    mode: str = "commit",
+    lanes: tuple[str, ...] | list[str] | None = None,
+    extra: tuple[str, ...] | list[str] | None = None,
 ) -> list[str] | None:
     """本次改动涉及的文件；非 git 仓返回 None。
 
-    mode="commit"（提交面）：staged + 未暂存 + 未跟踪——"这次要提交什么"。
+    mode="commit"（提交面）：按 `lanes` 取工作树各路，默认三路 =
+    staged + 未暂存 + 未跟踪。**硬门禁按命令链把 lanes 收窄到实际会提交的面**
+    （纯 `git commit` 只有暂存区入库；并行会话留在工作树的未暂存 WIP 不属于
+    本次提交，曾因此被误拦——收窄逻辑见 pre_tool_git_guard.staging_intent）。
+    `extra` = 命令链里 `git add <paths>` 的显式路径（PreToolUse 时 add 尚未
+    执行、暂存区还是旧的，不并入会漏掉"即将暂存"的文件）。
     mode="push"（推送面）：在提交面基础上**并集未推送提交的文件**
     （up...HEAD）——工作树干净但本地领先时，坏改动已入库、提交面为空，
     推送面必须接管，否则 push 门禁形同虚设（实测：坏提交入史后
@@ -150,14 +171,16 @@ def changed_files(
     if proc.returncode != 0:
         return None
     names: set[str] = set()
-    for args in (
-        ("diff", "--cached", "--name-only"),
-        ("diff", "--name-only"),
-        ("ls-files", "--others", "--exclude-standard"),
-    ):
+    for lane in (lanes or DEFAULT_LANES):
+        args = _LANE_ARGS.get(lane)
+        if not args:
+            continue
         out = _git_out(root, *args)
         if out:
             names.update(line for line in out.splitlines() if line.strip())
+    for p in (extra or ()):
+        if p and not Path(p).is_absolute():
+            names.add(p)
     if mode == "push":
         names.update(_unpushed_files(root))
     return sorted(names)
