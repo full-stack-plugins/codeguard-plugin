@@ -22,7 +22,9 @@ def load_user_config() -> dict:
         "enabled_languages": [],
         "strict_mode": True,
         "auto_fix_on_save": True,
-        "lint_timeout_seconds": 120,
+        # 默认 300s：Maven 冷缓存 install -DskipTests 普遍超 2 分钟（旧 120s
+        # 实测把超时误报为阻断）。AI 可在 ~/.zcode/settings.local.yaml 覆盖。
+        "lint_timeout_seconds": 300,
     }
     if not cfg_path.exists():
         return defaults

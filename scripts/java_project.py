@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -118,6 +119,102 @@ def _gradle(root: Path) -> tuple[dict, list[str]]:
     return modules, reasons
 
 
+def _resolve_java_home(root: Path) -> tuple[str | None, str | None]:
+    """解析 pom/java.version 并找到兼容 JDK；返回 (JAVA_HOME 路径, 原因)。
+
+    逻辑：
+    1. 从 pom.xml 的 <java.version> 或 <maven.compiler.release> 读取版本号
+    2. 在 macOS 用 `/usr/libexec/java_home -v <ver>` 查找；在 Linux 用
+       `update-alternatives --list java` 匹配
+    3. 找到则返回 JAVA_HOME 路径（调用方注入 lint 子进程）；
+       找不到则返回 (None, "需要 JDK X，已装列表：…")——调用方将此作为
+       UNVERIFIED 理由，而非 FAIL。
+    """
+    import subprocess
+    java_version = None
+    pom = root / "pom.xml"
+    if pom.is_file():
+        try:
+            content = pom.read_text(encoding="utf-8", errors="ignore")
+            m = re.search(r"<java\.version>\s*(\d+)", content) or \
+                re.search(r"<maven\.compiler\.release>\s*(\d+)", content)
+            if m:
+                java_version = int(m.group(1))
+        except OSError:
+            pass
+    if java_version is None:
+        return None, None  # 未声明版本——用默认 JDK，不干预
+    # macOS: /usr/libexec/java_home -v <ver>
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["/usr/libexec/java_home", "-v", str(java_version)],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip(), None
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    # Linux: update-alternatives --list java
+    if sys.platform == "linux":
+        try:
+            result = subprocess.run(
+                ["update-alternatives", "--list", "java"],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    path = line.strip()
+                    # 从路径提取版本号（如 /usr/lib/jvm/java-21-openjdk-amd64/bin/java）
+                    vm = re.search(r"java[-.](\d+)", path)
+                    if vm and int(vm.group(1)) == java_version:
+                        home = str(Path(path).parent.parent)
+                        return home, None
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    # 未找到匹配 JDK
+    return None, f"需要 JDK {java_version}，当前环境无匹配版本"
+
+
+def _is_version_bump_only(root: Path, changed: list[str] | None) -> bool:
+    """检测变更是否为纯版本 bump（只改 pom/build.gradle 的 version/revision 行）。
+
+    用 git diff 对比变更文件的实际内容差异：新增/删除/修改的行都不含
+    依赖、插件、模块结构等关键词时，判定为纯版本 bump。无需联网或
+    构建——纯文本 diff 足以区分「改个版本号」与「改了依赖」。
+    """
+    import subprocess
+    if not changed:
+        return False
+    build_names = {"pom.xml", "build.gradle", "build.gradle.kts"}
+    for f in changed:
+        if Path(f).name not in build_names:
+            return False
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--"] + [str(f) for f in changed],
+            cwd=str(root), capture_output=True, text=True, timeout=5, check=False,
+        )
+        diff = result.stdout
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    # 只看 +/- 行的实际内容（排除 diff 头）
+    content_lines = [
+        ln for ln in diff.splitlines()
+        if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
+    ]
+    if not content_lines:
+        return False
+    # 纯版本 bump：变更行只涉及 version/revision/group/artifactId/description
+    # 等坐标性字段，不含依赖/插件/模块/属性等结构关键词
+    structural = re.compile(
+        r"<(dependency|plugin|module|parent|properties|build|profile)|"
+        r"implementation|api|testImplementation|compileOnly|runtimeOnly",
+        re.IGNORECASE,
+    )
+    return not any(structural.search(ln) for ln in content_lines)
+
+
 def analyze(project_root: str | Path, changed: list[str] | None = None) -> dict:
     """返回只读计划；changed=None 全量，[] 无变更；绝不把规划当成验证通过。"""
     root = Path(project_root).resolve()
@@ -163,14 +260,25 @@ def analyze(project_root: str | Path, changed: list[str] | None = None) -> dict:
             affected = set()
         commands = []
         if affected:
+            # 纯版本 bump 提交（只改 pom/build.gradle 的 version/revision 行）
+            # 降级为 validate/help 级——版本号变更不影响编译产物正确性，
+            # 全量 verify 在大仓上每次 bump 都是分钟级浪费（实测发布流程痛点）。
+            bump_only = _is_version_bump_only(root, changed)
             if system == "maven":
                 argv = [executable, "-B"]
                 if not full and "." not in affected:
                     argv += ["-pl", ",".join(sorted(affected)), "-am"]
-                argv += ["verify"]
+                # 默认等级不含测试执行（-DskipTests 只跳执行，测试代码仍编译）：
+                # 门禁管提交面的编译/打包/静态正确性，测试执行交 CI 或
+                # codeguard.json java.commands 显式声明——大仓全量测试普遍超
+                # 门禁超时预算，跑满也只剩 UNVERIFIED，反而给不出结论。
+                argv += ["-DskipTests", "validate" if bump_only else "verify"]
             else:
-                argv = [executable] + (["check"] if full or "." in affected else
-                                        [":" + p.replace("/", ":") + ":check" for p in sorted(affected)])
+                argv = [executable] + (["help"] if bump_only else
+                                      ["check"] if full or "." in affected else
+                                      [":" + p.replace("/", ":") + ":check" for p in sorted(affected)])
+                if not bump_only:
+                    argv += ["-x", "test"]
             commands = [{"kind": "verify", "argv": argv}]
             config = root / "codeguard.json"
             if config.exists():
@@ -185,6 +293,14 @@ def analyze(project_root: str | Path, changed: list[str] | None = None) -> dict:
         plugins = {p for m in modules.values() for p in m["plugins"]}
         if not plugins.intersection({"maven-checkstyle-plugin", "maven-pmd-plugin", "spotbugs-maven-plugin"}):
             plan["gaps"].append("未确认静态规则已绑定生命周期；verify/check 成功不代表 Checkstyle/PMD 全覆盖")
+        # JDK 兼容性：解析 java.version 并查找可用 JDK；找到则注入 JAVA_HOME
+        jdk_home, jdk_reason = _resolve_java_home(root)
+        if jdk_home:
+            for cmd in commands:
+                cmd["env"] = {"JAVA_HOME": jdk_home}
+            reasons.append(f"JAVA_HOME={jdk_home}")
+        elif jdk_reason:
+            reasons.append(jdk_reason)
         plan.update(status="PLANNED" if commands else "SKIPPED", commands=commands,
                     affected_modules=sorted(affected), conservative=bool(full and relevant is not None),
                     reasons=reasons or ["按构建模块及反向依赖闭包选择；命令尚未执行"])

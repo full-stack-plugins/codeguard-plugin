@@ -9,7 +9,7 @@
 
 | 语言 | 扩展名 | Lint 命令 | Format 命令 | 安装说明 |
 |---|---|---|---|---|
-| Java | `.java` | `mvn -B verify` | `mvn -q spotless:apply` | — |
+| Java | `.java` | `mvn -B -DskipTests verify` | `mvn -q spotless:apply` | — |
 | Rust | `.rs` | `cargo clippy --all-targets -- -D warnings` | `cargo fmt` | — |
 | TypeScript / JavaScript | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` | `npx --no-install eslint . --max-warnings 0` | `npx eslint . --fix` | 项目需安装 eslint |
 | Python | `.py` | `ruff check .` | `ruff check . --fix` | pip install ruff |

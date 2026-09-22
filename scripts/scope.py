@@ -42,6 +42,11 @@ FULL_SCAN_EXCLUDES = (
     "coverage", ".terraform", ".tox", ".eggs", "htmlcov", ".turbo",
     ".parcel-cache", "__pycache__", ".pytest_cache", ".mypy_cache",
     ".ruff_cache",
+    # Agent/宿主工具工作目录：会话实测 .mimosa/（含源码快照）与 .worktrees/
+    # （git 子工作树）曾被 git add -A 带进暂存区——既不该入库，也不该被全量
+    # 扫描重复检查（子工作树是同一份源码，扫两遍 = 双份误报）。
+    ".mimosa", ".worktrees", ".code-review-graph", ".kimi-code",
+    ".zcode", ".codex-plugin", ".agents",
 )
 
 
@@ -89,6 +94,36 @@ def _inject_find_excludes(expr: str) -> str:
     return expr
 
 
+def _project_python_target(root: Path) -> str | None:
+    """读项目声明的 Python 版本，返回 ruff 目标代号（如 py38）；未声明返回 None。
+
+    注入的默认配置硬编码 py310——老项目（3.8/3.9）会被 UP 规则按 3.10 语法
+    目标刷屏（假违规）。按 requires-python / .python-version 自适应后，规则
+    目标与项目声明一致，判定才可复现于项目自身契约。
+    """
+    import re as _re
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            m = _re.search(
+                r"requires-python\s*=\s*[\"']\s*[~^>=<\s]*(\d+)\.(\d+)",
+                pyproject.read_text(encoding="utf-8", errors="ignore"),
+            )
+            if m:
+                return f"py{m.group(1)}{m.group(2)}"
+        except OSError:
+            pass
+    version_file = root / ".python-version"
+    if version_file.is_file():
+        try:
+            m = _re.search(r"(\d+)\.(\d+)", version_file.read_text(encoding="utf-8", errors="ignore"))
+            if m:
+                return f"py{m.group(1)}{m.group(2)}"
+        except OSError:
+            pass
+    return None
+
+
 def ruff_config_args(cmd: list, project_root: str | Path) -> list:
     """ruff 命令注入 codeguard 默认配置——仅当项目没有自己的 ruff 配置时。
 
@@ -97,6 +132,7 @@ def ruff_config_args(cmd: list, project_root: str | Path) -> list:
     ruff 原生格式——指向带 [tool.ruff] 包装的 pyproject 片段会 TOML 解析失败。
     没有这层注入，门禁规则集取决于机器上恰好装了哪个 ruff 及其默认值，
     判定不可复现（实测：无配置环境直接按 I001/EXE001 级规则报错）。
+    项目声明了 Python 版本时追加 --target-version 覆盖注入配置里的 py310。
     """
     if not cmd or cmd[0] != "ruff" or not _RUFF_SNIPPET.is_file():
         return []
@@ -110,7 +146,11 @@ def ruff_config_args(cmd: list, project_root: str | Path) -> list:
                 return []
         except OSError:
             pass
-    return ["--config", str(_RUFF_SNIPPET)]
+    args = ["--config", str(_RUFF_SNIPPET)]
+    target = _project_python_target(root)
+    if target:
+        args += ["--target-version", target]
+    return args
 
 
 def scope_cmd(

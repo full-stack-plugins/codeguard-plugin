@@ -53,7 +53,7 @@ class JavaImpactTests(unittest.TestCase):
         plan = self.analyze(["api/src/main/java/Api.java"])
         self.assertEqual(plan["affected_modules"], ["api", "app", "service"])
         self.assertEqual(plan["commands"][0]["argv"],
-                         ["./mvnw", "-B", "-pl", "api,app,service", "-am", "verify"])
+                         ["./mvnw", "-B", "-pl", "api,app,service", "-am", "-DskipTests", "verify"])
         self.assertEqual(plan["status"], "PLANNED")
         self.assertIn("静态规则", " ".join(plan["gaps"]))
 
@@ -94,14 +94,14 @@ class JavaImpactTests(unittest.TestCase):
         plan = self.analyze(["api/src/main/java/Api.java"])
         self.assertEqual(plan["build_system"], "gradle")
         self.assertEqual(plan["affected_modules"], ["api", "service"])
-        self.assertEqual(plan["commands"][0]["argv"], ["./gradlew", ":api:check", ":service:check"])
+        self.assertEqual(plan["commands"][0]["argv"], ["./gradlew", ":api:check", ":service:check", "-x", "test"])
 
     def test_dynamic_gradle_uses_full_root_check(self):
         self.put("settings.gradle", 'include(moduleNames)')
         self.put("build.gradle", 'apply from: "shared.gradle"')
         plan = self.analyze(["api/src/main/java/A.java"])
         self.assertTrue(plan["conservative"])
-        self.assertEqual(plan["commands"][0]["argv"], ["gradle", "check"])
+        self.assertEqual(plan["commands"][0]["argv"], ["gradle", "check", "-x", "test"])
         self.assertTrue(plan["reasons"])
 
     def test_missing_or_malformed_build_is_unverified(self):
@@ -134,7 +134,7 @@ class JavaImpactTests(unittest.TestCase):
         import run_per_language
         results = run_per_language.run_check(["java"], self.root)
         self.assertTrue(results[0]["passed"], results)
-        self.assertEqual(results[0]["command"], ["./gradlew", "check"])
+        self.assertEqual(results[0]["command"], ["./gradlew", "check", "-x", "test"])
 
     def test_java_plan_cli_returns_machine_readable_plan(self):
         self.pom()

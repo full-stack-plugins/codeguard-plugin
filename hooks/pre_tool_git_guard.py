@@ -146,6 +146,34 @@ def resolve_project_roots(command: str) -> list[Path]:
     return roots
 
 
+def _fallback_roots(cwd: Path) -> list[Path]:
+    """cwd 不是 git 仓时，扫 cwd 一层子目录找 git 仓作兜底（monorepo 模式）。
+
+    返回去重后保序的 git 仓列表（不含 cwd 自身）。
+
+    实现注：`_is_git_repo(p)` 调 `git -C p rev-parse --git-dir` —— git 在
+    p 不是仓时会沿父目录递归找 .git 并返回成功；这会让 cwd 是任何子目录时
+    全部子目录被错判为 git 仓。fallback 必须用更严格的"仓内 .git 存在"判定：
+    `(child / ".git").exists()`。`_is_git_repo` 在主流程只在 cwd 自身或显式
+    cd 后的目标目录上调用，子目录递归副作用在主流程可控；这里只暴露 cwd
+    自身的判定语义，故 fallback 走自己独立的"子目录级 .git 存在"检查。
+    """
+    if not cwd.is_dir():
+        return []
+    cwd_resolved = cwd.resolve()
+    found: list[Path] = []
+    for child in sorted(cwd.iterdir(), key=lambda p: p.name):
+        if not child.is_dir():
+            continue
+        child_resolved = child.resolve()
+        if child_resolved == cwd_resolved:
+            continue
+        # 严格子目录级检查：仓根的 .git 必须真在该子目录里
+        if (child / ".git").exists():
+            found.append(child_resolved)
+    return found
+
+
 _ASSIGN_RE = None  # 延迟编译，保持模块零顶层 re 依赖
 _ASSIGN_PATTERN = r"^[A-Za-z_][A-Za-z0-9_.-]*="
 _BARE_WRAPPERS = ("env", "sudo", "nohup", "command", "time", "nice", "ionice", "setsid", "stdbuf")
@@ -236,6 +264,105 @@ def _git_side_effect_sub(seg: str) -> str | None:
     first = tokens[0].strip("\"'")
     second = tokens[1].strip("\"'")
     return second if first == "git" and second in ("commit", "push") else None
+
+
+# 全小写比较集：git config 键名大小写不敏感（codeguard.skipGate ≡ codeguard.skipgate）
+_SKIP_GATE_ASSIGN = ("codeguard.skipgate=true", "codeguard.skipgate=1", "codeguard.skipgate=yes")
+
+# git 全局参数里带一个独立值的 flag（`git -C <path> config …` 的 <path> 是 flag
+# 值不是子命令）；带 `=` 形式（--git-dir=/x）无独立值。
+_GIT_GLOBAL_VALUE_FLAGS = frozenset(
+    ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"))
+
+# git config 查询/删除形态——只读/清理动作，不构成豁免意图
+_QUERY_CONFIG_FLAGS = ("--get", "--get-all", "--get-regexp", "--unset", "--unset-all",
+                       "--list", "-l")
+
+
+def _git_seg_parts(tokens: list[str]) -> tuple[str, int, list[str]] | None:
+    """按 git 全局参数语法切分单个命令段：返回 (子命令, 子命令下标, 子命令前全局参数)。
+
+    git 语法 = `git [全局 flag [值]]* <子命令> [参数…]`。**子命令之后的 token
+    一律不是全局配置**——`git commit -m "… -c codeguard.skipGate=true …"` 的
+    消息文本、`git commit -m "config codeguard.skipGate true"` 都不构成豁免
+    意图（防的是危险方向的误判：文本里出现豁免短语 → 门禁被静默关掉）。
+    找不到子命令（纯 `git` / 全是 flag）返回 None。
+    """
+    if len(tokens) < 2 or tokens[0] != "git":
+        return None
+    i, pre = 1, []
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-"):
+            pre.append(tok)
+            i += 1
+            if (tok.split("=", 1)[0] in _GIT_GLOBAL_VALUE_FLAGS and "=" not in tok
+                    and i < len(tokens)):
+                pre.append(tokens[i])
+                i += 1
+            continue
+        return tok, i, pre
+    return None
+
+
+def inline_skip_gate(command: str) -> bool:
+    """`git -c codeguard.skipGate=true …`（全局参数位）= **显式单次豁免意图**。
+
+    `git config` 豁免是仓库级、需手动 unset（忘记 unset = 门禁永久静默失效，
+    stop_summary 已在提醒）；`-c` 内联是单次、随命令消亡、不留配置残留——
+    更适合"这一条命令我知道有环境问题，放行"的场景。此前 `-c k=v` 被
+    `_analyze_segment` 剥掉后 matcher 反而漏拦（守卫绕过口），本函数把该形态
+    识别为**有审计的正门**：调用方放行时必须记 record_skip_event("inline-skipGate")。
+
+    只认子命令之前的 `-c` 全局参数位（git 语法本义），消息文本/脚本参数里的
+    同名字符串不构成豁免；value 精确匹配 _SKIP_GATE_ASSIGN。
+    """
+    text = _flatten_substitutions(command)
+    import re as _re
+    for seg in _re.split(r"&&|\|\||;|\n", text):
+        tokens = [t.strip("\"'") for t in seg.strip().split()]
+        parts = _git_seg_parts(tokens)
+        if parts is None:
+            continue
+        _, _, pre = parts
+        for i, tok in enumerate(pre):
+            if tok == "-c" and i + 1 < len(pre) and pre[i + 1].lower() in _SKIP_GATE_ASSIGN:
+                return True
+    return False
+
+
+def chain_skip_gate(command: str) -> bool:
+    """命令链里含 `git config codeguard.skipGate <true|1|yes>` **设置**段 = 显式豁免意图。
+
+    文档推荐的仓库级豁免是「set → 提交 → unset」，天然会被写进同一条链命令
+    （`git config codeguard.skipGate true && git commit … && git config --unset …`）。
+    此前链里只要有一个 git commit/push 段就整链被拦——set 段自己都没跑成，
+    文档绕过首用必败。识别为显式豁免意图放行，并记 "chain-skipGate" 审计。
+
+    只认子命令就是 `config` 的**设置**形态（--get/--unset/--list 查询不算），
+    key 精确匹配 codeguard.skipGate（大小写不敏感）、value 须为真值；消息文本
+    里出现的同名字符串不构成豁免（见 _git_seg_parts 的子命令边界）。
+    """
+    text = _flatten_substitutions(command)
+    import re as _re
+    for seg in _re.split(r"&&|\|\||;|\n", text):
+        tokens = [t.strip("\"'") for t in seg.strip().split()]
+        parts = _git_seg_parts(tokens)
+        if parts is None:
+            continue
+        sub, si, _pre = parts
+        if sub != "config":
+            continue
+        rest = tokens[si + 1:]
+        if any(t in _QUERY_CONFIG_FLAGS for t in rest):
+            continue
+        args = [t for t in rest if not t.startswith("-")]
+        if len(args) < 2:
+            continue
+        key, value = args[0], args[1]
+        if key.lower() == "codeguard.skipgate" and value.lower() in ("true", "1", "yes"):
+            return True
+    return False
 
 
 def _segment_is_git_side_effect(seg: str) -> bool:
@@ -460,10 +587,51 @@ def main() -> int:
     cfg = load_user_config()
     mode = _guarded_mode(command) or "commit"
     roots = resolve_project_roots(command)
+    # 静默跳过漏报修复：roots=[] 时扫描 cwd 一层子目录找 git 仓作兜底
+    # （monorepo 模式：workspace 根目录下多仓时，从根目录直跑 git push 不
+    # 经 cd 也能被覆盖）。找不到则向 #2 抛错，让 Agent 知晓绕过发生。
+    fallback_note: str | None = None
     if not roots:
-        return 0
+        fallback = _fallback_roots(Path(os.getcwd()))
+        if fallback:
+            roots = fallback
+            fallback_note = (
+                f"未检测到显式 cd 仓；兜底扫描 cwd 一层子目录找到 {len(fallback)} 个 git 仓"
+            )
+        else:
+            # 输出明确错误而非静默 exit 0：避免 Agent/用户误以为门禁执行过。
+            print(
+                f"[codeguard] 未检测到任何 git 仓：cwd={os.getcwd()} 且命令链中无 cd <仓>。"
+                f"请在 git push 前先 cd <仓路径>，或在仓库根设置 git config codeguard.skipGate true。"
+                f"（已用兜底扫描 cwd 一层子目录，无 git 仓。）",
+                file=sys.stderr,
+            )
+            return 2
+    if fallback_note:
+        # 兜底走通：仅在会话状态记录（不进 stderr，避免噪音），Stop 摘要可见
+        record_skip_event("monorepo-fallback", roots[0])
     if any(skip_gate_via_git_config(r) for r in roots):
         record_skip_event("skipGate", roots[0])
+        return 0
+    # 单次内联豁免：`git -c codeguard.skipGate=true …` 是显式意图（不落配置、
+    # 无残留），放行并留审计明细——比仓库级 config 更不易"忘记恢复"。
+    if inline_skip_gate(command):
+        record_skip_event("inline-skipGate", roots[0])
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "additionalContext":
+            "codeguard: 已通过内联豁免 `-c codeguard.skipGate` 放行本次提交"
+            "（已审计记录，Stop 摘要可见）。"}}
+        ))
+        return 0
+    # 链内设置豁免：`git config codeguard.skipGate true && … && git config --unset …`
+    # 是文档推荐的自清理写法；此前整链被拦连 set 段都没跑成（首用必败）。
+    if chain_skip_gate(command):
+        record_skip_event("chain-skipGate", roots[0])
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "additionalContext":
+            "codeguard: 已通过链式豁免（set→提交→unset 同链）放行本次提交"
+            "（已审计记录，Stop 摘要可见）。"}}
+        ))
         return 0
 
     # 按命令链预测实际提交面（纯 commit → 仅 staged；add -A/-a → 三路），

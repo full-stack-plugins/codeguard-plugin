@@ -6,6 +6,7 @@ import inspect
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,9 @@ import pre_tool_git_guard
 import run_check
 import run_per_language
 from detect_lang import LANG_COMMANDS
+
+# auto_fix 用例需真实 ruff 执行 format/check——工具缺失时断言的修复路径无法覆盖。
+RUFF_AVAILABLE = shutil.which("ruff") is not None
 
 
 class RepoCase(unittest.TestCase):
@@ -116,6 +120,7 @@ class VerdictTests(RepoCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("b.sh", result["stdout_tail"])
 
+    @unittest.skipUnless(RUFF_AVAILABLE, "ruff not installed (pip install ruff) — auto_fix 需真实 ruff")
     def test_mcp_auto_fix_never_touches_clean_files(self):
         self.put("clean.py", "import os\n")
         self.git("add", ".")
