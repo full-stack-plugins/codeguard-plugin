@@ -1,5 +1,7 @@
 # partme-codeguard-plugin Plugin
 
+> Parity note: `README.md` and `README.zh-CN.md` must stay structurally aligned (heading levels, local links, version strings) — enforced by `tests/test_readme_parity.py`; mirror any structural edit into both files in the same commit.
+
 <p align="center">
   <img src="assets/banner.svg" alt="partme-codeguard-plugin — Make AI-written code pass lint on first try. Supports ZCode, Claude Code, Codex CLI, and Kimi Code." width="100%">
 </p>
@@ -13,7 +15,7 @@
   <a href="README.md">English</a> ·
   <a href="README.zh-CN.md">简体中文</a> ·
   <a href="docs/partme-codeguard-plugin-Architecture.zh_CN.md">Architecture</a> ·
-  <a href="docs/5、partme-codeguard-plugin-技术方案与路线.md">Technical roadmap</a>
+  <a href="docs/technical-roadmap.zh_CN.md">Technical roadmap</a>
 </p>
 
 ---
@@ -40,7 +42,7 @@ It is a **constraint-type plugin** for AI assistants, not a productivity-type pl
 | AI uses `unwrap()` in Rust business code | `cargo clippy -- -D warnings` runs on each `.rs` file | [Architecture §2.1](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
 | AI introduces `any` and unused vars in TypeScript | `eslint --max-warnings 0` blocks the AI | `linters/eslint/recommended.cjs` |
 | "did it pass lint?" is asked manually after every AI session | Stop hook summarizes lint pass/fail counts | `hooks/stop_summary.py` |
-| pre-commit and CI catch issues 30s+5min late, by then the AI has moved on | Three-layer defense: hook (<2s) → pre-commit (30s) → CI (5min) | [Technical roadmap §1](docs/5、partme-codeguard-plugin-技术方案与路线.md) |
+| pre-commit and CI catch issues 30s+5min late, by then the AI has moved on | Three-layer defense: hook (<2s) → pre-commit (30s) → CI (5min) | [Technical roadmap §1](docs/technical-roadmap.zh_CN.md) |
 
 ## At a glance
 
@@ -65,7 +67,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.5.4` |
+| Current version | `0.6.7` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | Not published until the SDK-backed protocol implementation is ready; use the CLI and hooks |
@@ -104,7 +106,7 @@ The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`)
 
 ### External skill source
 
-The 68 portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills), not independently inside this plugin. This repository vendors the complete `v0.1.0` snapshot so installed plugins work offline:
+The 68 portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills), not independently inside this plugin. This repository vendors the complete `v0.1.2` snapshot so installed plugins work offline:
 
 - `skills.lock.json` pins the upstream repository, immutable tag, resolved commit, managed skill names, and per-skill SHA-256 digests.
 - `python3 scripts/vendor/skill_vendor.py update` refreshes only the skill names listed in the lock.
@@ -150,6 +152,8 @@ PostToolUse is the **highest-ROI** layer because it gives the AI feedback **whil
 ## Quick start
 
 ### CLI (codeguard)
+
+`bin/codeguard` is a bash dispatcher: each subcommand (`check` / `fix` / `cve` / `dockerfile` / `detect`) routes to the matching `scripts/*.py` implementation.
 
 ```bash
 # Optional one-time setup: put the CLI on PATH
@@ -233,7 +237,7 @@ partme-codeguard-plugin/
 │   └── vendor/skill_vendor.py    # lock-driven external skill vendor/check
 ├── skills.lock.json              # upstream tag/commit + managed skills + SHA-256 digests
 ├── plugin-local-skills.json      # explicit plugin-only skill exceptions (currently empty)
-├── skills/                       # 68 vendored skills from codeguard-skills v0.1.0
+├── skills/                       # 68 vendored skills from codeguard-skills v0.1.2
 │   ├── codeguard/                # main entry
 │   ├── codeguard-init/           # one-line bootstrap
 │   ├── codeguard-{java,rust,typescript,python}/
@@ -255,7 +259,7 @@ partme-codeguard-plugin/
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
 │   ├── partme-codeguard-plugin-Architecture.zh_CN.md
-│   └── 5、partme-codeguard-plugin-技术方案与路线.md
+│   └── technical-roadmap.zh_CN.md
 ├── README.md                     # this file
 ├── README.zh-CN.md               # Chinese
 ├── LICENSE                       # Apache-2.0

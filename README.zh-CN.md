@@ -1,5 +1,7 @@
 # partme-codeguard-plugin 插件
 
+> 结构对齐：`README.md` 与 `README.zh-CN.md` 必须保持结构一致（标题层级、本地链接、版本串）——由 `tests/test_readme_parity.py` 门禁守护；结构性修改须同 commit 镜像到两份文件。
+
 <p align="center">
   <img src="assets/banner.svg" alt="partme-codeguard-plugin — 让 AI 写的代码一次过 lint。支持 ZCode、Claude Code、Codex CLI、Kimi Code。" width="100%">
 </p>
@@ -13,7 +15,7 @@
   <a href="README.md">English</a> ·
   <a href="README.zh-CN.md">简体中文</a> ·
   <a href="docs/partme-codeguard-plugin-Architecture.zh_CN.md">架构文档</a> ·
-  <a href="docs/5、partme-codeguard-plugin-技术方案与路线.md">技术方案</a>
+  <a href="docs/technical-roadmap.zh_CN.md">技术方案</a>
 </p>
 
 ---
@@ -40,7 +42,7 @@
 | AI 在 Rust 业务代码用 `unwrap()` | `cargo clippy -- -D warnings` 跑每个 `.rs` 文件 | [架构文档 §2.1](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
 | AI 写 `any` 和未用变量 | `eslint --max-warnings 0` 阻塞 AI | `linters/eslint/recommended.cjs` |
 | 每次会话都要手工问「过 lint 了吗？」 | Stop 钩子自动总结本会话 lint 通过/失败次数 | `hooks/stop_summary.py` |
-| pre-commit / CI 发现时 AI 已切走，修复率 <30% | **三层防御**：钩子（<2s）→ pre-commit（30s）→ CI（5min） | [技术方案 §1](docs/5、partme-codeguard-plugin-技术方案与路线.md) |
+| pre-commit / CI 发现时 AI 已切走，修复率 <30% | **三层防御**：钩子（<2s）→ pre-commit（30s）→ CI（5min） | [技术方案 §1](docs/technical-roadmap.zh_CN.md) |
 
 ## 一览
 
@@ -65,7 +67,7 @@ AI 一次写出就过 lint 的代码
 |---|---|
 | 插件 ID | `partme-codeguard-plugin` |
 | 宿主 | ZCode、Claude Code、Codex CLI、Kimi Code |
-| 当前版本 | `0.5.4` |
+| 当前版本 | `0.6.7` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP 服务 | SDK 协议实现完成前不随清单发布；当前使用 CLI 与 Hooks |
@@ -86,9 +88,11 @@ AI 一次写出就过 lint 的代码
 > 此前其 lint 命令缺 glob、恒以用法错误退出，现已返回真实结论。`codeguard init` 会拷入宽松配置模板。
 | **Planned**（4 种，无独立 CLI linter） | Metal、ArkTS（HarmonyOS）、COBOL、Liquid（theme-check 待接通） |
 
-## 外部技能来源
+## 治理技能（Git 与安全）
 
-68 个可复用技能统一在 [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills) 编写，插件不再维护一份独立手写副本。为保证插件安装后离线可用，本仓库 vendor 了完整的 `v0.1.0` 快照：
+### 外部技能来源
+
+68 个可复用技能统一在 [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills) 编写，插件不再维护一份独立手写副本。为保证插件安装后离线可用，本仓库 vendor 了完整的 `v0.1.2` 快照：
 
 - `skills.lock.json` 固定上游仓库、不可变 tag、解析后的 commit、受管技能清单与逐技能 SHA-256。
 - `python3 scripts/vendor/skill_vendor.py update` 只刷新 lock 中列出的技能。
@@ -96,7 +100,7 @@ AI 一次写出就过 lint 的代码
 - 不得直接修改 lock 管理的技能目录。应先在 `codeguard-skills` 修改并发布，再更新 lock ref 并执行 vendor update。
 - 只有插件内部定制技能可以直接保留在 `skills/`，且必须明确不列入 `skills.lock.json`、显式登记到 `plugin-local-skills.json`；vendor 会保留已声明目录并拒绝未声明例外。
 
-Hooks、linters、commands、MCP 接线和可执行脚本仍由插件仓负责。
+Hooks、linters、commands、MCP 接线和可执行脚本仍由插件仓负责。作者编写规范见 [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md)。
 
 ## 能力与边界
 
@@ -134,6 +138,8 @@ PostToolUse 是 **最高 ROI** 的层，因为 AI 在它「还在乎这个问题
 ## 快速开始
 
 ### CLI（codeguard）
+
+`bin/codeguard` 是 bash 分发器：每个子命令（`check` / `fix` / `cve` / `dockerfile` / `detect`）都路由到对应的 `scripts/*.py` 实现。
 
 ```bash
 # 安装 CLI（可选）：放到 PATH 后任意目录直接用
@@ -216,7 +222,7 @@ partme-codeguard-plugin/
 │   └── vendor/skill_vendor.py    # lock 驱动的外部技能 vendor/check
 ├── skills.lock.json              # 上游 tag/commit + 受管技能 + SHA-256
 ├── plugin-local-skills.json      # 插件专属技能显式例外清单（当前为空）
-├── skills/                       # 从 codeguard-skills v0.1.0 vendor 的 68 个技能
+├── skills/                       # 从 codeguard-skills v0.1.2 vendor 的 68 个技能
 │   ├── codeguard/                # 主入口
 │   ├── codeguard-init/           # 一行接入
 │   ├── codeguard-{java,rust,typescript,python}/
@@ -238,7 +244,7 @@ partme-codeguard-plugin/
 │   └── pre-commit/               # .pre-commit-config.template.yaml
 ├── docs/
 │   ├── partme-codeguard-plugin-Architecture.zh_CN.md
-│   └── 5、partme-codeguard-plugin-技术方案与路线.md
+│   └── technical-roadmap.zh_CN.md
 ├── README.md                     # 本文件（英文）
 ├── README.zh-CN.md               # 本文件（中文）
 ├── LICENSE                       # Apache-2.0
