@@ -86,13 +86,22 @@ def is_trigger(user_text: str) -> bool:
     """
     if not user_text:
         return False
-    if any(q in user_text for q in QUESTION_MARKERS):
+    # 问句抑制按**句子粒度**：`这个方案 OK 吗？帮我提交` 问句与祈使混排时，
+    # 整条文本级的问号判断会把祈使句一起静默（软门缺失，硬门兜底，但漏提醒
+    # 不符合"软门多提醒不算错"的既定原则）。
+    sentences = [seg for seg in _re.split(r"[。！!？?\n\r]+", user_text) if seg.strip()]
+    trigger_sentences = [seg for seg in sentences if _TRIGGER_RE.search(seg)]
+    if not trigger_sentences:
         return False
-    m = _TRIGGER_RE.search(user_text)
+    non_question = [seg for seg in trigger_sentences
+                    if not any(q in seg for q in QUESTION_MARKERS)]
+    if not non_question:
+        return False
+    m = _TRIGGER_RE.search(non_question[0])
     if not m:
         return False
     # 句首祈使：触发词本身（或前面只有空白/常见介词）位于句首。
-    stripped = user_text.lstrip()
+    stripped = non_question[0].lstrip()
     leading = stripped[: m.start()].strip().lower()
     if leading in ("", "git", "to", "the", "a", "an", "帮我", "请", "请帮我"):
         return True

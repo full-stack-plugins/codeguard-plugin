@@ -576,6 +576,7 @@ def test_perf():
         "import gate_lib\n"
         "def _boom(*a, **k): raise RuntimeError('injected-failure')\n"
         "gate_lib.run_gate=_boom\n"
+        "gate_lib.skip_gate_via_git_config=lambda *a, **k: False\n"  # 免疫本机 skipGate 配置
         f"runpy.run_path({str(HOOKS / 'user_prompt_validator.py')!r}, run_name='__main__')\n"
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, check=False, text=True,
