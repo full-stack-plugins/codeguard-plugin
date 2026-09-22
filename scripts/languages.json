@@ -380,7 +380,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck --severity=warning"
+        "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r shellcheck --severity=warning"
       ],
       "linter_config_files": [
         ".shellcheckrc"

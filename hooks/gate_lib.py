@@ -11,12 +11,19 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
+
+# maven 依赖解析失败的特征（javadoc:jar 独立 goal 在 reactor 上跑时的典型崩法）
+_DEP_RESOLUTION_RE = re.compile(
+    r"Could not resolve dependencies|Could not find artifact|DependencyResolutionException"
+)
 
 from detect_lang import (
     LANG_COMMANDS,
@@ -321,7 +328,13 @@ def _run_gate_uncached(
                     break
         else:
             if scope == "delta":
-                cmd = scope_cmd(base_cmd, project_root, files=lang_files if uses_delta_files else None)
+                # files=None（delta 超 50 文件回退全量命令）时同样要剔除构建产物——
+                # 否则回退路径反而比常规全量门禁更容易扫到 target/ 生成物。
+                cmd = scope_cmd(
+                    base_cmd, project_root,
+                    files=lang_files if uses_delta_files else None,
+                    full_excludes=not uses_delta_files,
+                )
             else:
                 cmd = scope_cmd(base_cmd, project_root, full_excludes=True)
             outputs.append(_run_one(cmd, timeout, lang, hint))
@@ -342,6 +355,9 @@ def _run_gate_uncached(
             return (lang, None, f"{lang} 工具链异常未验证：exit 2（非 lint 结论）{('｜' + head[:80]) if head else ''}")
         full = "\n".join(seg for seg in ((out or "").rstrip(), (err or "").rstrip()) if seg)
         detail = _truncate_detail(full or "（linter 无输出）", project_root, lang)
+        dep_hint = _dependency_resolution_hint(lang, full)
+        if dep_hint:
+            detail += f"\n{dep_hint}"
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
         return (lang, (lang, detail, fix, hint), None)
 
@@ -399,8 +415,29 @@ def session_state_path() -> Path:
     return codeguard_home() / "session_state.json"
 
 
-def record_skip_event(kind: str) -> None:
-    """记录一次绕过（skipGate/逃生门）到会话状态，Stop 汇总时可见。"""
+def _dependency_resolution_hint(lang: str, full: str) -> str | None:
+    """Java 门禁报依赖解析失败时给行动指引，而不是只留 maven 堆栈尾部。
+
+    javadoc:jar 以独立 goal 跑在 reactor 上，sample 类模块常设
+    maven.install.skip=true，它们的构件不在本地仓——下游模块必然
+    Could not resolve。没有这行提示，用户看到的是与"该改什么"无关的堆栈。
+    """
+    if lang != "java":
+        return None
+    if not _DEP_RESOLUTION_RE.search(full):
+        return None
+    return (
+        "提示：依赖构件不可解析（如 samples 模块 maven.install.skip=true 未入本地仓）。"
+        "先在仓根执行 mvn install -DskipTests（必要时加 -Dmaven.install.skip=false）再重试门禁。"
+    )
+
+
+def record_skip_event(kind: str, project_root: Path | None = None) -> None:
+    """记录一次绕过（skipGate/逃生门）到会话状态，Stop 汇总时可见。
+
+    除计数外保留最近 20 条明细（时间 + 仓库 + 类型）——豁免必须可回溯：
+    只有总数时无法回答"哪个仓、什么时候被跳过的"。
+    """
     state = {}
     path = session_state_path()
     try:
@@ -412,6 +449,13 @@ def record_skip_event(kind: str) -> None:
     meta["count"] = int(meta.get("count", 0)) + 1
     kinds = meta.setdefault("kinds", {})
     kinds[kind] = int(kinds.get(kind, 0)) + 1
+    events = meta.setdefault("events", [])
+    events.append({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "kind": kind,
+        "repo": project_root.name if project_root else None,
+    })
+    del events[:-20]
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
