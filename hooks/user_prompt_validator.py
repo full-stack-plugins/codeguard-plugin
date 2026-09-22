@@ -89,7 +89,17 @@ def is_trigger(user_text: str) -> bool:
     # 问句抑制按**句子粒度**：`这个方案 OK 吗？帮我提交` 问句与祈使混排时，
     # 整条文本级的问号判断会把祈使句一起静默（软门缺失，硬门兜底，但漏提醒
     # 不符合"软门多提醒不算错"的既定原则）。
-    sentences = [seg for seg in _re.split(r"[。！!？?\n\r]+", user_text) if seg.strip()]
+    # 切分时用捕获组保留定界符并附回句尾——"Should I commit this?" 的问号
+    # 在句尾，若把定界符当纯分隔符吃掉，句内标记消失会误触发（CI 实测）。
+    parts = _re.split(r"([。！!？?\n\r]+)", user_text)
+    sentences = []
+    for i in range(0, len(parts) - 1, 2):
+        seg = (parts[i] + parts[i + 1]).strip()
+        if seg:
+            sentences.append(seg)
+    tail = parts[-1].strip() if len(parts) % 2 == 1 else ""
+    if tail:
+        sentences.append(tail)
     trigger_sentences = [seg for seg in sentences if _TRIGGER_RE.search(seg)]
     if not trigger_sentences:
         return False

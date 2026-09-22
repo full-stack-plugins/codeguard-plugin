@@ -369,7 +369,8 @@
       "name": "Shell",
       "extensions": [
         ".sh",
-        ".bash"
+        ".bash",
+        ".zsh"
       ],
       "markers": [],
       "status": "stable",
