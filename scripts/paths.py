@@ -70,7 +70,7 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
         shell = os.environ.get("SHELL") or "/bin/zsh"
         proc = subprocess.run(
             [shell, "-lc", "printf '%s' \"$PATH\""],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, check=False, text=True, timeout=5,
         )
         if proc.returncode == 0:
             inherited = proc.stdout.strip().splitlines()

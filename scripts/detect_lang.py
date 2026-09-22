@@ -186,7 +186,7 @@ def probe_toolchain(cmd_def: dict, timeout: int = 10) -> tuple[bool, str]:
 def _run_probe_cmd(probe: list, timeout: int) -> tuple[bool, str]:
     try:
         # stdin=DEVNULL：探活命令绝不消费宿主 stdin；--format 类探活靠 EOF 立即返回
-        proc = subprocess.run(probe, capture_output=True, text=True, timeout=timeout,
+        proc = subprocess.run(probe, capture_output=True, check=False, text=True, timeout=timeout,
                               stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return False, f"探活超时: {' '.join(probe)}"
@@ -203,7 +203,7 @@ def _probe_binary(b: str, timeout: int) -> tuple[bool, str]:
     if shutil.which(b) is None:
         return False, f"{b} 不在 PATH"
     try:
-        proc = subprocess.run([b, "--version"], capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run([b, "--version"], capture_output=True, check=False, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, f"{b} --version 超时"
     except OSError as exc:

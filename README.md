@@ -70,7 +70,7 @@ AI code that passes lint on first try
 | Current version | `0.6.7` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
-| MCP server | Not published until the SDK-backed protocol implementation is ready; use the CLI and hooks |
+| MCP server | Published: stdio server via the official SDK (`check_code_style` / `auto_fix` / `list_languages`); see Quick start |
 | Primary language | Python 3.10+ (hooks), YAML/JSON (config) |
 | License | Apache-2.0 |
 
@@ -198,6 +198,25 @@ When this plugin is active, you do **not** need to do anything manually:
 - If lint fails and cannot be auto-fixed, you will see the error and **must fix before continuing**.
 - When the user says "commit", you will receive a final all-linters-must-pass gate check.
 - At session end, you will see a summary of which lints passed/failed.
+
+### MCP server
+
+`run_check.py --mcp` starts a stdio MCP server (official `mcp` SDK; install
+dependencies with `pip install -r requirements.txt`) exposing three tools:
+
+| Tool | Purpose |
+|---|---|
+| `check_code_style` | Run lint and return a per-language envelope with `stderr_path` and `log_path` |
+| `auto_fix` | Run the formatter chain, then re-run lint and embed the check envelope |
+| `list_languages` | List supported language ids and display names (no internal commands) |
+
+```bash
+python3 scripts/run_check.py --mcp .
+```
+
+Failed runs write the full combined output to `<project>/out/.codeguard-last.log`
+(the same path appears in the tool envelope and the CLI summary line; suppress
+with `--quiet`).
 
 ## Configuration
 

@@ -22,7 +22,7 @@ __all__ = ["run_check", "run_fix"]
 def _run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
     """subprocess 调用统一封装：归一化超时(124) / 命令缺失(127) / 其它返回原码。"""
     try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
     except FileNotFoundError as e:
@@ -32,9 +32,16 @@ def _run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
 
 def run_check(languages: list[str], project_root: Path,
               *, timeout: int = 120, fix: bool = False,
-              dry_run: bool = False) -> list[dict]:
-    """对每个语言跑 lint；fix=True 时失败后自动跑 format 复检一次。"""
+              dry_run: bool = False, log_dir: Path | None = None) -> list[dict]:
+    """对每个语言跑 lint；fix=True 时失败后自动跑 format 复检一次。
+
+    `log_dir` 非空且有语言失败时，完整输出（stdout+stderr 合并——ruff 等
+    linter 把诊断打到 stdout）落盘到 `<log_dir>/.codeguard-last.log`
+    （组头含语言与退出码），失败条目附带 `log_path`；
+    全部通过则不产生日志文件。
+    """
     results: list[dict] = []
+    log_entries: list[tuple[str, int, str]] = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
@@ -60,6 +67,32 @@ def run_check(languages: list[str], project_root: Path,
             "stderr_tail": err[-2000:] if err else "",
             "stdout_tail": out[-1000:] if out else "",
         })
+        if not passed and (err or out):
+            combined = ""
+            if out:
+                combined += out
+            if err:
+                if combined and not combined.endswith("\n"):
+                    combined += "\n"
+                combined += err
+            log_entries.append((lang, rc, combined))
+    if log_dir is not None and log_entries:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / ".codeguard-last.log"
+        chunks = []
+        for lang, rc, content in log_entries:
+            block = f"===== {lang} (exit={rc}) =====\n{content}"
+            if not block.endswith("\n"):
+                block += "\n"
+            chunks.append(block)
+        try:
+            log_path.write_text("\n".join(chunks), encoding="utf-8")
+        except OSError:
+            log_path = None
+        if log_path is not None:
+            for r in results:
+                if not r["passed"]:
+                    r["log_path"] = str(log_path.resolve())
     return results
 
 
@@ -77,7 +110,7 @@ def run_fix(languages: list[str], project_root: Path,
             results.append({"language": lang, "fixed": True,
                             "dry_run": True, "command": fmt or []})
             continue
-        rc, out, err = _run(fmt, cwd=project_root, timeout=timeout)
+        rc, _out, err = _run(fmt, cwd=project_root, timeout=timeout)
         results.append({
             "language": lang,
             "fixed": rc == 0,

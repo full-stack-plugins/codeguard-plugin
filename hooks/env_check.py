@@ -7,7 +7,6 @@
 3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codeguard 管理的项目里
 """
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -129,6 +128,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except SystemExit:
         raise
-    except Exception as exc:  # 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+    except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
         print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
         sys.exit(0)

@@ -70,7 +70,7 @@ AI 一次写出就过 lint 的代码
 | 当前版本 | `0.6.7` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
-| MCP 服务 | SDK 协议实现完成前不随清单发布；当前使用 CLI 与 Hooks |
+| MCP 服务 | 已发布：官方 SDK stdio 服务（`check_code_style` / `auto_fix` / `list_languages`）；见快速开始 |
 | 主要语言 | Python 3.10+（钩子）、YAML/JSON（配置） |
 | 协议 | Apache-2.0 |
 
@@ -183,6 +183,24 @@ ln -s $PWD ~/.kimi/plugins/partme-codeguard-plugin
 - lint 失败且无法自动修复时，你会看到错误，**必须修复才能继续**
 - 用户说「commit」时，你会受到「所有 linter 必须通过」的最后门禁
 - 会话结束时会看到本会话 lint 通过/失败的总结
+
+### MCP 服务器
+
+`run_check.py --mcp` 启动 stdio MCP 服务（官方 `mcp` SDK；先用
+`pip install -r requirements.txt` 安装依赖），暴露三个工具：
+
+| 工具 | 用途 |
+|---|---|
+| `check_code_style` | 跑 lint，返回逐语言信封与 `stderr_path`、`log_path` |
+| `auto_fix` | 先跑 formatter 链再复检 lint（嵌入 check 信封） |
+| `list_languages` | 列出语言 id 与显示名（不含内部命令） |
+
+```bash
+python3 scripts/run_check.py --mcp .
+```
+
+失败时完整输出落盘到 `<项目根>/out/.codeguard-last.log`（与工具信封及 CLI
+摘要行里的路径一致；`--quiet` 可关闭）。
 
 ## 配置
 

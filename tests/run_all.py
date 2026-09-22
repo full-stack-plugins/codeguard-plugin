@@ -50,12 +50,12 @@ def run_hook(script: str, payload: dict | None, cwd: Path, env_extra: dict | Non
     return subprocess.run(
         [sys.executable, str(HOOKS / script)],
         input=json.dumps(payload) if payload is not None else "",
-        capture_output=True, text=True, cwd=cwd, timeout=120, env=env,
+        capture_output=True, check=False, text=True, cwd=cwd, timeout=120, env=env,
     )
 
 
 def git(repo: Path, *args: str):
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, check=False, text=True)
 
 
 def make_repo() -> Path:
@@ -77,7 +77,7 @@ def make_repo() -> Path:
 
 def test_languages():
     print("\n[1] 语言规则结构审计（全部 stable/beta）")
-    langs = json.load(open(PLUGIN / "scripts" / "languages.json"))["languages"]
+    langs = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))["languages"]
     stable = [l for l in langs if l.get("status") in ("stable", "beta")]
     ok(f"stable/beta 数量 = {len(stable)}（≥50）", len(stable) >= 50)
 
@@ -421,9 +421,9 @@ def test_edges():
     cli = str(PLUGIN / "bin" / "codeguard")
     if os.path.exists(cli):
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-        r = subprocess.run([cli, "detect"], capture_output=True, text=True, cwd=repo, timeout=60, env=env)
+        r = subprocess.run([cli, "detect"], capture_output=True, check=False, text=True, cwd=repo, timeout=60, env=env)
         ok("codeguard detect 退出", r.returncode in (0, 1), f"exit={r.returncode}")
-        r = subprocess.run([cli, "dockerfile"], capture_output=True, text=True, cwd=repo, timeout=90, env=env)
+        r = subprocess.run([cli, "dockerfile"], capture_output=True, check=False, text=True, cwd=repo, timeout=90, env=env)
         ok("codeguard dockerfile（无 Dockerfile→未验证=1 或通过=0）", r.returncode in (0, 1), f"exit={r.returncode}")
     else:
         skip("CLI 冒烟", "bin/codeguard 不存在")
@@ -535,9 +535,9 @@ def test_perf():
         return orig_uncached(root, cfg, langs)
     gate_lib._run_gate_uncached = counting
     try:
-        f1, s1 = gate_lib.run_gate(repo, {})
+        f1, _s1 = gate_lib.run_gate(repo, {})
         n_after_first = len(exec_count)
-        f2, s2 = gate_lib.run_gate(repo, {})
+        f2, _s2 = gate_lib.run_gate(repo, {})
         ok("门禁缓存命中（第二次零执行）", len(exec_count) == n_after_first == 1,
            f"执行 {len(exec_count)} 次")
         ok("缓存结果一致", [x[0] for x in f1] == [x[0] for x in f2])
@@ -560,7 +560,7 @@ def test_perf():
         "gate_lib.run_gate=_boom\n"
         f"runpy.run_path({str(HOOKS / 'user_prompt_validator.py')!r}, run_name='__main__')\n"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, check=False, text=True,
                        cwd=PLUGIN, timeout=60)
     ok("钩子内部错误 fail-open（exit 0）", r.returncode == 0, f"exit={r.returncode}")
     ok("无 traceback 进输出", "Traceback" not in (r.stdout + r.stderr))
