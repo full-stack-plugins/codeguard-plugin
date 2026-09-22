@@ -122,8 +122,11 @@ def _gate_cache_key(project_root: Path, languages: list) -> str | None:
 GATE_CACHE_TTL = 60  # 秒：UPS 软门禁与紧随的 PreToolUse 硬门禁之间复用
 
 
-def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
-    """运行全量 linter 门禁（跨进程结果缓存 + 并行执行）。
+def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tuple[list, list]:
+    """运行 linter 门禁（跨进程结果缓存 + 并行执行）。
+
+    `languages` 可选：调用方（UserPromptSubmit）可传入用户消息里提到的
+    语言子集，门禁只跑该子集；不传则按 `detect_languages()` 全量探测。
 
     软门禁（UserPromptSubmit）与硬门禁（PreToolUse）在正常提交路径上
     会对同一状态连跑两次全量 lint——缓存键含 HEAD 与暂存区指纹，
@@ -134,7 +137,8 @@ def run_gate(project_root: Path, cfg: dict) -> tuple[list, list]:
     - skipped:  [str] 无法验证的说明（工具未装/超时），不阻塞
     """
     import time as _time
-    languages = detect_languages(project_root)
+    if languages is None:
+        languages = detect_languages(project_root)
     if not languages:
         return [], []
     enabled = cfg.get("enabled_languages", [])

@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-22
+goal: 修复提交门禁触发启发式的过度敏感，让 MCP server 真正可用，并改进 linter 失败信息的可读性。

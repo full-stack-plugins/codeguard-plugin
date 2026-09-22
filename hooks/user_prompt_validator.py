@@ -29,9 +29,24 @@ from gate_lib import (  # noqa: E402
 )
 
 # 触发此钩子的关键词（中英）
+# 英文按词边界匹配（防止 pushed/deployment 误命中），中文子串即可。
+# 2026-09-22 实测回归：`我刚才 pushed 了`、`关于 deployment 策略的讨论`
+# 必须静默（子串匹配曾把它们当提交意图跑全仓 lint）。
+import re as _re
+
 TRIGGER_PATTERNS = [
     "commit", "push", "deploy", "提交", "发布", "部署",
 ]
+_TRIGGER_RE = _re.compile(
+    r"\b(?:commit|push|deploy)\b|提交|发布|部署",
+    _re.IGNORECASE,
+)
+# 行动意图短语：触发词出现且（句首祈使 或 命中行动短语）才进门禁。
+_ACTION_INTENT_RE = _re.compile(
+    r"请帮我|帮我|请|马上|立刻|现在|下一步|继续|please|now|next|proceed|go ahead|"
+    r"commit this|push this|deploy this",
+    _re.IGNORECASE,
+)
 
 
 def notify(title: str, message: str) -> None:
@@ -57,12 +72,41 @@ QUESTION_MARKERS = ("？", "?", "么", "吗", "如何", "怎么", "有没有", "
 
 
 def is_trigger(user_text: str) -> bool:
+    """触发条件：(1) 命中触发词（英文按词边界）(2) 非疑问句 (3) 行动意图或句首祈使。
+
+    (3) 缺一不可：`我刚才 pushed 了` 有触发词但无行动意图 → 静默；
+    `commit this now` 句首祈使 → 触发；`请帮我 commit` 行动短语 → 触发。
+    """
     if not user_text:
         return False
-    text = user_text.lower()
-    if not any(p in text for p in TRIGGER_PATTERNS):
+    if any(q in user_text for q in QUESTION_MARKERS):
         return False
-    return not any(q in user_text for q in QUESTION_MARKERS)
+    m = _TRIGGER_RE.search(user_text)
+    if not m:
+        return False
+    # 句首祈使：触发词本身（或前面只有空白/常见介词）位于句首。
+    stripped = user_text.lstrip()
+    leading = stripped[: m.start()].strip().lower()
+    if leading in ("", "git", "to", "the", "a", "an", "帮我", "请", "请帮我"):
+        return True
+    return bool(_ACTION_INTENT_RE.search(user_text))
+
+
+def _detect_languages_in_text(user_text: str, language_ids: list[str]) -> list[str]:
+    """从用户消息中提取提到的语言子集（2.1/2.2/2.3）。
+
+    与 `languages.json` 的 `id` 字段做大小写无关匹配；没有命中返回空列表，
+    由调用方回退到 `detect_languages()` 全量探测（保持原有能力）。
+    """
+    if not user_text or not language_ids:
+        return []
+    text = user_text.lower()
+    hits = []
+    for lang_id in language_ids:
+        # 词边界避免 go 命中 gone/going、c 命中 cmake 等子串误命中。
+        if _re.search(rf"\b{_re.escape(lang_id.lower())}\b", text):
+            hits.append(lang_id)
+    return hits
 
 
 def read_user_text() -> str:
@@ -86,7 +130,10 @@ def main() -> int:
 
     cfg = load_user_config()
     project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
-    failures, skipped = run_gate(project_root, cfg)
+    # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
+    detected = detect_languages(project_root)
+    subset = _detect_languages_in_text(user_text, detected)
+    failures, skipped = run_gate(project_root, cfg, languages=(subset or None))
     # 提交内容安全检查：.venv/node_modules/.env/密钥等不应入库
     violations = check_commit_safety(project_root, "commit")
 
