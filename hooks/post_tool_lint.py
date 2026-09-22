@@ -18,7 +18,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import (
+from detect_lang import (  # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
     LANG_COMMANDS,
     detect_language,
     ensure_user_path,
