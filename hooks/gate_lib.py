@@ -495,9 +495,9 @@ def _run_gate_uncached(
     # 通过后再核验 openspec/changes/* 是否仍合法（DRAFT/REVIEW_REQUIRED 提案
     # 实施时此步提醒 agent 评审未通过）。OpenSpec 未安装或项目无 config 时跳过。
     try:
-        openspec_check = _openspec_validate(project_root)
-        for entry in openspec_check["failures"]:
-            failures.append(entry)
+        openspec_check = _openspec_validate(
+            project_root, timeout_seconds=cfg.get("lint_timeout_seconds", 300))
+        failures.extend(openspec_check["failures"])
         if openspec_check["skipped"]:
             skipped.append(openspec_check["skipped"])
     except (OSError, ValueError) as exc:
@@ -505,7 +505,7 @@ def _run_gate_uncached(
     return failures, skipped
 
 
-def _openspec_validate(project_root: Path) -> dict:
+def _openspec_validate(project_root: Path, timeout_seconds: int = 300) -> dict:
     """若仓根有 openspec/config.yaml 且 openspec CLI 可用，跑 strict validate。
 
     报告：failures=[("openspec", detail, 修复命令, install_hint), ...]
@@ -517,7 +517,6 @@ def _openspec_validate(project_root: Path) -> dict:
     cli = shutil.which("openspec")
     if cli is None:
         return {"failures": [], "skipped": "openspec CLI 未安装，跳过验证"}
-    timeout_seconds = cfg.get("lint_timeout_seconds", 300) if isinstance(cfg, dict) else 300
     try:
         proc = subprocess.run(
             [cli, "validate", "--all", "--strict", "--no-interactive", "--json"],

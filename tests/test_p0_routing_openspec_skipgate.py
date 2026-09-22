@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -58,7 +57,8 @@ class TimeoutRoutingTests(unittest.TestCase):
         上游 run_gate 把 124 视为 SKIPPED；本测锁定"超时不阻塞硬门禁"的契约。
         """
         # 通过反射检查：try 块有 TimeoutExpired 分支且 return 含 124。
-        import ast, inspect
+        import ast
+        import inspect
         src = Path(inspect.getfile(gate_lib)).read_text(encoding="utf-8")
         tree = ast.parse(src)
         for node in ast.walk(tree):
