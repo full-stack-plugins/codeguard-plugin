@@ -25,7 +25,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 # 必须静默（子串匹配曾把它们当提交意图跑全仓 lint）。
 import re as _re
 
-from detect_lang import (
+from detect_lang import (  # # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
     detect_languages,
     ensure_user_path,
     find_project_root,
