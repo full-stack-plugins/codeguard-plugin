@@ -9,6 +9,7 @@
   "languages": [
     {
       "id": "java",
+      "append_files": false,
       "name": "Java",
       "extensions": [
         ".java"
@@ -45,6 +46,7 @@
     },
     {
       "id": "rust",
+      "append_files": false,
       "name": "Rust",
       "extensions": [
         ".rs"
@@ -165,6 +167,7 @@
     },
     {
       "id": "go",
+      "append_files": false,
       "name": "Go",
       "extensions": [
         ".go"
@@ -195,6 +198,7 @@
     },
     {
       "id": "csharp",
+      "append_files": false,
       "name": "C#",
       "extensions": [
         ".cs"
@@ -219,6 +223,7 @@
     },
     {
       "id": "kotlin",
+      "append_files": false,
       "name": "Kotlin",
       "extensions": [
         ".kt",
@@ -814,6 +819,7 @@
     },
     {
       "id": "terraform",
+      "append_files": false,
       "name": "Terraform / OpenTofu",
       "extensions": [
         ".tf",
@@ -962,6 +968,7 @@
     },
     {
       "id": "protobuf",
+      "append_files": false,
       "name": "Protobuf",
       "extensions": [
         ".proto"
@@ -1350,6 +1357,7 @@
     },
     {
       "id": "elm",
+      "append_files": false,
       "name": "Elm",
       "extensions": [
         ".elm"
@@ -1503,6 +1511,7 @@
     },
     {
       "id": "vbnet",
+      "append_files": false,
       "name": "Visual Basic .NET",
       "extensions": [
         ".vb"

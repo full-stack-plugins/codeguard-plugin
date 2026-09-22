@@ -59,6 +59,48 @@ def detect_linter_config(project_root: Path) -> dict:
     return found
 
 
+def _semver_tuple(v: str) -> tuple[int, ...]:
+    import re as _re
+    m = _re.match(r"(\d+(?:\.\d+)*)", v.strip())
+    if not m:
+        return (0,)
+    return tuple(int(x) for x in m.group(1).split("."))
+
+
+def version_backlog_note(current: str, cache_root: Path) -> str | None:
+    """纯函数：本地插件 cache 存在比 current 更新的版本 → 提示文案；否则 None。
+
+    检测面 = `~/.zcode/cli/plugins/cache/<vendor>/codeguard/<version>` 的**版本目录
+    集合**（离线可得的唯一权威）。抓两类漂移：同 vendor 升级后旧目录未清、跨
+    vendor 版本参差导致实际生效副本落后于本机已有副本。抓不到"本机最新 vs
+    远端仓库最新"（需网络，钩子不联网）——文案里明示提醒核对远端。
+    """
+    newer: list[str] = []
+    installed: list[str] = []
+    if not cache_root.is_dir():
+        return None
+    try:
+        for vendor_dir in sorted(cache_root.glob("*/codeguard/*")):
+            if not vendor_dir.is_dir():
+                continue
+            v = vendor_dir.name
+            installed.append(v)
+            if _semver_tuple(v) > _semver_tuple(current):
+                newer.append(v)
+    except OSError:
+        return None
+    if not newer:
+        return None
+    newest = max(newer, key=_semver_tuple)
+    return (
+        f"- ⚠️ **版本积压**：当前生效 codeguard `v{current}`，本机 cache 已有更新版本 "
+        f"`v{newest}`（共 {len(installed)} 份: {', '.join(sorted(installed))}）——"
+        "钩子行为以**生效副本**为准，修复可能已存在却没跑到；请更新插件并清理旧 "
+        "cache（`~/.zcode/cli/plugins/cache/*/codeguard/`），同时核对远端是否还有"
+        "更新版本（本检测离线，看不到仓库最新版）。"
+    )
+
+
 def main(payload: dict | None = None) -> int:
     # 双副本去重：宿主提供 session_id 时，同会话第二个副本静默（第一份的
     # 摘要已注入；两份都打 = 同一段"项目记忆"重复两遍）。payload 缺字段
@@ -139,6 +181,20 @@ def main(payload: dict | None = None) -> int:
             f"- ⚠️ 检测到 codeguard **双副本同时启用**（{', '.join(_orgs)}）："
             "每个钩子事件会执行两遍，报告与统计可能翻倍或分裂——建议只保留一个来源"
         )
+
+    # 版本积压：本机 cache 里有比当前生效副本更新的版本（实测 8 份副本停留在
+    # 0.5.x 而源码已 0.8.x——"发布了但没跑到"的盲区，SessionStart 即可见）
+    try:
+        _mf = json.loads((PLUGIN_ROOT / ".zcode-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        _current = str(_mf.get("version") or "")
+    except (OSError, ValueError, AttributeError):
+        _current = ""
+    if _current:
+        _note = version_backlog_note(
+            _current, Path.home() / ".zcode" / "cli" / "plugins" / "cache"
+        )
+        if _note:
+            lines.append(_note)
 
     lines.append("- AI 写完代码会被 PostToolUse 钩子自动 lint，告警会出现在这里，按告警里的「怎么修」处理")
     lines.append("- 用户要求「提交/push」时，UserPromptSubmit 钩子会再次确认所有 linter 通过，未通过会拦截提交")

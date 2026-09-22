@@ -140,18 +140,32 @@ def _gate_cache_path(project_root: Path) -> Path:
 
 
 def _worktree_fingerprint(project_root: Path) -> str:
-    """工作区指纹：staged + 未暂存 + 未跟踪三路 diff 的内容哈希。
+    """工作区指纹：三路改动的**名字 + stat** 指纹（不再哈希全文内容）。
 
     只用 index mtime 会漏掉"文件已修但未 git add"——键不变 → 60 秒内继续
-    报修复前的旧失败（retry-timing 陷阱，实测踩过）。内容哈希一改即失效。
+    报修复前的旧失败（retry-timing 陷阱，实测踩过），所以工作树改动必须进键。
+    此前对 staged+未暂存跑两个**全仓全文 diff** 再 sha1——多工作树大仓上这是
+    每次 commit/push 前的固定 MB 级开销。改为：改动文件名单 + 每文件
+    size/mtime_ns（staged 部分由 _gate_cache_key 的 index mtime+size 兜底，
+    暂存内容变化必动 index）；内容改动不改名不改 size 也会动 mtime_ns
+    （纳秒级），既有 CacheKeyTests 语义保持。
     """
     import hashlib
 
     h = hashlib.sha1()
-    # 注意：("diff") 是字符串不是元组——*unpacking 会拆成字符。单元素必须带逗号。
-    for args in (("diff", "--cached"), ("diff",)):
+    for args in (("diff", "--cached", "--name-only"), ("diff", "--name-only")):
         out = _git(project_root, *args) or ""
-        h.update(out.encode("utf-8", "replace"))
+        names = sorted(line for line in out.splitlines() if line.strip())
+        h.update(("\n".join(names)).encode("utf-8", "replace"))
+        if args[:2] == ("diff", "--name-only"):
+            # 未暂存已跟踪文件：内容改动名字不变，必须叠加 stat 指纹
+            # （staged 路不需要——暂存内容变化必动 index，由键内 idx_sig 兜底）
+            for name in names[:500]:
+                try:
+                    st = (project_root / name).stat()
+                    h.update(f"{name}:{st.st_size}:{st.st_mtime_ns}".encode("utf-8", "replace"))
+                except OSError:
+                    h.update(name.encode("utf-8", "replace"))
     # 未跟踪文件：ls-files 只给文件名——内容改动名字不变，必须叠加 stat 指纹
     others = (_git(project_root, "ls-files", "--others") or "").splitlines()
     for name in sorted(others)[:500]:
@@ -165,11 +179,21 @@ def _worktree_fingerprint(project_root: Path) -> str:
     return h.hexdigest()[:16]
 
 
-def _gate_cache_key(project_root: Path, languages: list, *, mode: str = "commit") -> str | None:
-    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹 + 门禁面（mode）。
+def _gate_cache_key(
+    project_root: Path, languages: list, *,
+    mode: str = "commit",
+    lanes: tuple[str, ...] | list[str] | None = None,
+    extra: tuple[str, ...] | list[str] | None = None,
+) -> str | None:
+    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹 + 门禁面（mode）+ 文件面（lanes/extra）。
 
     同一 HEAD/工作树下 commit 面与 push 面看到的文件集不同（push 面含未推送
-    提交），不带 mode 会互相污染缓存。"""
+    提交），不带 mode 会互相污染缓存。**lanes/extra 必须进键**：纯 `git commit`
+    （仅 staged）与 `git add -A && git commit`（三路）在同一工作树状态下看到
+    不同文件集——只按工作树指纹，先跑的窄面结果会把宽面查询喂给同一缓存条目
+    （staged 干净 + 未暂存有病 → 窄面 pass 被宽面复用 = 绕过）。
+    """
+    import hashlib
     head = _git(project_root, "rev-parse", "HEAD")
     if head is None:
         return None
@@ -178,9 +202,10 @@ def _gate_cache_key(project_root: Path, languages: list, *, mode: str = "commit"
         idx_sig = f"{idx.stat().st_mtime_ns}:{idx.stat().st_size}" if idx.exists() else "no-index"
     except OSError:
         return None
+    face = ",".join(lanes or ()) + "|" + ",".join(sorted(extra or ()))
     return (
         f"{head.strip()}|{idx_sig}|{_worktree_fingerprint(project_root)}"
-        f"|{mode}|{','.join(sorted(languages))}"
+        f"|{mode}|{','.join(sorted(languages))}|{face}"
     )
 
 
@@ -193,11 +218,16 @@ def run_gate(
     languages: list | None = None,
     *,
     mode: str = "commit",
+    lanes: tuple[str, ...] | list[str] | None = None,
+    extra: tuple[str, ...] | list[str] | None = None,
 ) -> tuple[list, list]:
     """运行 linter 门禁（跨进程结果缓存 + 并行执行）。
 
     `languages` 可选：调用方（UserPromptSubmit）可传入用户消息里提到的
     语言子集，门禁只跑该子集；不传则按 `detect_languages()` 全量探测。
+    `lanes`/`extra`：本次要检查的文件面（见 scope.changed_files）——硬门禁
+    （PreToolUse）按命令链传入预测面；不传 = 三路宽口径（软门禁 UPS 无命令
+    上下文，按"工作树有待提交改动就提醒"的宽口径注入，不硬拦）。
 
     软门禁（UserPromptSubmit）与硬门禁（PreToolUse）在正常提交路径上
     会对同一状态连跑两次全量 lint——缓存键含 HEAD 与暂存区指纹，
@@ -214,7 +244,7 @@ def run_gate(
         return [], []
     # 作用域：项目可用 codeguard.json gate_scope 覆盖；缺省 = git 仓 delta、
     # 非 git 目录全量。delta 只检查本次改动涉及的文件——存量问题不拦新提交。
-    changed = changed_files(project_root, mode=mode)
+    changed = changed_files(project_root, mode=mode, lanes=lanes, extra=extra)
     scope = (get_overrides(project_root) or {}).get("gate_scope") or (
         "delta" if changed is not None else "repo"
     )
@@ -222,7 +252,7 @@ def run_gate(
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
 
-    ck = _gate_cache_key(project_root, languages, mode=mode)
+    ck = _gate_cache_key(project_root, languages, mode=mode, lanes=lanes, extra=extra)
     cache_file = _gate_cache_path(project_root)
     if ck:
         try:
@@ -265,6 +295,65 @@ def _truncate_detail(full: str, project_root: Path, lang: str) -> str:
         except OSError:
             detail += f"\n…（截断，共 {len(lines)} 行）"
     return detail
+
+
+def _mentioned_files(full: str, project_root: Path) -> set[str]:
+    """从 linter 输出提取"提到的、且在仓内真实存在的"文件（仓根相对路径）。
+
+    两类通行格式：`path/file.ext:12:`（javadoc/ruff/pylint/mvn——绝对路径先剥
+    仓根前缀）与 `In path/file.ext line 12`（shellcheck）。只收 root 下真实
+    存在的路径——裸 token（`version:1`）被存在性过滤挡掉。
+    """
+    import re
+    root = Path(project_root)
+    found: set[str] = set()
+    pats = (
+        # path/file.ext:12:（javadoc 绝对路径 / ruff / mvn）——目录前缀可选：
+        # ruff 在仓根输出裸文件名 `old.py:1:1:`，强制含 / 会漏归因（实测）。
+        # 无点的裸 token（SC2086:1 / version:1）不会命中；命中的再过存在性。
+        re.compile(r"((?:[A-Za-z]:)?(?:/?(?:[\w.\-]+/)*)[\w.\-]+\.[A-Za-z0-9]+):\d+"),
+        re.compile(r"\bIn ((?:[\w.\-]+/)+[\w.\-]+\.[A-Za-z0-9]+) line \d+"),
+    )
+    for pat in pats:
+        for m in pat.findall(full):
+            p = m
+            root_s = str(root)
+            if p.startswith(root_s + "/"):
+                p = p[len(root_s) + 1:]
+            p = p.lstrip("./")
+            if p.startswith("/"):
+                continue  # 仓外绝对路径不归因
+            if (root / p).exists():
+                found.add(p)
+    return found
+
+
+def _stale_attribution(full: str, project_root: Path, lang: str, lang_files: list[str]) -> str | None:
+    """delta 面存量归因：报错提到的文件全部在本次改动集之外 → 存量，不拦。
+
+    永久红场景（实测）：项目级命令（mvn javadoc:jar）因工具链/历史债在**与本次
+    改动无关**的文件上失败，若一律按 failure 就变成"不还历史债就永远提交不了"
+    → 用户只能 skipGate，门禁信誉清零。返回 skipped 说明（含完整日志路径）或
+    None（无法归因/有交集 → 维持 failure，宁可多拦不漏拦）。
+    """
+    mentioned = _mentioned_files(full, project_root)
+    if not mentioned:
+        return None
+    changed_set = set(lang_files)
+    if mentioned & changed_set:
+        return None
+    shown = sorted(mentioned)
+    head = ", ".join(shown[:3]) + ("…" if len(shown) > 3 else "")
+    try:
+        path = _log_path(project_root, lang)
+        path.write_text(full, encoding="utf-8")
+        tail = f"；完整输出: {path}"
+    except OSError:
+        tail = ""
+    return (
+        f"{lang} 报错均位于本次改动之外的存量文件（{head}，共 {len(shown)} 个）"
+        f"——不拦本次提交{tail}。如需清偿存量问题请单独修复或建 baseline。"
+    )
 
 
 def _run_gate_uncached(
@@ -320,6 +409,10 @@ def _run_gate_uncached(
             return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
 
         outputs: list[tuple[int, str, str]] = []
+        # 项目级命令（mvn/gradle 等，无 {file} 占位符）不追加文件路径——
+        # 文件被当 goal 会报 `Unknown lifecycle phase` 造成假失败；文件列表
+        # 只用来决定跑不跑（delta 上面已按语言过滤）。
+        append = cmd_def.get("append_files", True)
         if scope == "delta" and uses_delta_files and "{file}" in " ".join(base_cmd or []):
             for f in lang_files:
                 cmd = scope_cmd(base_cmd, project_root, single_file=f)
@@ -334,6 +427,7 @@ def _run_gate_uncached(
                     base_cmd, project_root,
                     files=lang_files if uses_delta_files else None,
                     full_excludes=not uses_delta_files,
+                    append_files=append,
                 )
             else:
                 cmd = scope_cmd(base_cmd, project_root, full_excludes=True)
@@ -354,6 +448,11 @@ def _run_gate_uncached(
             head = next((ln.strip() for ln in f"{out}\n{err}".splitlines() if ln.strip()), "")
             return (lang, None, f"{lang} 工具链异常未验证：exit 2（非 lint 结论）{('｜' + head[:80]) if head else ''}")
         full = "\n".join(seg for seg in ((out or "").rstrip(), (err or "").rstrip()) if seg)
+        if scope == "delta" and lang_files:
+            # 存量归因：项目级命令在与本次改动无关的文件上失败 → skipped 不拦
+            stale = _stale_attribution(full, project_root, lang, lang_files)
+            if stale is not None:
+                return (lang, None, stale)
         detail = _truncate_detail(full or "（linter 无输出）", project_root, lang)
         dep_hint = _dependency_resolution_hint(lang, full)
         if dep_hint:
@@ -502,8 +601,41 @@ def summarize_failures(failures: list) -> str:
     return f"codeguard ❌ 提交门禁未通过：{langs} 共 {len(failures)} 个语言生态有 lint 问题"
 
 
+REPORT_MAX_CHARS = 3000  # gate_directive 总长硬上限：宿主会把超长 stderr 从尾部
+                         # 截断，指令段曾因此整体丢失（实测报告只见到首段报错）
+
+
+def _squeeze(text: str, budget: int) -> str:
+    """保头保尾截断：尾部含「完整输出: /tmp/…」日志路径，砍中段也不能丢。"""
+    if len(text) <= budget:
+        return text
+    keep_tail = min(150, budget // 3)
+    keep_head = max(0, budget - keep_tail - 10)
+    return text[:keep_head] + "\n……（中略）……" + text[-keep_tail:]
+
+
+def _failure_detail_blocks(failures: list, *, fix_first: bool = False) -> list[str]:
+    """每个语言的细节块。fix_first=True 把「怎么修/安装」排在长 detail 之前——
+    报告被宿主截断时，行动指引必须比 linter 原始输出先存活下来。"""
+    blocks: list[str] = []
+    for lang, detail, fix, hint in failures:
+        block = [f"【{lang}】具体问题："]
+        tail = [
+            f"  ▶ 怎么修: {fix}",
+            f"  ▶ 未安装工具时先安装: {hint}",
+        ]
+        body = detail if detail else "  lint 退出码非零，无文本输出"
+        if fix_first:
+            block += tail + [body]
+        else:
+            block += [body] + tail
+        block.append("─" * 60)
+        blocks.append("\n".join(block))
+    return blocks
+
+
 def format_failure_report(failures: list) -> str:
-    """渲染「综述 + 细节」两段式报告。
+    """渲染「综述 + 细节」两段式报告（CLI/调试面）。
 
     第一行 = 问题综述（宿主 UI 通常取首行作标题）；随后是细节，
     不再重复综述内容——修复"标题和详情一样"的问题。
@@ -512,30 +644,49 @@ def format_failure_report(failures: list) -> str:
         summarize_failures(failures),
         "─" * 60,
     ]
-    for lang, detail, fix, hint in failures:
-        lines.append(f"【{lang}】具体问题：")
-        lines.append(detail if detail else "  lint 退出码非零，无文本输出")
-        lines.append(f"  ▶ 怎么修: {fix}")
-        lines.append(f"  ▶ 未安装工具时先安装: {hint}")
-        lines.append("─" * 60)
+    for block in _failure_detail_blocks(failures):
+        lines.append(block)
     lines.append(f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py")
     return "\n".join(lines)
 
 
 def gate_directive(failures: list) -> str:
-    """给 AI 的行动指令：收到后应立即修复并重新提交，而不是询问用户"""
-    return (
-        format_failure_report(failures)
-        + "\n\n"
-        + "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
-        + "请立即处理：1) 按上面「怎么修」逐项修复（能自动修复的先跑自动修复命令）；"
-        + "2) 纯 lint 类修复可直接继续、不必逐项追问；但凡涉及付费、发布、删除、"
-        + "密钥、或跨出本仓的操作，必须先征得用户同意再执行；"
-        + "3) 修复完成后重新执行用户要做的提交操作。\n"
-        + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
-        + "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
-        + "只对手动直调 run_check 有效（无法传入宿主钩子进程）。\n\n"
+    """给 AI 的行动指令：收到后应立即修复并重新提交，而不是询问用户。
+
+    结构 = 综述（首行契约）→ 强制指令（前置！）→ 每语言细节（fix 先于
+    detail）→ 修复入口；整体压到 REPORT_MAX_CHARS 内。指令必须前置：宿主把
+    超长 stderr 从尾部截断，此前指令在报告末段，长报告下 AI 只看到首段 linter
+    报错、「拆两次调用」与 skipGate 逃生门全部丢失（实测）。首行仍为综述、
+    综述不重复、含「具体问题」——run_all/硬门禁契约保持。
+    """
+    header = [
+        summarize_failures(failures),
+        "─" * 60,
+        "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
         + "**⚠️ 整个工具调用没有执行**：被拦截的是一次包含 git commit/push 的完整 Bash "
-        + "调用——其中非 git 的前序步骤（写文件、跑脚本）也全部未运行。请把「修复」与"
-        + "「提交」拆成两次独立的工具调用，修完再单独执行提交。"
-    )
+        "调用——其中非 git 的前序步骤（写文件、跑脚本）也全部未运行。请把「修复」与"
+        "「提交」拆成两次独立的工具调用，修完再单独执行提交。\n"
+        + "请立即处理：1) 按下面「怎么修」逐项修复（能自动修复的先跑自动修复命令）；"
+        "2) 纯 lint 类修复可直接继续、不必逐项追问；但凡涉及付费、发布、删除、"
+        "密钥、或跨出本仓的操作，必须先征得用户同意再执行；"
+        "3) 修复完成后重新执行用户要做的提交操作。\n"
+        + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
+        "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
+        "只对手动直调 run_check 有效（无法传入宿主钩子进程）。",
+        "─" * 60,
+    ]
+    footer = f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py"
+    head = "\n".join(header)
+    budget = max(400, REPORT_MAX_CHARS - len(head) - len(footer) - 64)
+    blocks = _failure_detail_blocks(failures, fix_first=True)
+    used, kept = 0, []
+    for block in blocks:
+        remain = budget - used
+        if remain <= 0:
+            kept.append("…（其余语言的问题明细已省略，按上方怎么修逐语言处理）")
+            break
+        if len(block) > remain:
+            block = _squeeze(block, remain)
+        kept.append(block)
+        used += len(block) + 1
+    return "\n".join([head, *kept, footer])
