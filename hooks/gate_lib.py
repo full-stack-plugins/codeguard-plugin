@@ -468,13 +468,16 @@ def _run_gate_uncached(
                 _jp = _jp_analyze(str(project_root))
                 if _jp.get("status") == "UNVERIFIED":
                     return (lang, None,
-                            f"{lang} 项目分析 UNVERIFIED（{_jp.get('build_system', '?')}），"
-                            f"原因: {'; '.join(_jp.get('reasons', []))}，本次未验证")
+                            (f"{lang} 项目分析 UNVERIFIED（{_jp.get('build_system', '?')}），"
+                             f"原因: {'; '.join(_jp.get('reasons', []))}，本次未验证"))
                 exe = _jp.get("executable")
                 if exe and base_cmd and base_cmd[0] in ("mvn", "gradle"):
                     base_cmd = [exe] + base_cmd[1:]
-            except Exception:
-                pass  # java_project 分析失败不阻塞门禁，走原路径
+            except Exception as exc:  # noqa: BLE001 — 分析失败不阻塞门禁，走原路径
+                print(f"[codeguard] java_project 分析失败（走原路径）: {exc!r}",
+                      file=sys.stderr)
+                record_gate_decision(project_root, lang, base_cmd, -1,
+                                     "UNVERIFIED", f"java_project 分析失败: {exc!r}")
 
         outputs: list[tuple[int, str, str]] = []
         stale_notes: list[str] = []
