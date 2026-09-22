@@ -187,6 +187,10 @@
       "install_hint": "内置于 Go 工具链；聚合 lint 可装 golangci-lint",
       "requiresConfig": [
         "go.mod"
+      ],
+      "linter_config_files": [
+        ".golangci.yml",
+        ".golangci.yaml"
       ]
     },
     {
@@ -237,6 +241,10 @@
         "build.gradle.kts",
         "settings.gradle",
         "pom.xml"
+      ],
+      "linter_config_files": [
+        "detekt.yml",
+        "detekt.yaml"
       ]
     },
     {
@@ -257,7 +265,11 @@
         "swiftlint",
         "--fix"
       ],
-      "install_hint": "brew install swiftlint"
+      "install_hint": "brew install swiftlint",
+      "linter_config_files": [
+        ".swiftlint.yml",
+        ".swiftlint.yaml"
+      ]
     },
     {
       "id": "php",
@@ -284,6 +296,11 @@
         "bash",
         "-c",
         "find . -name '*.php' -type f -not -path '*/vendor/*' -print0 | xargs -0 -n1 php -l"
+      ],
+      "linter_config_files": [
+        "phpstan.neon",
+        "phpstan.neon.dist",
+        "psalm.xml"
       ]
     },
     {
@@ -304,7 +321,11 @@
         "rubocop",
         "-A"
       ],
-      "install_hint": "gem install rubocop"
+      "install_hint": "gem install rubocop",
+      "linter_config_files": [
+        ".rubocop.yml",
+        ".rubocop.yaml"
+      ]
     },
     {
       "id": "scala",
@@ -328,6 +349,9 @@
       ],
       "install_hint": "coursier install scalafmt",
       "requiresConfig": [
+        ".scalafmt.conf"
+      ],
+      "linter_config_files": [
         ".scalafmt.conf"
       ]
     },
@@ -356,6 +380,9 @@
         "bash",
         "-c",
         "find . \\( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 shellcheck --severity=warning"
+      ],
+      "linter_config_files": [
+        ".shellcheckrc"
       ]
     },
     {
@@ -380,6 +407,10 @@
         "bash",
         "-c",
         "find . \\( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name 'Containerfile' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r hadolint"
+      ],
+      "linter_config_files": [
+        ".hadolint.yaml",
+        ".hadolint.yml"
       ]
     },
     {
@@ -402,6 +433,11 @@
       ],
       "install_hint": "pip install yamllint",
       "requiresConfig": [
+        ".yamllint",
+        ".yamllint.yaml",
+        ".yamllint.yml"
+      ],
+      "linter_config_files": [
         ".yamllint",
         ".yamllint.yaml",
         ".yamllint.yml"
@@ -431,6 +467,9 @@
       "install_hint": "项目需配置 credo 依赖",
       "requiresConfig": [
         "mix.exs"
+      ],
+      "linter_config_files": [
+        ".credo.exs"
       ]
     },
     {
@@ -463,6 +502,12 @@
         "--no-install",
         "stylelint",
         "--version"
+      ],
+      "linter_config_files": [
+        ".stylelintrc",
+        ".stylelintrc.json",
+        ".stylelintrc.yml",
+        "stylelint.config.js"
       ]
     },
     {
@@ -490,6 +535,10 @@
         "bash",
         "-c",
         "find . -name '*.c' -o -name '*.h' | xargs -r clang-tidy --quiet"
+      ],
+      "linter_config_files": [
+        ".clang-tidy",
+        ".clang-format"
       ]
     },
     {
@@ -518,6 +567,10 @@
         "bash",
         "-c",
         "find . \\( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' \\) -type f -print0 | xargs -0 -r clang-tidy --quiet"
+      ],
+      "linter_config_files": [
+        ".clang-tidy",
+        ".clang-format"
       ]
     },
     {
@@ -545,6 +598,10 @@
         "bash",
         "-c",
         "find . -name '*.m' -o -name '*.mm' | xargs -r clang-tidy --quiet"
+      ],
+      "linter_config_files": [
+        ".clang-tidy",
+        ".clang-format"
       ]
     },
     {
@@ -570,6 +627,9 @@
       "install_hint": "Dart SDK 内置",
       "requiresConfig": [
         "pubspec.yaml"
+      ],
+      "linter_config_files": [
+        "analysis_options.yaml"
       ]
     },
     {
@@ -605,6 +665,18 @@
         "--version"
       ],
       "requiresConfig": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml",
+        ".eslintrc",
+        ".eslintrc.cjs"
+      ],
+      "linter_config_files": [
         "eslint.config.js",
         "eslint.config.mjs",
         "eslint.config.cjs",
@@ -654,6 +726,16 @@
         ".eslintrc.js",
         ".eslintrc.yml",
         ".pre-commit-config.yaml"
+      ],
+      "linter_config_files": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
       ]
     },
     {
@@ -693,6 +775,16 @@
         ".eslintrc.js",
         ".eslintrc.yml",
         ".pre-commit-config.yaml"
+      ],
+      "linter_config_files": [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".eslintrc.yml",
+        ".pre-commit-config.yaml"
       ]
     },
     {
@@ -713,7 +805,11 @@
         "--plugin=prettier-plugin-solidity",
         "--write"
       ],
-      "install_hint": "npm install -g solhint prettier prettier-plugin-solidity"
+      "install_hint": "npm install -g solhint prettier prettier-plugin-solidity",
+      "linter_config_files": [
+        ".solhint.json",
+        ".solhintrc"
+      ]
     },
     {
       "id": "terraform",
@@ -733,7 +829,11 @@
         "terraform",
         "fmt"
       ],
-      "install_hint": "brew install tflint"
+      "install_hint": "brew install tflint",
+      "linter_config_files": [
+        ".tflint.hcl",
+        "tflint.hcl"
+      ]
     },
     {
       "id": "nix",
@@ -792,6 +892,9 @@
         "bash",
         "-c",
         "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -exec grep -L '<%' {} + | xargs -0 -r npx --no-install htmlhint"
+      ],
+      "linter_config_files": [
+        ".htmlhintrc"
       ]
     },
     {
@@ -817,6 +920,9 @@
         "bash",
         "-c",
         "find . -name '*.sql' -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r sqlfluff lint"
+      ],
+      "linter_config_files": [
+        ".sqlfluff"
       ]
     },
     {
@@ -875,6 +981,11 @@
         "buf.yaml",
         "buf.gen.yaml",
         "buf.work.yaml"
+      ],
+      "linter_config_files": [
+        "buf.yaml",
+        "buf.gen.yaml",
+        "buf.work.yaml"
       ]
     },
     {
@@ -910,6 +1021,17 @@
         "--format"
       ],
       "requiresConfig": [
+        ".markdownlint-cli2.jsonc",
+        ".markdownlint-cli2.json",
+        ".markdownlint-cli2.yaml",
+        ".markdownlint-cli2.yml",
+        ".markdownlint.jsonc",
+        ".markdownlint.json",
+        ".markdownlint.yaml",
+        ".markdownlint.yml",
+        ".markdownlint.ini"
+      ],
+      "linter_config_files": [
         ".markdownlint-cli2.jsonc",
         ".markdownlint-cli2.json",
         ".markdownlint-cli2.yaml",
@@ -963,7 +1085,11 @@
         "-i",
         "."
       ],
-      "install_hint": "brew install hlint fourmolu"
+      "install_hint": "brew install hlint fourmolu",
+      "linter_config_files": [
+        ".hlint.yaml",
+        ".hlint.yml"
+      ]
     },
     {
       "id": "ocaml",
@@ -985,7 +1111,10 @@
         "-i",
         "."
       ],
-      "install_hint": "opam install ocamlformat"
+      "install_hint": "opam install ocamlformat",
+      "linter_config_files": [
+        ".ocamlformat"
+      ]
     },
     {
       "id": "fsharp",
@@ -1033,6 +1162,9 @@
       "gate": [
         "perlcritic",
         "."
+      ],
+      "linter_config_files": [
+        ".perlcriticrc"
       ]
     },
     {
@@ -1087,7 +1219,10 @@
       "format": [
         "cljstyle"
       ],
-      "install_hint": "brew install clj-kondo cljstyle"
+      "install_hint": "brew install clj-kondo cljstyle",
+      "linter_config_files": [
+        ".clj-kondo/config.edn"
+      ]
     },
     {
       "id": "powershell",
@@ -1111,7 +1246,10 @@
         "-Command",
         "Invoke-Formatter"
       ],
-      "install_hint": "Install-Module PSScriptAnalyzer"
+      "install_hint": "Install-Module PSScriptAnalyzer",
+      "linter_config_files": [
+        "PSScriptAnalyzerSettings.psd1"
+      ]
     },
     {
       "id": "zig",
@@ -1185,6 +1323,9 @@
       "install_hint": "brew install crystal-ameba",
       "requiresConfig": [
         "shard.yml"
+      ],
+      "linter_config_files": [
+        ".ameba.yml"
       ]
     },
     {
@@ -1246,7 +1387,10 @@
         "stylua",
         "."
       ],
-      "install_hint": "luarocks install luacheck; cargo install stylua"
+      "install_hint": "luarocks install luacheck; cargo install stylua",
+      "linter_config_files": [
+        ".luacheckrc"
+      ]
     },
     {
       "id": "luau",
@@ -1313,7 +1457,10 @@
         "::",
         "style_dir"
       ],
-      "install_hint": "Rscript -e 'install.packages(c(\"lintr\",\"styler\"))'"
+      "install_hint": "Rscript -e 'install.packages(c(\"lintr\",\"styler\"))'",
+      "linter_config_files": [
+        ".lintr"
+      ]
     },
     {
       "id": "cfml",
@@ -1401,6 +1548,10 @@
       "requiresConfig": [
         "elvis.config",
         "elvis.config.js"
+      ],
+      "linter_config_files": [
+        "elvis.config",
+        "elvis.config.js"
       ]
     },
     {
@@ -1470,6 +1621,10 @@
         "bash",
         "-c",
         "find . -name '*.cu' | xargs -r clang-tidy --quiet"
+      ],
+      "linter_config_files": [
+        ".clang-tidy",
+        ".clang-format"
       ]
     },
     {
@@ -1489,7 +1644,10 @@
         "ansible-lint",
         "--fix"
       ],
-      "install_hint": "playbook 检查由 ansible-lint 承接（yaml 通道）；语义级检查待集成"
+      "install_hint": "playbook 检查由 ansible-lint 承接（yaml 通道）；语义级检查待集成",
+      "linter_config_files": [
+        ".ansible-lint"
+      ]
     }
   ]
 }
