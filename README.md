@@ -250,9 +250,12 @@ Gate scanning is scoped to **what you are about to change**, decided by git stat
   `exclude` customize language detection. Full scans always skip vendor/build
   snapshots (immutable supply-chain content).
 
-Verdict honesty: a linter crashing with exit 2 (usage/dependency failure) or
-exit 127 (command missing) is reported as **unverified**, never as a lint failure
-— "cannot verify" is not "verified bad". A tool crash never triggers auto-fix.
+Verdict honesty: a linter crashing with exit 2 (usage/dependency failure) is
+reported as **unverified**, never as a lint failure — "cannot verify" is not
+"verified bad", and a tool crash never triggers auto-fix. Exit 127 (command
+missing) is split by context on purpose: interactive hooks skip it (never block
+a person for missing tooling), while `check`/CI treats it as **failure** — a
+health surface must go red when tooling is absent.
 
 Escape hatch: `git config codeguard.skipGate true` bypasses both the soft and
 hard gate for one repository; every bypass is counted and surfaced by the Stop

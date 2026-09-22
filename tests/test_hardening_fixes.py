@@ -435,24 +435,48 @@ class PushFaceTests(unittest.TestCase):
 
 
 class UnverifiedParityTests(unittest.TestCase):
-    """CLI exit 127 与钩子 skipped 口径对齐（此前 CLI 报失败）。"""
+    """rc2/127 按场景分流：rc2 = unverified（两处一致）；rc127 = 故意分歧。
 
-    def test_rc_127_is_unverified_in_run_per_language(self) -> None:
+    check CLI 是 CI/健康面——工具缺失必须红（环境无关性由 test_mcp_server
+    的失败日志/安静模式用例依赖）；交互钩子对 127 归 skipped 不挡工作。
+    这是有意设计，本测试锁住它，防止再被"统一"。
+    """
+
+    @staticmethod
+    def _fake_run(returncode: int):
         import run_per_language as rpl
 
         class _Fake:
-            returncode = 127
-            stdout = ""
-            stderr = "command not found"
+            pass
 
+        _Fake.returncode = returncode
+        _Fake.stdout = ""
+        _Fake.stderr = "boom" if returncode != 0 else ""
         original = rpl.subprocess.run
         rpl.subprocess.run = lambda *a, **k: _Fake()
+        return original
+
+    def test_rc_127_is_failure_in_cli(self) -> None:
+        import run_per_language as rpl
+
+        original = self._fake_run(127)
         try:
             results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-127-")))
         finally:
             rpl.subprocess.run = original
+        self.assertFalse(results[0]["passed"], "CLI 面工具缺失必须报失败")
+        self.assertNotIn("unverified", results[0])
+
+    def test_rc_2_is_unverified_in_cli(self) -> None:
+        import run_per_language as rpl
+
+        original = self._fake_run(2)
+        try:
+            results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-2-")))
+        finally:
+            rpl.subprocess.run = original
         self.assertTrue(results[0]["passed"])
-        self.assertIn("exit 127", results[0].get("unverified", ""))
+        self.assertIn("exit 2", results[0].get("unverified", ""))
 
 
 class FourHookDedupTests(unittest.TestCase):

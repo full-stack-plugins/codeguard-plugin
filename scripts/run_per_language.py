@@ -57,19 +57,19 @@ def run_check(languages: list[str], project_root: Path,
         # 否则规则集随机器漂移、供应链快照给出不可修的永久红。
         lint_cmd = scope_cmd(lint_cmd, project_root, full_excludes=True)
         rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
-        if rc in (2, 127):
-            # exit 2 = 用法/依赖/配置崩溃；127 = 命令不存在——都与仓库内容无关，
-            # 与钩子路径同归「无法验证 ≠ 验证失败」（此前 CLI 把 127 报成失败、
-            # 与 hook skipped 口径分叉）。不触发 fix、不写失败日志。
-            reason = (
-                "exit 2（工具链异常，非 lint 结论）" if rc == 2
-                else "命令不存在（exit 127）"
-            )
+        if rc == 2:
+            # exit 2 = 用法/依赖/配置崩溃，与仓库内容无关 → unverified
+            # （不计失败、不触发 fix、不写失败日志）。
+            # exit 127（命令不存在）**故意保持失败**：check CLI 是 CI/健康面，
+            # "工具没装"在那里就该红——test_mcp_server 的失败日志与安静模式用例
+            # 依赖这条环境无关性（CI 无 ruff，靠 127=失败才进得了失败路径）。
+            # 交互钩子路径对 127 归 skipped（不挡人工作）：按场景的有意分歧，
+            # 不是口径 bug（v0.8.1 曾误统一过一次，本提交修正）。
             results.append({
                 "language": lang,
                 "passed": True,
-                "exit_code": rc,
-                "unverified": reason,
+                "exit_code": 2,
+                "unverified": "exit 2（工具链异常，非 lint 结论）",
                 "stderr_tail": err[-2000:] if err else "",
                 "stdout_tail": out[-1000:] if out else "",
             })

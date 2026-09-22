@@ -1,0 +1,4 @@
+- [x] 1.1 恢复 run_per_language rc127=失败（rc2 unverified 保留）
+- [x] 1.2 UnverifiedParityTests 反转锁住有意分歧
+- [x] 1.3 README 双语 127 句按场景分流
+- [x] 1.4 `openspec validate --strict` 通过并归档
