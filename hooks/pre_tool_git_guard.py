@@ -20,7 +20,10 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
-from detect_lang import ensure_user_path, load_user_config  # # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
+from detect_lang import (  # # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
+    ensure_user_path,
+    load_user_config,
+)
 from gate_lib import (
     check_commit_safety,
     format_safety_report,
