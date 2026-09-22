@@ -42,7 +42,7 @@
 
 ## 7. Release
 
-- [ ] 7.1 `node scripts/bump-plugin.mjs codeguard minor` (0.6.6 → 0.7.0; MCP server is a new feature).
-- [ ] 7.2 Sync marketplace manifest + hub catalog.
-- [ ] 7.3 Push, confirm CI green, tag v0.7.0, GitHub Release.
-- [ ] 7.4 `openspec archive 2026-09-22-fix-gate-trigger-and-mcp`.
+- [x] 7.1 Bump minor 0.6.8 → 0.7.0 (MCP server is a new feature; worktree depth broke the hub resolver so manifests were completed manually: 4 manifests + marketplace ref/icon/logo pins + README rows).
+- [x] 7.2 Sync marketplace manifest + hub catalog (repo pins v0.7.0; hub chain landed as `release: codeguard 0.7.0` + README row alignment).
+- [x] 7.3 Push, confirm CI green (PR #21 feature, PR #24 release), tag v0.7.0 at dbc133a, GitHub Release published (README row follow-up at main 0e84186).
+- [x] 7.4 `openspec archive 2026-09-22-fix-gate-trigger-and-mcp`（delta specs 已并入 openspec/specs：gate-trigger-policy +3、mcp-tool-server +4）。
