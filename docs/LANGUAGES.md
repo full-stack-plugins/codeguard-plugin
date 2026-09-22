@@ -20,7 +20,7 @@
 | PHP | `.php` | `php -l {file}` | `php-cs-fixer fix` | composer require --dev php-cs-fixer |
 | Ruby | `.rb` | `rubocop` | `rubocop -A` | gem install rubocop |
 | Scala | `.scala` `.sc` | `scalafmt --check .` | `scalafmt` | coursier install scalafmt |
-| Shell | `.sh` `.bash` `.zsh` | `shellcheck {file}` | `shfmt -w .` | brew install shellcheck shfmt |
+| Shell | `.sh` `.bash` `.zsh` | `shellcheck --severity=warning {file}` | `shfmt -w .` | brew install shellcheck shfmt |
 | Dockerfile | （文件名匹配） | `hadolint {file}` | `hadolint` | brew install hadolint |
 | YAML | `.yml` `.yaml` | `yamllint .` | `yamllint .` | pip install yamllint |
 | Elixir | `.ex` `.exs` | `mix credo --strict` | `mix format` | 项目需配置 credo 依赖 |

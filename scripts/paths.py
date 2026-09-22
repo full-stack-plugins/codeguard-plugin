@@ -8,8 +8,10 @@ tests 共享；与 `scripts/user_config.py`、`scripts/detect_lang.py` 同级但
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -25,6 +27,9 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
     继承完整 PATH（覆盖 nvm 等动态目录，约 100-300ms，只适合低频钩子）。
     """
     static_dirs = [
+        # 运行本进程的解释器自己的 bin 目录：ruff 等工具常装在这里
+        # （anaconda、python -m pip install 等），不补就会"装了却报不在 PATH"。
+        str(Path(sys.executable).parent),
         "/opt/homebrew/bin", "/usr/local/bin",
         str(Path.home() / ".local" / "bin"),
         str(Path.home() / ".cargo" / "bin"),
@@ -41,10 +46,10 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
     # node/npx 不可用且静态目录未覆盖时，自动降级登录 shell 继承一次
     # （覆盖 nvm/fnm/Kimi runtime 等非标准 node 安装；约 100-300ms）
     def _node_available() -> bool:
-        for d in os.environ.get("PATH", "").split(":"):
-            if d and (Path(d) / "node").exists():
-                return True
-        return False
+        return any(
+            d and (Path(d) / "node").exists()
+            for d in os.environ.get("PATH", "").split(":")
+        )
 
     if not from_login_shell and not _node_available():
         ensure_user_path(from_login_shell=True)
@@ -80,9 +85,7 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
                 # 每次钩子都会重复 spawn shell，违背十分钟缓存契约。
                 resolved = inherited[-1] if inherited[-1].count(":") > cur.count(":") else os.environ["PATH"]
                 os.environ["PATH"] = resolved
-                try:
+                with contextlib.suppress(OSError):
                     cache_file.write_text(resolved)
-                except OSError:
-                    pass
     except (OSError, subprocess.SubprocessError):
         pass

@@ -18,12 +18,12 @@
 | PostToolUse `Write\|Edit\|MultiEdit` | `post_tool_lint.py` | JSON `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}, "systemMessage":"..."}` | 仅内部错误时 | 0 | 否 |
 | Stop | `stop_summary.py` | 人类可读会话摘要 | 仅内部错误时 | 0 | 否 |
 
-实现定位（行号随 v0.6.2 锁定，下一次重构时核对）：
-- SessionStart 摘要：`hooks/env_check.py:34`。
-- UserPromptSubmit JSON：`hooks/user_prompt_validator.py:104-109` 与 `:117-125`。
-- PreToolUse stderr：`hooks/pre_tool_git_guard.py:159`。
-- PostToolUse JSON：`hooks/post_tool_lint.py:226-232`（通过）、`:253-259`（自动修复后通过）、`:275-281`（失败 additionalContext）。
-- Stop 摘要：`hooks/stop_summary.py:46`。
+实现定位（**符号而非行号**——行号随每次重构腐烂，符号不腐；v0.8.0 起弃用行号指针）：
+- SessionStart 摘要：`hooks/env_check.py::main`（含双副本告警段）。
+- UserPromptSubmit JSON：`hooks/user_prompt_validator.py::main`（非 git 目录跳过说明 `_non_git_note`）与 `::is_trigger`。
+- PreToolUse stderr：`hooks/pre_tool_git_guard.py::main`；拦截判定 `::is_guarded`（直接 + `_command_indirect` 一层间接）。
+- PostToolUse JSON：`hooks/post_tool_lint.py::main`（通过/自动修复后通过/失败 additionalContext 三处 print）。
+- Stop 摘要：`hooks/stop_summary.py::main`（含绕过计数 `summarize` 与 skipGate 遗留告警）。
 
 ---
 
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 含义：
 - 钩子内部任何未捕获异常 → stderr 打印 traceback 摘要 → **exit 0**。
 - AI 与用户上下文永远收到「钩子无意见」的语义。
-- 同一约定适用于：`env_check.py:127-131`、`post_tool_lint.py:293-298`、`pre_tool_git_guard.py:166-170`、`user_prompt_validator.py:137-141`、`stop_summary.py:55-62`。
+- 同一约定适用于全部 5 个钩子的 `__main__` 尾部：`env_check.py`、`post_tool_lint.py`、`pre_tool_git_guard.py`、`user_prompt_validator.py`、`stop_summary.py`（符号级约束，见 §6）。
 
 **禁止**把 fail-open 改为 exit 2——会破坏宿主工作流。
 
@@ -66,13 +66,28 @@ if __name__ == "__main__":
 ## 4. PreToolUse 硬拦截（exit 2）的语义边界
 
 `pre_tool_git_guard.py` 是**唯一**会 exit 2 的 hook——且仅当：
-1. 入参命令包含 `git commit` 或 `git push`（`is_guarded()` 命中）；并且
-2. 仓库级 `git config codeguard.skipGate true` 未设置；并且
+1. 入参命令命中 `is_guarded()`：**直接**（分隔符切段后段首为 `git commit|push`；
+   子串匹配会误伤 payload/echo 文本）**或一层解释器间接**（`bash|sh|python… <脚本>`
+   的脚本文本、`-c` 内联代码按同规则扫描——`bash runner.sh` 式绕过曾连推 4 次漏网；
+   拼接式 subprocess 不在静态扫描承诺内）；并且
+2. 仓库级 `git config codeguard.skipGate true` 未设置（命中豁免时记账一次，
+   `gate_lib.record_skip_event`，Stop 汇总可见）；并且
 3. 实际跑 linter 后存在非 skipped 的 failures。
 
-出口内容（`pre_tool_git_guard.py:158-163`）：stderr 报告块**首行必须是 `codeguard ❌ 提交门禁未通过：` 综述**，其后跟具体问题列表；这是 `tests/run_all.py:142-144` 守护的契约。
+出口内容（`gate_lib.gate_directive` 生成）：
+- **首行必须是 `codeguard ❌ 提交门禁未通过：` 综述**（tests/run_all 守护）；
+- 报告块**末段必须包含整调用声明**——"整个工具调用没有执行（含非 git 前序步骤），
+  请把修复与提交拆成两次独立调用"。PreToolUse 的 exit 2 拒绝的是**整个 Bash 工具
+  调用**，此前未声明这一点，AI 反复把写文件与提交塞进同一调用并误判"编辑被吞"。
 
-**禁止**在 lint skipped（工具未装/项目未接入）时 exit 2——这是「无法验证」而非「验证失败」。
+**禁止**在 lint skipped（工具未装/项目未接入/本次改动未涉及/exit 2 工具链异常）
+时 exit 2——这是「无法验证」而非「验证失败」。
+
+**一致性约束**：`UserPromptSubmit` 软门禁与本硬门禁共用同一条 skipGate 豁免，
+且**都不得在非 git 目录回退成"扫描 cwd"**——UPS 对非 git 目录输出一行
+`_non_git_note` 说明并 exit 0（工作区根被回退扫描 = 上百无关仓的存量 lint
+变成永久红，实测）。双副本事件去重键：PreToolUse 用 `tool_use_id`、UPS 用
+`session_id + 文本`；payload 不带这些字段（测试协议）时不去重。
 
 ---
 

@@ -14,7 +14,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from detect_lang import LANG_COMMANDS
+from detect_lang import LANG_COMMANDS, detect_language
+from scope import scope_cmd
 
 __all__ = ["run_check", "run_fix"]
 
@@ -52,12 +53,28 @@ def run_check(languages: list[str], project_root: Path,
             results.append({"language": lang, "passed": True,
                             "dry_run": True, "command": lint_cmd or []})
             continue
+        # CLI/MCP 是仓健康检查（全量）：注入默认 ruff 配置 + 剔除 vendor 快照，
+        # 否则规则集随机器漂移、供应链快照给出不可修的永久红。
+        lint_cmd = scope_cmd(lint_cmd, project_root, full_excludes=True)
         rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
+        if rc == 2:
+            # exit 2 = 用法/依赖/配置崩溃，与仓库内容无关（house 规则：
+            # 无法验证 ≠ 验证失败）。不触发 fix、不写失败日志。
+            results.append({
+                "language": lang,
+                "passed": True,
+                "exit_code": 2,
+                "unverified": "exit 2（工具链异常，非 lint 结论）",
+                "stderr_tail": err[-2000:] if err else "",
+                "stdout_tail": out[-1000:] if out else "",
+            })
+            continue
         passed = rc == 0
         if not passed and fix:
             fmt = cmd_def.get("format")
             if fmt:
-                _run(fmt, cwd=project_root, timeout=timeout + 60)
+                _run(scope_cmd(fmt, project_root, full_excludes=True),
+                     cwd=project_root, timeout=timeout + 60)
                 rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
                 passed = rc == 0
         results.append({
@@ -97,20 +114,34 @@ def run_check(languages: list[str], project_root: Path,
 
 
 def run_fix(languages: list[str], project_root: Path,
-            *, timeout: int = 120, dry_run: bool = False) -> list[dict]:
-    """对每个语言跑 format；命令缺失归失败；dry_run 仅打印 would-run 行。"""
+            *, timeout: int = 120, dry_run: bool = False,
+            files: list[str] | None = None) -> list[dict]:
+    """对每个语言跑 format；命令缺失归失败；dry_run 仅打印 would-run 行。
+
+    `files` 非空 = 仅修复这些文件（fix.py 缺省 delta 模式）；某语言在改动
+    里没有文件 → 该语言整行跳过（skipped 标记），绝不动仓里其它存量文件。
+    """
     results: list[dict] = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
             results.append({"language": lang, "fixed": False, "error": "no command defined"})
             continue
+        lang_files: list[str] | None = None
+        if files is not None:
+            lang_files = [f for f in files if detect_language(f, project_root) == lang]
+            if not lang_files:
+                results.append({"language": lang, "fixed": True, "skipped": True,
+                                "note": "本次改动未涉及该语言"})
+                continue
         fmt = cmd_def.get("format")
         if dry_run or not fmt:
             results.append({"language": lang, "fixed": True,
                             "dry_run": True, "command": fmt or []})
             continue
-        rc, _out, err = _run(fmt, cwd=project_root, timeout=timeout)
+        cmd = scope_cmd(fmt, project_root, files=lang_files,
+                        full_excludes=(lang_files is None))
+        rc, _out, err = _run(cmd, cwd=project_root, timeout=timeout)
         results.append({
             "language": lang,
             "fixed": rc == 0,

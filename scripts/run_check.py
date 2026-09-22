@@ -62,11 +62,10 @@ def cli_main():
     if args.mcp:
         return mcp_main(project_root)
 
-    log_dir: Path | None
-    if args.quiet:
-        log_dir = None
-    else:
-        log_dir = Path(args.log_dir) if args.log_dir else project_root / "out"
+    log_dir: Path | None = (
+        None if args.quiet
+        else (Path(args.log_dir) if args.log_dir else project_root / "out")
+    )
 
     languages = _filter_languages(project_root, args.lang)
     if not languages:
@@ -81,12 +80,15 @@ def cli_main():
         languages, project_root,
         timeout=args.timeout, fix=args.fix, log_dir=log_dir,
     )
-    for r, lang in zip(results, languages):
+    for r, lang in zip(results, languages, strict=False):
         if r.get("dry_run"):
             continue
         if not r["passed"] and args.fix:
             print(f"[codeguard] ⚠️  {lang} lint failed, attempting auto-fix...")
-        status = "✅ passed" if r["passed"] else f"❌ FAILED (exit={r.get('exit_code')})"
+        if r.get("passed") and r.get("unverified"):
+            status = f"⚠️ unverified ({r['unverified']})"
+        else:
+            status = "✅ passed" if r["passed"] else f"❌ FAILED (exit={r.get('exit_code')})"
         print(f"  {lang:12s} {status}")
         if not r["passed"] and r.get("log_path") and not args.quiet:
             print(f"     └─ 完整日志: {r['log_path']}")

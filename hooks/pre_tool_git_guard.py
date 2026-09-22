@@ -28,7 +28,10 @@ from gate_lib import (
     check_commit_safety,
     format_safety_report,
     gate_directive,
+    record_skip_event,
     run_gate,
+    should_suppress_event,
+    skip_gate_via_git_config,  # 规范实现已上移 gate_lib（UPS 也要用）
 )
 
 # 拦截的 git 子命令（避免误拦 git status/diff/log 等只读命令）
@@ -78,59 +81,107 @@ def resolve_project_roots(command: str) -> list[Path]:
         m = re.match(r"cd\s+(\"[^\"]+\"|'[^']+'|\S+)", seg)
         if m:
             target = Path(m.group(1).strip("\"'"))
-            if target.is_dir() and _is_git_repo(target):
-                last_cd = target
-            else:
-                last_cd = None        # cd 到非 git 目录（如 workspace 根）后边界失效
+            # cd 到非 git 目录（如 workspace 根）后边界失效——回退 cwd（与 shell 语义一致）
+            last_cd = target if target.is_dir() and _is_git_repo(target) else None
             continue
         tokens = seg.split()
         if len(tokens) >= 2 and tokens[0] == "git" and tokens[1] in ("commit", "push"):
             root = last_cd or (Path(os.getcwd()) if _is_git_repo(Path(os.getcwd())) else None)
             if root and root not in roots:
                 roots.append(root)
+    # 有意行为（勿"修掉"）：cd 到非 git 目录后 last_cd=None，git 段回退用
+    # 调用方 cwd——与 shell 语义一致（进非仓后 git 在原 cwd 执行）。
     return roots
 
 
-def is_guarded(command: str) -> bool:
-    """精确匹配 git commit/push：子串匹配会误伤命令文本里的数据。
+def _segment_is_git_side_effect(seg: str) -> bool:
+    """单个命令段是不是 git commit/push：git 为分隔符后的命令词。
 
-    例如 payload JSON、调试脚本内容含 "git push" 字面量时，子串匹配会
-    把 echo/debug 命令也拦下并触发全仓 lint（实测踩坑）。
-    匹配规则：git 是管道/分隔符后的命令词，且子命令为 commit/push。
+    首 token 剥一层包裹引号（`bash -c "git commit …"` 切段后首词是 `"git`）。
+    """
+    tokens = seg.strip().split()
+    if len(tokens) < 2:
+        return False
+    first = tokens[0].strip("\"'")
+    second = tokens[1].strip("\"'")
+    return first == "git" and second in ("commit", "push")
+
+
+_SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".py", ".mjs", ".js", ".ts")
+_INTERPRETERS = ("bash", "sh", "zsh", "python", "python3", "node")
+
+
+def _command_indirect(command: str) -> bool:
+    """间接提交识别：解释器跑的脚本文件 / -c 内联代码里含 git commit|push。
+
+    硬门禁此前只看外层命令文本——`bash runner.sh`（脚本体内 git commit）
+    完全绕过拦截，实测用 /tmp runner 连推 4 次全部漏网。这里对一层间接
+    做静态扫描：脚本文本按同款分隔符切段后，任一段段首为 git+commit|push
+    即命中。更深的 subprocess 拼接不在静态扫描能力内，不夸大承诺。
     """
     import re
     for seg in re.split(r"&&|\|\||;|\n", command):
         tokens = seg.strip().split()
-        if len(tokens) >= 2 and tokens[0] == "git" and tokens[1] in ("commit", "push"):
-            return True
+        if not tokens:
+            continue
+        prog = tokens[0].rsplit("/", 1)[-1]
+        if prog not in _INTERPRETERS:
+            continue
+        rest = tokens[1:]
+        if "-c" in rest:
+            body = " ".join(rest[rest.index("-c") + 1:])
+            if any(_segment_is_git_side_effect(s)
+                   for s in re.split(r"&&|\|\||;|\n", body)):
+                return True
+            continue
+        for tok in rest:
+            if tok.startswith("-"):
+                continue
+            target = Path(tok)
+            if not target.is_file() or target.suffix not in _SCRIPT_SUFFIXES:
+                break
+            try:
+                if target.stat().st_size > 1_000_000:
+                    break
+                body = target.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                break
+            if any(_segment_is_git_side_effect(s)
+                   for s in re.split(r"&&|\|\||;|\n", body)):
+                return True
+            break
     return False
 
 
-def skip_gate_via_git_config(project_root: Path) -> bool:
-    """仓库级豁免：git config codeguard.skipGate true。
+def is_guarded(command: str) -> bool:
+    """精确匹配 git commit/push：直接命令 + 一层解释器间接。
 
-    CODEGUARD_SKIP_GATE 环境变量设在用户 shell，传不进 ZCode 宿主起的
-    hook 子进程（宿主环境独立）；git config 由本钩子进程在项目根读取，
-    任何调用形态都可用。优先级：环境变量 > 仓库级 git config。
+    直接：子串匹配会误伤命令文本里的数据（payload、调试脚本内容含
+    "git push" 字面量），所以按分隔符切段、git 必须是段首命令词。
+    间接：解释器执行的脚本/内联代码按同规则扫一层（见 _command_indirect）。
     """
-    try:
-        proc = subprocess.run(
-            ["git", "config", "--get", "codeguard.skipGate"],
-            cwd=project_root, capture_output=True, check=False, text=True, timeout=10,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
+    import re
+    if any(_segment_is_git_side_effect(seg)
+           for seg in re.split(r"&&|\|\||;|\n", command)):
+        return True
+    return _command_indirect(command)
 
 
 def main() -> int:
     ensure_user_path()
-    if os.environ.get("CODEGUARD_SKIP_GATE"):
-        return 0
-
     payload = read_payload()
     command = extract_command(payload)
     if not command or not is_guarded(command):
+        return 0
+
+    # 双副本去重：宿主带事件 id（生产 payload 的 tool_use_id）时第二副本静默；
+    # 测试 payload 不带 id → 不去重，保持旧行为。
+    event_id = payload.get("tool_use_id")
+    if event_id and should_suppress_event(f"pre:{event_id}"):
+        return 0
+
+    if os.environ.get("CODEGUARD_SKIP_GATE"):
+        record_skip_event("env")
         return 0
 
     cfg = load_user_config()
@@ -138,6 +189,7 @@ def main() -> int:
     if not roots:
         return 0
     if any(skip_gate_via_git_config(r) for r in roots):
+        record_skip_event("skipGate")
         return 0
 
     # 每个被操作的仓库独立跑：linter 门禁 + 提交内容安全检查

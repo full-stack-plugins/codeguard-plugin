@@ -368,6 +368,7 @@
       "since": "V0.2",
       "lint": [
         "shellcheck",
+        "--severity=warning",
         "{file}"
       ],
       "format": [

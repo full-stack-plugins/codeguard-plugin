@@ -26,28 +26,46 @@ from detect_lang import (  # ensure_user_path/load_user_config 实际定义：sc
     load_user_config,
     project_uses_linter,
 )
+from gate_lib import codeguard_home, session_state_path
+from scope import scope_cmd  # 状态目录 ~/.codeguard（可 CODEGUARD_HOME 覆盖）
 
-STATE_FILE = PLUGIN_ROOT / ".session_state.json"
 # 双副本去重：同一插件可能以多个 marketplace 副本安装（partme-ai/ 与
 # full-stack-plugins/ 各一份，钩子双份触发——实测），用户级固定路径跨副本共享
-DEDUP_FILE = Path.home() / ".codeguard" / "hook_dedup.json"
+DEDUP_FILE = codeguard_home() / "hook_dedup.json"
+
+
+def _state_path() -> Path:
+    """会话状态：现行 ~/.codeguard/session_state.json；回退读旧插件根文件。"""
+    modern = session_state_path()
+    if modern.exists() or not (PLUGIN_ROOT / ".session_state.json").exists():
+        return modern
+    return PLUGIN_ROOT / ".session_state.json"
 
 
 def bump_state(lang: str, passed: bool, auto_fixed: bool = False) -> None:
     """累计本会话 lint 结果（Stop 钩子读取汇总）；写失败静默忽略"""
     state = {}
     try:
-        if STATE_FILE.exists():
-            state = json.loads(STATE_FILE.read_text())
+        path = _state_path()
+        if path.exists():
+            state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         pass
-    entry = state.setdefault(lang, {"total": 0, "passed": 0, "failed": 0, "auto_fixed": 0})
+    entry = state.get(lang)
+    if not isinstance(entry, dict) or "total" not in entry:
+        # 状态文件可能被 _notify 单独写过（只有 last_notify 的残缺条目）——
+        # 直接 entry["total"] 会 KeyError 被 fail-open 吞掉、输出全空（实测）。
+        entry = dict(entry) if isinstance(entry, dict) else {}
+        entry.update({"total": 0, "passed": 0, "failed": 0, "auto_fixed": 0})
+        state[lang] = entry
     entry["total"] += 1
     entry["passed" if passed else "failed"] += 1
     if auto_fixed:
         entry["auto_fixed"] += 1
     try:
-        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False))
+        path = _state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
 
@@ -57,18 +75,23 @@ def _notify_cooldown_ok(lang: str, cooldown_s: int = 60) -> bool:
     import time
     state = {}
     try:
-        if STATE_FILE.exists():
-            state = json.loads(STATE_FILE.read_text())
+        path = _state_path()
+        if path.exists():
+            state = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         pass
-    entry = state.get(lang) or {}
+    entry = state.get(lang)
+    if not isinstance(entry, dict):
+        entry = {}
     now = time.time()
     if now - entry.get("last_notify", 0) < cooldown_s:
         return False
     entry["last_notify"] = now
     state[lang] = entry
     try:
-        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False))
+        path = _state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
     return True
@@ -215,8 +238,12 @@ def main() -> int:
     timeout = cfg.get("lint_timeout_seconds", 120)
 
     def materialize(cmd: list[str]) -> list[str]:
-        """{file} 占位符替换：文件型 linter（shellcheck/hadolint/clang-tidy…）必须传具体文件"""
-        return [c.replace("{file}", str(file_path)) for c in cmd]
+        """物化到【单文件】作用域：{file} 替换 + 全仓扫描 token（`.`、`**/*.md`）
+        收敛到本文件。此前 lint/format 命令都带 `.`——一次保存触发全仓检查，
+        format 更是全仓 `ruff check . --fix`，静默重写几十个无关文件（实测
+        多次：写 1 个文件、git 树炸出 30+ 漂移，AI 后续读写全部过期）。
+        """
+        return scope_cmd(cmd, project_root, single_file=str(file_path))
 
     rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
@@ -234,13 +261,36 @@ def main() -> int:
 
     # lint 失败 → 尝试自动修复
     auto_fixed = False
+    touched_others: list[str] = []
     if cfg.get("auto_fix_on_save", True):
         fmt_cmd = cmd_def.get("format")
         if fmt_cmd:
             print(f"[codeguard] ⚠️ {lang} lint failed, attempting auto-fix...")
+
+            def _porcelain() -> set[str]:
+                try:
+                    import subprocess as _sp
+                    proc = _sp.run(
+                        ["git", "status", "--porcelain"],
+                        cwd=project_root, capture_output=True, check=False,
+                        text=True, timeout=10,
+                    )
+                    return {
+                        ln[3:].strip() for ln in proc.stdout.splitlines()
+                        if len(ln) > 3
+                    } if proc.returncode == 0 else set()
+                except Exception:  # noqa: BLE001 — 快照失败仅失去清单注入，不影响修复
+                    return set()
+
+            before = _porcelain()
             frc, _, _ = run(materialize(fmt_cmd), cwd=project_root, timeout=timeout + 60)
             if frc == 0:
                 auto_fixed = True
+                after = _porcelain()
+                touched_others = sorted(
+                    name for name in (after - before)
+                    if not name.rstrip("/").endswith(Path(file_path).name)
+                )
                 print("[codeguard] ✅ auto-fix succeeded, re-running lint...")
                 rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
@@ -249,7 +299,18 @@ def main() -> int:
 
     if passed:
         # 已自动修复：告知 AI 文件被工具改过，避免 AI 继续用旧内容
-        note = f"（已自动运行 {' '.join(cmd_def.get('format') or [])} 修复，请重新读取文件）" if auto_fixed else ""
+        note = ""
+        if auto_fixed:
+            note = f"（已自动运行 {' '.join(cmd_def.get('format') or [])} 修复）"
+            if touched_others:
+                shown = ", ".join(touched_others[:10])
+                more = f" 等 {len(touched_others)} 个" if len(touched_others) > 10 else ""
+                note += (
+                    f"。⚠️ format 命令还改动了本文件之外的文件{more}：{shown}"
+                    "——这些文件你内存里的版本已过期，必须先重新读取再继续操作"
+                )
+            else:
+                note += "（仅本文件被改动，请重新读取）"
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PostToolUse",
@@ -264,6 +325,17 @@ def main() -> int:
     raw = (stdout or stderr or "").strip()
     problem_lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     problems = "\n".join(problem_lines[:5])[:500] or "（linter 未输出具体问题）"
+    if len(problem_lines) > 5 or len(raw) > 500:
+        # 节选会让 AI 一次修 3 个、重试再看 3 个（whack-a-mole）：给总量+完整日志
+        try:
+            import hashlib as _h
+            import tempfile as _tf
+            key = _h.sha1(str(file_path).encode()).hexdigest()[:12]
+            full_path = Path(_tf.gettempdir()) / f"codeguard-post-{lang}-{key}.log"
+            full_path.write_text(raw, encoding="utf-8")
+            problems += f"\n…（截断，共 {len(problem_lines)} 行；完整输出: {full_path}）"
+        except OSError:
+            problems += f"\n…（截断，共 {len(problem_lines)} 行）"
     fix_cmd = " ".join(cmd_def.get("format") or []) or "按上述问题逐条修复"
     context = (
         f"codeguard ⚠️ [{lang}] {Path(file_path).name} 检查未通过\n"
