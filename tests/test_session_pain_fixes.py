@@ -36,16 +36,21 @@ class JavaExecutableContractTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "pom.xml").write_text(
             '<project xmlns="http://maven.apache.org/POM/4.1.0">'
-            "<modelVersion>4.1.0</modelVersion></project>", encoding="utf-8")
+            "<modelVersion>4.1.0</modelVersion>"
+            "<groupId>test</groupId><artifactId>test</artifactId>"
+            "<version>1.0</version>"
+            "<packaging>jar</packaging></project>", encoding="utf-8")
 
     def test_executable_wrapper_present_and_executable(self):
         mvnw = self.root / "mvnw"
         mvnw.write_text("#!/bin/sh\nexit 0\n")
         mvnw.chmod(0o755)
         plan = analyze(str(self.root))
-        self.assertEqual(plan["status"], "PLANNED")
+        self.assertEqual(plan["status"], "PLANNED",
+                         "reasons=" + "; ".join(plan["reasons"]))
         self.assertEqual(plan.get("executable"), "./mvnw",
-                         "生产者必须产出顶层 executable 键（门禁消费者直接读取）")
+                         "生产者必须产出顶层 executable 键；reasons="
+                         + "; ".join(plan["reasons"]))
 
     def test_executable_wrapper_missing_falls_back_to_mvn(self):
         plan = analyze(str(self.root))
@@ -150,9 +155,7 @@ class ScopeChildGitRepoTest(unittest.TestCase):
 
     def test_find_gate_excludes_child_repos(self):
         cmd = ["bash", "-c",
-               "find . \\( -name '*.sh' \\) -type f "
-               "-not -path '*/node_modules/*' -print0 | "
-               "xargs -0 -r shellcheck --severity=warning"]
+               ("find . \\( -name '*.sh' \\) -type f " "-not -path '*/node_modules/*' -print0 | " "xargs -0 -r shellcheck --severity=warning")]
         out = scope.scope_cmd(cmd, str(self.root), full_excludes=True)
         joined = " ".join(out)
         self.assertIn("-not -path '*/sub-repo/*'", joined)

@@ -816,11 +816,12 @@ def record_gate_decision(project_root: Path, lang: str, cmd: list[str], rc: int,
         path.write_text("\n".join(lines[-limit:]) + "\n", encoding="utf-8")
 
 
-def record_skip_event(kind: str, project_root: Path | None = None) -> None:
+def record_skip_event(kind: str, project_root: Path | None = None,
+                      detail: str | None = None) -> None:
     """记录一次绕过（skipGate/逃生门）到会话状态，Stop 汇总时可见。
 
-    除计数外保留最近 20 条明细（时间 + 仓库 + 类型）——豁免必须可回溯：
-    只有总数时无法回答"哪个仓、什么时候被跳过的"。
+    除计数外保留最近 20 条明细（时间 + 仓库 + 类型 + 可选 detail）——豁免
+    必须可回溯：只有总数时无法回答"哪个仓、什么时候、为什么被跳过的"。
     """
     state = {}
     path = session_state_path()
@@ -838,6 +839,7 @@ def record_skip_event(kind: str, project_root: Path | None = None) -> None:
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "kind": kind,
         "repo": project_root.name if project_root else None,
+        **({"detail": detail} if detail else {}),
     })
     del events[:-20]
     try:

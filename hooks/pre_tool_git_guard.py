@@ -626,13 +626,13 @@ def main() -> int:
         # 兜底面收窄（会话实测误拦：无关仓存量违规连带拦提交）。全空 = 本次
         # 无可拦对象，审计后放行。
         before = len(roots)
-        roots = _filter_fallback_roots(roots, mode, lanes)
+        roots = _filter_fallback_roots(roots, mode, None)
         fallback_note += f"；提交面收窄 {before}→{len(roots)} 个仓"
         if not roots:
-            record_skip_event("monorepo-fallback-empty")
+            record_skip_event("monorepo-fallback-empty", detail=fallback_note)
             return 0
         # 兜底走通：仅在会话状态记录（不进 stderr，避免噪音），Stop 摘要可见
-        record_skip_event("monorepo-fallback", roots[0])
+        record_skip_event("monorepo-fallback", roots[0], detail=fallback_note)
     if any(skip_gate_via_git_config(r) for r in roots):
         record_skip_event("skipGate", roots[0])
         return 0
