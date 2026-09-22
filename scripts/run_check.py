@@ -5,58 +5,23 @@ CLI 模式：
     python3 run_check.py --lang java       # 只跑 java
     python3 run_check.py --fix             # 失败时自动修复
     python3 run_check.py --mcp             # MCP server 模式
+
+按语言执行细节（subprocess 调用、退出码归一化、fix 复检）全部委托给
+`scripts/run_per_language.py`；本文件仅负责 argparse + 报告输出。
 """
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import run_per_language
 from detect_lang import (
-    LANG_COMMANDS,
     detect_languages,
     find_project_root,
     load_user_config,
 )
-
-
-def run(cmd: list[str], cwd: Path, timeout: int = 120) -> tuple[int, str, str]:
-    try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        return proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", f"timeout after {timeout}s"
-    except FileNotFoundError as e:
-        return 127, "", f"command not found: {e}"
-
-
-def check_one(lang: str, project_root: Path, timeout: int) -> dict:
-    cmd_def = LANG_COMMANDS.get(lang)
-    if not cmd_def:
-        return {"language": lang, "passed": False, "error": "no command defined"}
-    rc, out, err = run(cmd_def["lint"], cwd=project_root, timeout=timeout)
-    return {
-        "language": lang,
-        "passed": rc == 0,
-        "exit_code": rc,
-        "stderr_tail": err[-2000:] if err else "",
-        "stdout_tail": out[-1000:] if out else "",
-    }
-
-
-def fix_one(lang: str, project_root: Path, timeout: int) -> dict:
-    cmd_def = LANG_COMMANDS.get(lang)
-    if not cmd_def:
-        return {"language": lang, "fixed": False, "error": "no command defined"}
-    rc, out, err = run(cmd_def["format"], cwd=project_root, timeout=timeout + 60)
-    return {
-        "language": lang,
-        "fixed": rc == 0,
-        "exit_code": rc,
-        "stderr_tail": err[-2000:] if err else "",
-    }
 
 
 def cli_main():
@@ -89,15 +54,15 @@ def cli_main():
     print(f"[codeguard] languages: {languages}")
     print()
 
-    results = []
-    for lang in languages:
-        r = check_one(lang, project_root, args.timeout)
+    results = run_per_language.run_check(
+        languages, project_root,
+        timeout=args.timeout, fix=args.fix,
+    )
+    for r, lang in zip(results, languages):
+        if r.get("dry_run"):
+            continue
         if not r["passed"] and args.fix:
             print(f"[codeguard] \u26a0\ufe0f  {lang} lint failed, attempting auto-fix...")
-            fix = fix_one(lang, project_root, args.timeout)
-            if fix["fixed"]:
-                r = check_one(lang, project_root, args.timeout)
-        results.append(r)
         status = "\u2705 passed" if r["passed"] else f"\u274c FAILED (exit={r.get('exit_code')})"
         print(f"  {lang:12s} {status}")
         if not r["passed"] and r.get("stderr_tail"):
