@@ -17,10 +17,12 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
-from detect_lang import (  # noqa: E402
-    LANG_COMMANDS, detect_languages, load_user_config, project_uses_linter, probe_toolchain,
+from detect_lang import (
+    LANG_COMMANDS,
+    detect_languages,
+    probe_toolchain,
+    project_uses_linter,
 )
-
 
 # === git 提交内容安全检查：绝不该进版本库的文件 ===
 # 目录（路径任一段落匹配即违规）：依赖/虚拟环境/构建产物/IDE/缓存
@@ -43,7 +45,7 @@ def _git(project_root: Path, *args: str) -> str | None:
     """跑只读 git 命令；失败（非 git 仓/无 upstream 等）返回 None，由调用方降级"""
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=project_root, capture_output=True, text=True, timeout=15
+            ["git", *args], cwd=project_root, capture_output=True, check=False, text=True, timeout=15
         )
     except (subprocess.TimeoutExpired, OSError, FileNotFoundError):
         return None
@@ -101,7 +103,8 @@ def format_safety_report(violations: list[tuple[str, str, str]]) -> str:
 
 
 def _gate_cache_path(project_root: Path) -> Path:
-    import hashlib, tempfile
+    import hashlib
+    import tempfile
     key = hashlib.sha1(str(project_root.resolve()).encode()).hexdigest()[:12]
     return Path(tempfile.gettempdir()) / f"codeguard-gate-{os.getuid()}-{key}.json"
 
@@ -191,7 +194,7 @@ def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[
             return (lang, None, f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
         try:
             proc = subprocess.run(
-                gate_cmd, cwd=project_root, capture_output=True, text=True, timeout=timeout
+                gate_cmd, cwd=project_root, capture_output=True, check=False, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
             return (lang, None, f"{lang} 检查超时（>{timeout}s），本次未验证")
@@ -217,7 +220,7 @@ def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[
     for r in results:              # pool.map 保序，输出与语言表顺序一致
         if r is None:
             continue
-        lang, failure, skip = r
+        _, failure, skip = r
         if failure:
             failures.append(failure)
         if skip:

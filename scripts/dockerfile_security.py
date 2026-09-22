@@ -27,7 +27,7 @@ DOCKERFILE_EXTS = {".dockerfile"}
 
 def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
     try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False, text=True, timeout=timeout)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
@@ -56,16 +56,15 @@ def hadolint_scan(files: list[Path], root: Path) -> dict:
     tool_ok = True
     scanned = 0
     for f in files:
-        rc, out, err = run(["hadolint", str(f)], cwd=root)
+        rc, out, _err = run(["hadolint", str(f)], cwd=root)
         if rc == 127:
             return {"tool": "hadolint", "exit": 127, "findings": [],
                     "summary_tail": "hadolint not installed (brew install hadolint)"}
         if rc not in (0, 1):     # hadolint: 0=clean, 1=has findings
             tool_ok = False
         scanned += 1
-        for line in out.splitlines():
-            # 格式: file:line DLxxxx severity message
-            findings.append(line)
+        # 格式: file:line DLxxxx severity message
+        findings.extend(out.splitlines())
     return {"tool": "hadolint", "exit": 0 if not findings else 2,
             "scanned": scanned, "findings": findings[-40:], "tool_ok": tool_ok}
 
@@ -74,7 +73,7 @@ def trivy_scan(files: list[Path], root: Path) -> dict:
     """trivy config：misconfig 规则（root 运行、digest 未固定、secrets 等）"""
     results = []
     for f in files:
-        rc, out, err = run(["trivy", "config", "--format", "json", "--quiet", str(f)],
+        rc, out, _err = run(["trivy", "config", "--format", "json", "--quiet", str(f)],
                            cwd=root, timeout=600)
         if rc == 127:
             return {"tool": "trivy config", "exit": 127, "findings": [],

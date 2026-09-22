@@ -130,9 +130,9 @@ def _load_registry_entries() -> list[dict]:
 def mcp_main(project_root: Path) -> int:
     """官方 mcp SDK stdio server：check_code_style / auto_fix / list_languages。"""
     try:
+        import mcp.types as mcp_types
         from mcp.server import Server
         from mcp.server.stdio import stdio_server
-        import mcp.types as mcp_types
     except ModuleNotFoundError:
         print("[codeguard] mcp SDK 未安装：pip install -r requirements.txt", file=sys.stderr)
         return 1

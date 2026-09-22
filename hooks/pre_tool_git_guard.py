@@ -11,8 +11,8 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,8 +20,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
-from detect_lang import ensure_user_path, find_project_root, load_user_config  # noqa: E402
-from gate_lib import (  # noqa: E402
+from detect_lang import ensure_user_path, load_user_config
+from gate_lib import (
     check_commit_safety,
     format_safety_report,
     gate_directive,
@@ -51,7 +51,7 @@ def _is_git_repo(p: Path) -> bool:
     try:
         proc = subprocess.run(
             ["git", "-C", str(p), "rev-parse", "--git-dir"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, check=False, text=True, timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -113,7 +113,7 @@ def skip_gate_via_git_config(project_root: Path) -> bool:
     try:
         proc = subprocess.run(
             ["git", "config", "--get", "codeguard.skipGate"],
-            cwd=project_root, capture_output=True, text=True, timeout=10,
+            cwd=project_root, capture_output=True, check=False, text=True, timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -165,6 +165,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except SystemExit:
         raise
-    except Exception as exc:  # 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+    except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
         print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
         sys.exit(0)

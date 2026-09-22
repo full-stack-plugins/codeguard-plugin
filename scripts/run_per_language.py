@@ -22,7 +22,7 @@ __all__ = ["run_check", "run_fix"]
 def _run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
     """subprocess 调用统一封装：归一化超时(124) / 命令缺失(127) / 其它返回原码。"""
     try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
     except FileNotFoundError as e:
@@ -110,7 +110,7 @@ def run_fix(languages: list[str], project_root: Path,
             results.append({"language": lang, "fixed": True,
                             "dry_run": True, "command": fmt or []})
             continue
-        rc, out, err = _run(fmt, cwd=project_root, timeout=timeout)
+        rc, _out, err = _run(fmt, cwd=project_root, timeout=timeout)
         results.append({
             "language": lang,
             "fixed": rc == 0,

@@ -133,7 +133,7 @@ def is_ejs_template(file_path: str) -> bool:
 
 def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
     try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
@@ -293,6 +293,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except SystemExit:
         raise
-    except Exception as exc:  # 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+    except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
         print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
         sys.exit(0)

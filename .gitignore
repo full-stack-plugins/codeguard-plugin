@@ -19,3 +19,5 @@ build/
 dist/
 htmlcov/
 Thumbs.db
+# codeguard 失败日志落盘目录
+out/

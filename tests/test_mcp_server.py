@@ -92,7 +92,7 @@ class McpServerTests(unittest.TestCase):
                 if proc.stdin:
                     proc.stdin.close()
                 proc.wait(timeout=10)
-            except Exception:
+            except Exception:  # noqa: BLE001 cleanup
                 proc.kill()
 
     def test_mcp_list_languages_returns_id_and_name_only(self):
@@ -125,7 +125,7 @@ class McpServerTests(unittest.TestCase):
                 if proc.stdin:
                     proc.stdin.close()
                 proc.wait(timeout=10)
-            except Exception:
+            except Exception:  # noqa: BLE001 cleanup
                 proc.kill()
 
 
@@ -165,7 +165,7 @@ class FailureLogTests(unittest.TestCase):
             proc = subprocess.run(
                 [sys.executable, str(RUN_CHECK), str(root),
                  "--lang", "python", "--log-dir", str(log_dir)],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, check=False, text=True, timeout=120,
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             self.assertIn("完整日志", proc.stdout)
@@ -183,7 +183,7 @@ class FailureLogTests(unittest.TestCase):
             proc = subprocess.run(
                 [sys.executable, str(RUN_CHECK), str(root),
                  "--lang", "python", "--log-dir", str(log_dir), "--quiet"],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, check=False, text=True, timeout=120,
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             self.assertNotIn("完整日志", proc.stdout)

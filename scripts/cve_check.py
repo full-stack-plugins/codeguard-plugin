@@ -49,7 +49,7 @@ EXIT_USAGE = 3
 
 def run(cmd: list[str], cwd: Path, timeout: int = 600) -> tuple[int, str, str]:
     try:
-        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False, text=True, timeout=timeout)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"

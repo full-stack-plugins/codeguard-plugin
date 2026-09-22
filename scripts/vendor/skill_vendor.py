@@ -25,10 +25,8 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
-
 
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 VERSION_TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
@@ -66,9 +64,7 @@ def resolve_ref(repo: str, ref: str) -> str:
     for line in result.splitlines():
         candidate, _, remote_name = line.partition("\t")
         short = remote_name.removeprefix("refs/tags/").removeprefix("refs/heads/")
-        if short == f"{ref}^{{}}":
-            resolved = candidate
-        elif short == ref and resolved is None:
+        if short == f"{ref}^{{}}" or short == ref and resolved is None:
             resolved = candidate
     if resolved is None:
         raise RuntimeError(f"{repo}: could not resolve ref '{ref}'")
@@ -138,10 +134,10 @@ def validate_plugin_local_inventory(root: Path, lock: dict) -> None:
     if policy.get("version") != 1:
         raise RuntimeError("unsupported plugin-local-skills.json version")
     if not isinstance(policy.get("dest"), str):
-        raise RuntimeError("plugin-local-skills.json requires a dest string")
+        raise RuntimeError("plugin-local-skills.json requires a dest string")  # noqa: TRY004
     names = policy.get("skills")
     if not isinstance(names, list):
-        raise RuntimeError("plugin-local-skills.json requires a skills list")
+        raise RuntimeError("plugin-local-skills.json requires a skills list")  # noqa: TRY004
     if len(names) != len(set(names)):
         raise RuntimeError("plugin-local-skills.json contains duplicate skill names")
     for name in names:
