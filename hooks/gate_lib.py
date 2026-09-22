@@ -193,7 +193,6 @@ def _gate_cache_key(
     不同文件集——只按工作树指纹，先跑的窄面结果会把宽面查询喂给同一缓存条目
     （staged 干净 + 未暂存有病 → 窄面 pass 被宽面复用 = 绕过）。
     """
-    import hashlib
     head = _git(project_root, "rev-parse", "HEAD")
     if head is None:
         return None

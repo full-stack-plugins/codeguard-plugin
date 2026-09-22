@@ -382,7 +382,7 @@ def staging_intent(command: str) -> tuple[tuple[str, ...], list[str]]:
         except ValueError:
             continue
         extra.append(str(rel))
-    ordered = tuple(l for l in all_lanes if l in lanes)
+    ordered = tuple(lane for lane in all_lanes if lane in lanes)
     return ordered, extra
 
 
