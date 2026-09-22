@@ -10,6 +10,10 @@
 
 钩子模拟的原理 = 完全复刻宿主行为：把 ZCode/Claude 会发给钩子的 JSON payload
 通过 stdin 喂给真实钩子脚本，断言退出码与输出协议（exit 0 JSON / exit 2 stderr）。
+
+宿主契约的**单源事实**在 `hooks/__protocol__.md`（exit 码 / JSON 形态 / fail-open /
+三端兼容矩阵 / 新增 hook checklist）。任何与本测试断言不一致的脚本改动必须**同
+commit**同步更新该文档与 `openspec/specs/hook-protocol/spec.md`。
 runtime 用例按工具可用性自动 SKIP（shellcheck 已装则真跑，未装则结构通过）。
 """
 from __future__ import annotations
