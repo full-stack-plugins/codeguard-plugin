@@ -111,3 +111,11 @@ class LinterConfigFilesRuleTest(unittest.TestCase):
     def test_linter_config_files_can_be_empty(self) -> None:
         reg = _mutate(_baseline(), "rust", linter_config_files=[])
         self.assertEqual([], check(reg))
+
+class LinterConfigCoverageTest(unittest.TestCase):
+    def test_linter_config_files_coverage(self) -> None:
+        """stable/beta 中至少 25 条填了 linter_config_files（防重构清空）。"""
+        reg = _baseline()
+        n = sum(1 for l in reg["languages"]
+                if l.get("status") in ("stable", "beta") and l.get("linter_config_files"))
+        self.assertGreaterEqual(n, 25, f"only {n} stable/beta languages have linter_config_files")
