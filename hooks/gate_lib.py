@@ -33,16 +33,15 @@ from detect_lang import (
     probe_toolchain,
     project_uses_linter,
 )
-from scope import changed_files, scope_cmd
+from scope import FULL_SCAN_EXCLUDES, changed_files, scope_cmd
 
 # === git 提交内容安全检查：绝不该进版本库的文件 ===
-# 目录（路径任一段落匹配即违规）：依赖/虚拟环境/构建产物/IDE/缓存
-GUARD_EXCLUDE_DIRS = {
-    ".venv", "venv", "env", "node_modules", "__pycache__", ".pytest_cache",
-    ".mypy_cache", ".ruff_cache", "target", "dist", "build", "out", ".next",
-    ".nuxt", ".gradle", "vendor", ".idea", ".vscode", "coverage", ".terraform",
-    ".tox", ".eggs", "htmlcov", ".turbo", ".parcel-cache",
-}
+# 目录 = 构建产物/依赖快照**单一事实源**（scope.FULL_SCAN_EXCLUDES）+ IDE 目录。
+# 从单一来源派生：清单只在 scope.py 改一处，"入库面"与"扫描面"永不漂移
+# （此前两份手抄清单已经漂移：扫描面缺 out/.next/coverage 等 14 个目录，
+# 入库面缺 upstream）。路径任一段落匹配即违规；vendor 的仓根级特例在
+# check_commit_safety 里（嵌套 scripts/vendor 是第一方源码树）。
+GUARD_EXCLUDE_DIRS = set(FULL_SCAN_EXCLUDES) | {".idea", ".vscode"}
 # 文件名模式（fnmatch，任意层级）：密钥/凭据/本地环境/系统垃圾
 GUARD_EXCLUDE_FILES = [
     ".env", ".env.*", "*.env", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks",

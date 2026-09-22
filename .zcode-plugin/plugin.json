@@ -5,7 +5,7 @@
     "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
   "description_i18n": {
     "en": "Cross-language code lint enforcement. PostToolUse hook auto-runs the language-specific linter on every AI-written file; failed lint blocks further writes when strict_mode is on. Ships ready-to-go .pre-commit-config.yaml templates for Java/Rust/TypeScript/Python.",

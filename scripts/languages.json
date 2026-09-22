@@ -540,7 +540,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . -name '*.c' -o -name '*.h' | xargs -r clang-tidy --quiet"
+        "find . \\( -name '*.c' -o -name '*.h' \\) | xargs -r clang-tidy --quiet"
       ],
       "linter_config_files": [
         ".clang-tidy",
@@ -603,7 +603,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . -name '*.m' -o -name '*.mm' | xargs -r clang-tidy --quiet"
+        "find . \\( -name '*.m' -o -name '*.mm' \\) | xargs -r clang-tidy --quiet"
       ],
       "linter_config_files": [
         ".clang-tidy",
@@ -898,7 +898,7 @@
       "gate": [
         "bash",
         "-c",
-        "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -exec grep -L '<%' {} + | xargs -0 -r npx --no-install htmlhint"
+        "find . \\( -name '*.html' -o -name '*.htm' \\) -type f -not -path '*/node_modules/*' -print0 | xargs -0 -r grep -L '<%' | tr '\\n' '\\0' | xargs -0 -r npx --no-install htmlhint"
       ],
       "linter_config_files": [
         ".htmlhintrc"

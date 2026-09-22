@@ -88,7 +88,7 @@ The functions `load_user_config`, `load_project_overrides`, and `get_overrides` 
 
 ### Requirement: Gates in git repositories SHALL default to changed-file scope
 
-git 仓库内的门禁 MUST 缺省只检查**本次操作面**涉及的文件，并按语言归属过滤；存量问题 MUST NOT 阻塞无关的新提交。操作面 MUST 由操作类型决定：**commit 面**（`git commit` 前）= staged + 未暂存 + 未跟踪；**push 面**（`git push` 前）= 提交面并集**未推送提交**（`up...HEAD` 三点差；无 upstream 时按 `origin/<当前分支>`→`origin/main`→`origin/master` 逐个尝试，均不可解析则不猜测、不崩溃）。面的判定 MUST 单源：命中判定与选面共用同一套扫描，直接命令与一层解释器间接不得分叉；同时命中 commit 与 push 时 MUST 取 push 面。提示词触发的软门禁 MUST 以同一套面语义选择（推送意图选 push 面）。项目可用 `codeguard.json` 的 `gate_scope`（`delta`/`repo`）显式覆盖；非 git 目录缺省为全量。全量模式 MUST 从 ruff 扫描中剔除依赖快照与构建产物目录（vendor/build/dist 等）。门禁结果缓存 MUST 按面隔离（mode 进缓存键），同一 HEAD 下两面不得互相污染。
+git 仓库内的门禁 MUST 缺省只检查**本次操作面**涉及的文件，并按语言归属过滤；存量问题 MUST NOT 阻塞无关的新提交。操作面 MUST 由操作类型决定：**commit 面**（`git commit` 前）= staged + 未暂存 + 未跟踪；**push 面**（`git push` 前）= 提交面并集**未推送提交**（`up...HEAD` 三点差；无 upstream 时按 `origin/<当前分支>`→`origin/main`→`origin/master` 逐个尝试，均不可解析则不猜测、不崩溃）。面的判定 MUST 单源：命中判定与选面共用同一套扫描，直接命令与一层解释器间接不得分叉；同时命中 commit 与 push 时 MUST 取 push 面。提示词触发的软门禁 MUST 以同一套面语义选择（推送意图选 push 面）。项目可用 `codeguard.json` 的 `gate_scope`（`delta`/`repo`）显式覆盖；非 git 目录缺省为全量。构建产物与依赖快照 MUST 有**单一事实源清单**（`scope.FULL_SCAN_EXCLUDES`），覆盖全量与 delta 两条路径的**所有门禁族**：ruff `--exclude`、find 型 gate 的 `-not -path` 注入（`-print0`/`-exec`/无 NUL 锚三形态全覆盖）、PostToolUse 对产物路径静默跳过、`changed_files` 过滤产物路径（force-add 的 target 文件不进 delta 面）；「入库面」清单 MUST 由该单一事实源派生（+IDE 目录），两侧不得各自手抄。html 门禁 MUST 以 NUL 管道传递文件清单——`-exec … {} + | xargs -0` 的换行分隔会在产物数百个时把整串路径塞进单参数（`xargs: insufficient space` 实测）。门禁结果缓存 MUST 按面隔离（mode 进缓存键），同一 HEAD 下两面不得互相污染。
 
 #### Scenario: A committed legacy issue is untouched by a clean change
 

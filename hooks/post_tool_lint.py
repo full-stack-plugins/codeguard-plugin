@@ -27,7 +27,7 @@ from detect_lang import (  # ensure_user_path/load_user_config 实际定义：sc
     project_uses_linter,
 )
 from gate_lib import codeguard_home, session_state_path
-from scope import scope_cmd  # 状态目录 ~/.codeguard（可 CODEGUARD_HOME 覆盖）
+from scope import is_build_artifact, scope_cmd  # 状态目录 ~/.codeguard（可 CODEGUARD_HOME 覆盖）
 
 # 双副本去重：同一插件可能以多个 marketplace 副本安装（partme-ai/ 与
 # full-stack-plugins/ 各一份，钩子双份触发——实测），用户级固定路径跨副本共享
@@ -185,6 +185,12 @@ def extract_file_path(payload: dict) -> str:
 
 def should_skip(file_path: str, languages: list[str]) -> tuple[bool, str]:
     if not file_path:
+        return True, ""
+    # 构建产物静默跳过：写到 target/site、target/apidocs 的生成 HTML/sh 由
+    # 构建流程负责，检查它们只会给出下次构建就被重写的假告警，AI 还可能
+    # "自动修复"生成物（prettier 改完、构建一跑又变回去）。
+    # 目录认知单源：scope.FULL_SCAN_EXCLUDES。
+    if is_build_artifact(file_path):
         return True, ""
     lang = detect_language(file_path)
     if not lang:
