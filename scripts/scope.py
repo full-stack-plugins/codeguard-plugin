@@ -8,7 +8,8 @@ detect_lang 只暴露语言检测与命令表 API，不得混入配置/路径/�
   （判定可复现性：规则集不能随机器上恰好装的 ruff 漂移；注入文件必须是
   ruff 原生格式，[tool.ruff] 包装的片段会被 TOML 解析拒绝）。
 - `scope_cmd`：物化命令——{file} 替换、全仓扫描 token 收敛为文件列表、
-  裸命令追加文件、全量模式剔除依赖快照目录。
+  裸命令追加文件、全量模式剔除依赖快照与构建产物目录（ruff 走 --exclude，
+  `find -print0` 型 gate 注入 -not -path）。
 - `changed_files`：git 仓的本次改动集（staged + 未暂存 + 未跟踪）；
   非 git 目录返回 None（调用方据此退回全量作用域）。
 
@@ -20,14 +21,36 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# 门禁/CI 全量模式下 ruff 默认剔除的目录（不可编辑的依赖快照与构建产物）。
+# 门禁/CI 全量模式下默认剔除的目录（不可编辑的依赖快照与构建产物）。
 # 与 hooks/gate_lib.GUARD_EXCLUDE_DIRS 语义重叠但职责不同：那边管"能否入库"，
-# 这边管"扫不扫"。vendor 快照是供应链不可变内容，扫它只会得到"永久红"。
-_RUFF_FULL_EXCLUDES = (
+# 这边管"扫不扫"。vendor 快照是供应链不可变内容，扫它只会得到"永久红"；
+# 构建产物（target/ 下的 maven-javadoc javadoc.sh 等）是生成物，扫它得到的
+# 也是与仓库内容无关的"永久红"（实测：java 门禁自己生成的 javadoc.sh 让
+# shell 门禁必红——两个 gate 步骤互相矛盾）。ruff 走 --exclude，
+# find 型 gate 注入 -not -path，两侧共用这一份清单。
+FULL_SCAN_EXCLUDES = (
     ".venv", "venv", "node_modules", "vendor", "upstream", "build", "dist",
     "target", ".tox", "__pycache__",
 )
 _RUFF_SNIPPET = Path(__file__).resolve().parents[1] / "linters" / "ruff" / "ruff.toml"
+
+
+def _inject_find_excludes(expr: str) -> str:
+    """给 `find … -print0` 表达式注入构建产物目录排除（-not -path）。
+
+    幂等：已声明同类排除（'*/target/*' 或 '*/target'）的目录不重复注入。
+    只在首个 -print0 前插入，保持 xargs 管道段不动。
+    """
+    if "-print0" not in expr or "find " not in expr:
+        return expr
+    additions = "".join(
+        f" -not -path '*/{d}/*'"
+        for d in FULL_SCAN_EXCLUDES
+        if f"'*/{d}/*'" not in expr and f"'*/{d}'" not in expr
+    )
+    if not additions:
+        return expr
+    return expr.replace(" -print0", f"{additions} -print0", 1)
 
 
 def ruff_config_args(cmd: list, project_root: str | Path) -> list:
@@ -70,7 +93,8 @@ def scope_cmd(
     - 既无占位符也无扫描 token 的裸命令：给了文件就**追加**（yamllint 这类
       不带路径时读 stdin 恒"通过"，追加才检查得到东西）；
     - ruff 命令注入 ruff_config_args 的默认配置；full_excludes=True（全量
-      模式）再追加 --exclude，剔除依赖快照与构建产物。
+      模式）时剔除依赖快照与构建产物：ruff 追加 --exclude，`find -print0`
+      型命令（bash -c find … | xargs 形态的 gate）注入 -not -path。
     """
     out = list(cmd)
     if not out:
@@ -82,8 +106,10 @@ def scope_cmd(
         args = ruff_config_args(out, project_root)
         out = [out[0]] + args + out[1:]
         if full_excludes:
-            for d in _RUFF_FULL_EXCLUDES:
+            for d in FULL_SCAN_EXCLUDES:
                 out += ["--exclude", d]
+    elif full_excludes:
+        out = [_inject_find_excludes(c) if isinstance(c, str) else c for c in out]
     scan_idx = [i for i, tok in enumerate(out[1:], 1) if tok == "." or "**" in tok]
     if targets and scan_idx:
         flags = [tok for i, tok in enumerate(out) if i not in scan_idx and not tok.startswith("#")]

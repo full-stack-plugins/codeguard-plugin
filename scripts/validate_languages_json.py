@@ -183,6 +183,26 @@ def _check_since(reg: dict) -> list[str]:
     return errs
 
 
+def _check_gate_severity_pin(reg: dict) -> list[str]:
+    """gate 命令里调用支持 severity 的工具时必须钉扎级别。
+
+    背景（0.8.x 前的实测坑）：同一份 shell gate 在部分发布版本里没带
+    `--severity=warning`，info/style 级发现（SC2059/SC2295）也会阻塞提交；
+    缺了这个钉扎，门禁结论取决于用户 cache 里恰好是哪个发布版本。
+    shellcheck 支持 --severity；markdownlint 走 config 文件，不在此列。
+    """
+    errs: list[str] = []
+    for lang in reg.get("languages", []):
+        if not isinstance(lang, dict):
+            continue
+        lid = lang.get("id", "<?>")
+        for field in ("gate", "lint"):
+            joined = " ".join(lang.get(field) or [])
+            if "shellcheck" in joined and "--severity=" not in joined:
+                errs.append(f"{lid}:{field}: shellcheck must pin --severity= (drift guard)")
+    return errs
+
+
 def check(registry: dict) -> list[str]:
     """Return all schema and consistency errors; empty list means valid."""
     errs: list[str] = []
@@ -198,6 +218,7 @@ def check(registry: dict) -> list[str]:
     errs += _check_requires_config(registry)
     errs += _check_linter_config_files(registry)
     errs += _check_since(registry)
+    errs += _check_gate_severity_pin(registry)
     return errs
 
 
