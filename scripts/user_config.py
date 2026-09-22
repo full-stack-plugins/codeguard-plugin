@@ -62,9 +62,13 @@ def load_project_overrides(project_root: str | Path) -> dict:
         data = json.loads(cfg.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+    scope = data.get("gate_scope")
     return {
         "extensions": {k.lower(): v for k, v in (data.get("extensions") or {}).items()},
         "exclude": list(data.get("exclude") or []),
+        # 门禁扫描范围："delta"（默认，只查本次改动涉及的文件——存量问题不拦新提交）
+        # 或 "repo"（全仓扫描；仍会剔除 vendor/build 等不可编辑目录）
+        "gate_scope": scope if scope in ("delta", "repo") else None,
     }
 
 

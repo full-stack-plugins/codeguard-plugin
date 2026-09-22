@@ -10,6 +10,7 @@ git commit/push 时被拦下，工具级 stderr 会作为结果反馈给 AI 继�
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -35,7 +36,10 @@ from gate_lib import (
     check_commit_safety,
     format_safety_report,
     gate_directive,
+    record_skip_event,
     run_gate,
+    should_suppress_event,
+    skip_gate_via_git_config,
     summarize_failures,
 )
 
@@ -61,14 +65,12 @@ def notify(title: str, message: str) -> None:
     import subprocess
     safe_t = title.replace('"', "'")
     safe_m = message.replace('"', "'")[:200]
-    try:
+    with contextlib.suppress(OSError):
         subprocess.Popen(
             ["osascript", "-e",
              f'display notification "{safe_m}" with title "{safe_t}" sound name "Pop"'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-    except OSError:
-        pass
 
 
 # 疑问句特征：在询问功能/做法，不是真的要提交（实测误触发：
@@ -114,27 +116,66 @@ def _detect_languages_in_text(user_text: str, language_ids: list[str]) -> list[s
     return hits
 
 
-def read_user_text() -> str:
+def read_payload() -> dict:
+    """读一次 stdin payload（text 与 session_id 都从中取，stdin 只能读一次）。"""
     if sys.stdin.isatty():
-        return ""
+        return {}
     try:
         data = json.loads(sys.stdin.read())
     except json.JSONDecodeError:
-        return ""
-    return data.get("user_prompt") or data.get("prompt") or ""
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_user_text() -> str:
+    payload = read_payload()
+    return str(payload.get("user_prompt") or payload.get("prompt") or "")
+
+
+def _non_git_note() -> str:
+    return (
+        "codeguard：当前目录不是 git 仓库，提交门禁已跳过"
+        "（门禁只对 git 仓生效；非 git 目录曾被回退成工作区根全仓扫描——"
+        "一个临时目录即可把上百个无关仓的存量 lint 变成永久红）。"
+    )
 
 
 def main() -> int:
-    ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录
-    # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
-    if os.environ.get("CODEGUARD_SKIP_GATE"):
-        return 0
-    user_text = read_user_text()
+    payload = read_payload()
+    user_text = str(payload.get("user_prompt") or payload.get("prompt") or "")
     if not is_trigger(user_text):
         return 0
 
+    # 双副本去重：session_id + 文本 派生事件 key；测试 payload 无该字段→旧行为
+    session_id = payload.get("session_id")
+    if session_id and should_suppress_event(f"ups:{session_id}:{user_text[:200]}"):
+        return 0
+
+    ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录
+    # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
+    if os.environ.get("CODEGUARD_SKIP_GATE"):
+        record_skip_event("env")
+        return 0
+
+    root = find_project_root(os.getcwd())
+    if root is None or not (root / ".git").exists():
+        # 非 git 目录绝不回退成"扫这个目录"——曾经的 find_project_root or cwd
+        # 让工作区根成了全仓扫描对象（永久红且不可合法修复）。显式说明+跳过。
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": _non_git_note(),
+            }
+        }, ensure_ascii=False))
+        return 0
+    project_root = root
+    if skip_gate_via_git_config(project_root):
+        # 软门禁与硬门禁共用同一条仓库级豁免：此前 UPS 不认 skipGate，
+        # 出现过"硬门放行、软门仍喊禁止提交"的自相矛盾。
+        record_skip_event("skipGate")
+        return 0
+
     cfg = load_user_config()
-    project_root = find_project_root(os.getcwd()) or Path(os.getcwd())
     # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
     detected = detect_languages(project_root)
     subset = _detect_languages_in_text(user_text, detected)

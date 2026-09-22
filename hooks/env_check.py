@@ -6,6 +6,7 @@
 2. 检查是否已有 linter 配置（.pre-commit-config.yaml、checkstyle.xml、.clippy.toml、eslint.config.js、ruff.toml）
 3. 输出一段 AGENTS.md 风格的提示，让 AI 知道自己在一个被 codeguard 管理的项目里
 """
+import contextlib
 import os
 import subprocess
 import sys
@@ -31,14 +32,12 @@ def notify(title: str, message: str) -> None:
         return
     safe_t = title.replace('"', "'")
     safe_m = message.replace('"', "'")[:200]
-    try:
+    with contextlib.suppress(OSError):
         subprocess.Popen(
             ["osascript", "-e",
              f'display notification "{safe_m}" with title "{safe_t}"'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-    except OSError:
-        pass
 
 
 def detect_linter_config(project_root: Path) -> dict:
@@ -113,6 +112,24 @@ def main() -> int:
         lines.append(f"- 已有的 linter 配置: {linter_cfg}")
     else:
         lines.append("- 未配置任何 linter（建议运行 /init 接入 codeguard）")
+
+    # 双副本检测：partme-ai 与 full-stack-plugins 同时启用时每个钩子事件
+    # 跑两遍（历史实测双份触发）；提示用户停用其一，而不是默默重复。
+    try:
+        import json as _json
+        _reg = _json.loads((Path.home() / ".zcode" / "cli" / "config.json").read_text(encoding="utf-8"))
+        _orgs = sorted({
+            key.split("@", 1)[1]
+            for key in (_reg.get("plugins", {}) or {}).get("enabledPlugins", {})
+            if key.startswith("codeguard@")
+        })
+    except (OSError, ValueError, AttributeError):
+        _orgs = []
+    if len(_orgs) > 1:
+        lines.append(
+            f"- ⚠️ 检测到 codeguard **双副本同时启用**（{', '.join(_orgs)}）："
+            "每个钩子事件会执行两遍，报告与统计可能翻倍或分裂——建议只保留一个来源"
+        )
 
     lines.append("- AI 写完代码会被 PostToolUse 钩子自动 lint，告警会出现在这里，按告警里的「怎么修」处理")
     lines.append("- 用户要求「提交/push」时，UserPromptSubmit 钩子会再次确认所有 linter 通过，未通过会拦截提交")

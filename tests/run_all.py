@@ -78,17 +78,17 @@ def make_repo() -> Path:
 def test_languages():
     print("\n[1] 语言规则结构审计（全部 stable/beta）")
     langs = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))["languages"]
-    stable = [l for l in langs if l.get("status") in ("stable", "beta")]
+    stable = [entry for entry in langs if entry.get("status") in ("stable", "beta")]
     ok(f"stable/beta 数量 = {len(stable)}（≥50）", len(stable) >= 50)
 
     no_target, file_no_gate, npx_no_flag, npx_no_probe, bad_cfg = [], [], [], [], []
-    for l in stable:
-        lint = l.get("lint") or []
+    for entry in stable:
+        lint = entry.get("lint") or []
         cs = " ".join(lint)
         if not lint:
             # format-only 语言（julia/pascal）：无独立 linter，合法
-            if not l.get("format"):
-                no_target.append(l["id"])
+            if not entry.get("format"):
+                no_target.append(entry["id"])
             continue
         # 目标参数：{file} 占位 / 明确路径 / 项目级命令词（裸跑默认检查当前目录）
         project_level = (
@@ -102,17 +102,17 @@ def test_languages():
             or any(t in cs for t in (".", "*", "{file}", "src"))
         )
         if not project_level:
-            no_target.append(f"{l['id']}:{cs}")
-        if "{file}" in cs and not l.get("gate"):
-            file_no_gate.append(l["id"])
+            no_target.append(f"{entry['id']}:{cs}")
+        if "{file}" in cs and not entry.get("gate"):
+            file_no_gate.append(entry["id"])
         if lint[0] == "npx":
             if "--no-install" not in cs:
-                npx_no_flag.append(l["id"])
-            if not l.get("probe"):
-                npx_no_probe.append(l["id"])
-        cfg = l.get("requiresConfig")
+                npx_no_flag.append(entry["id"])
+            if not entry.get("probe"):
+                npx_no_probe.append(entry["id"])
+        cfg = entry.get("requiresConfig")
         if cfg is not None and (not isinstance(cfg, list) or not all(isinstance(x, str) and x for x in cfg)):
-            bad_cfg.append(l["id"])
+            bad_cfg.append(entry["id"])
     ok("所有语言 lint 都有检查目标", not no_target, str(no_target))
     ok("{file} 单文件模式语言都有项目级 gate", not file_no_gate, str(file_no_gate))
     ok("npx 系全部 --no-install", not npx_no_flag, str(npx_no_flag))
@@ -120,7 +120,7 @@ def test_languages():
     ok("requiresConfig 结构合法", not bad_cfg, str(bad_cfg))
 
     # 关键语言的修正是否落地
-    by_id = {l["id"]: l for l in stable}
+    by_id = {entry["id"]: entry for entry in stable}
     for lid, field, needle in [
         ("nix", "lint", "{file}"), ("groovy", "lint", "{file}"), ("cfml", "lint", "{file}"),
         ("html", "lint", "{file}"), ("markdown", "lint", "--no-install"),
@@ -143,6 +143,12 @@ def test_languages():
     # runtime 抽查：已装工具的语言真跑一条坏样例
     if shutil.which("shellcheck"):
         repo = make_repo()
+        # delta 门禁只看本次改动：把坏脚本重新暂存成"待提交内容"，
+        # 存量已提交的坏文件不该再拦新提交（这正是 delta 的意义）。
+        (repo / "scripts" / "deploy.sh").write_text(
+            '#!/bin/bash\nif [ $foo = bar ]; then echo hi; fi\nif [ $a = b ]; then echo x; fi\n'
+        )
+        git(repo, "add", "-A")
         r = run_hook("pre_tool_git_guard.py",
                      {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, repo)
         ok("shell 门禁真跑：坏脚本 → exit 2", r.returncode == 2, f"exit={r.returncode}")
@@ -169,7 +175,7 @@ def test_hooks():
                  {"tool_name": "Write", "tool_input": {"file_path": str(repo / "scripts" / "deploy.sh")}}, repo)
     ok("PostToolUse 坏文件 exit 0（不阻断）", r.returncode == 0)
     try:
-        ctx = json.loads([l for l in r.stdout.splitlines() if l.startswith("{")][-1])
+        ctx = json.loads([ln for ln in r.stdout.splitlines() if ln.startswith("{")][-1])
         add = ctx["hookSpecificOutput"]["additionalContext"]
         first = add.splitlines()[0]
         body = add[len(first):]
@@ -191,10 +197,14 @@ def test_hooks():
     ok("好文件注入通过确认", "✅" in r.stdout and "passed" in r.stdout)
 
     # ── UserPromptSubmit：提交意图（脏仓）→ 软引导注入（exit 0，prompt 不被弹回） ──
+    # delta 门禁只查 staged/未暂存/未跟踪：显式造一个待提交的坏改动，
+    # 与旧版"存量坏文件即脏"的效果对齐但语义是"新提交引入的问题"。
+    (repo / "scripts" / "delta-bad.sh").write_text('#!/bin/bash\nif [ $q = w ]; then true; fi\n')
+    git(repo, "add", "-A")
     r = run_hook("user_prompt_validator.py", {"user_prompt": "提交代码"}, repo)
     ok("提交意图 exit 0（软引导）", r.returncode == 0)
     try:
-        ctx = json.loads([l for l in r.stdout.splitlines() if l.startswith("{")][-1])
+        ctx = json.loads([ln for ln in r.stdout.splitlines() if ln.startswith("{")][-1])
         add = ctx["hookSpecificOutput"]["additionalContext"]
         first = add.splitlines()[0]
         ok("UPS 注入首行=综述", first.startswith("codeguard ❌ 提交门禁未通过："))
@@ -219,8 +229,11 @@ def test_hooks():
 
     # ── PreToolUse：干净仓 → 完全静默 ──
     clean = Path(tempfile.mkdtemp(prefix="cg-clean-"))
-    git(clean, "init", "-q"); git(clean, "config", "user.email", "t@t"); git(clean, "config", "user.name", "t")
-    (clean / "README.md").write_text("ok\n"); git(clean, "add", "-A")
+    git(clean, "init", "-q")
+    git(clean, "config", "user.email", "t@t")
+    git(clean, "config", "user.name", "t")
+    (clean / "README.md").write_text("ok\n")
+    git(clean, "add", "-A")
     r = run_hook("pre_tool_git_guard.py",
                  {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, clean)
     ok("干净仓 exit 0 且零输出（通过即静默）", r.returncode == 0 and r.stdout == "" and r.stderr == "",
@@ -250,7 +263,8 @@ def test_hooks():
     r = run_hook("stop_summary.py", None, repo)
     ok("Stop 汇总 exit 0", r.returncode == 0)
 
-    shutil.rmtree(repo); shutil.rmtree(clean)
+    shutil.rmtree(repo)
+    shutil.rmtree(clean)
 
 
 # ══════════════════════════ 子集 3：纯函数单测 ══════════════════════════
@@ -404,7 +418,9 @@ def test_edges():
     # ── zig 运行时真跑：坏格式文件 → 门禁拦截 ──
     if _sh.which("zig"):
         zrepo = Path(tempfile.mkdtemp(prefix="cg-zig-"))
-        git(zrepo, "init", "-q"); git(zrepo, "config", "user.email", "t@t"); git(zrepo, "config", "user.name", "t")
+        git(zrepo, "init", "-q")
+        git(zrepo, "config", "user.email", "t@t")
+        git(zrepo, "config", "user.name", "t")
         (zrepo / "build.zig.zon").write_text(".\n.id = \"x\",\n\n")  # 错误语法
         (zrepo / "bad.zig").write_text("const x=1;const y :i32=2;\n")
         git(zrepo, "add", "-A")
@@ -493,8 +509,10 @@ def test_field_regressions():
 
     # ── 5. 真 warning 级问题仍拦截（severity 收紧不放走真问题） ──
     sev2 = make_repo()
+    # 待提交内容必须真正不同于 HEAD：delta 门禁只查改动，与 HEAD 逐字节
+    # 相同的"重新 add"等于本次无改动（拦它没有意义，git 也不会提交任何东西）。
     (sev2 / "scripts" / "deploy.sh").write_text(
-        '#!/bin/bash\nif [ $foo = bar ]; then echo hi; fi\n'  # SC2086+SC2154 warning 级
+        '#!/bin/bash\nif [ $foo = bar ]; then echo hi; fi\necho $undefined_var\n'  # SC2154 warning 级
     )
     git(sev2, "add", "-A")
     r = run_hook("pre_tool_git_guard.py",
@@ -530,9 +548,9 @@ def test_perf():
     repo = make_repo()
     exec_count = []
     orig_uncached = gate_lib._run_gate_uncached
-    def counting(root, cfg, langs):
+    def counting(root, cfg, langs, **kw):
         exec_count.append(1)
-        return orig_uncached(root, cfg, langs)
+        return orig_uncached(root, cfg, langs, **kw)
     gate_lib._run_gate_uncached = counting
     try:
         f1, _s1 = gate_lib.run_gate(repo, {})
@@ -742,9 +760,9 @@ def test_doc_sync():
         ok("docs/LANGUAGES.md 与注册表完全可复现（双向一致）", True)
     else:
         import difflib
-        diff = [ln for ln in difflib.unified_diff(
+        diff = list(difflib.unified_diff(
             actual.splitlines(), expected.splitlines(),
-            "docs/LANGUAGES.md", "registry-generated", n=0, lineterm="")]
+            "docs/LANGUAGES.md", "registry-generated", n=0, lineterm=""))
         ok("docs/LANGUAGES.md 与注册表完全可复现（双向一致）", False,
            f"{len(diff)} 行差异，首 6 行: {diff[:6]}")
 
@@ -752,14 +770,22 @@ def test_doc_sync():
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     print(f"codeguard 测试集  plugin={PLUGIN.name}")
-    if which in ("all", "langs"): test_languages()
-    if which in ("all", "hooks"): test_hooks()
-    if which in ("all", "unit"): test_unit()
-    if which in ("all", "edges"): test_edges()
-    if which in ("all", "perf"): test_perf()
-    if which in ("all", "field"): test_field_regressions()
-    if which in ("all", "cve"): test_cve()
-    if which in ("all", "doc"): test_doc_sync()
+    if which in ("all", "langs"):
+        test_languages()
+    if which in ("all", "hooks"):
+        test_hooks()
+    if which in ("all", "unit"):
+        test_unit()
+    if which in ("all", "edges"):
+        test_edges()
+    if which in ("all", "perf"):
+        test_perf()
+    if which in ("all", "field"):
+        test_field_regressions()
+    if which in ("all", "cve"):
+        test_cve()
+    if which in ("all", "doc"):
+        test_doc_sync()
     print(f"\n═══ 结果: {len(PASS)} 通过 / {len(FAIL)} 失败 / {len(SKIP)} 跳过 ═══")
     if FAIL:
         print("失败项:", *FAIL, sep="\n  - ")

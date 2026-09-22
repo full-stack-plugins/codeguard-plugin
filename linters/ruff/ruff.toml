@@ -1,0 +1,35 @@
+# codeguard 默认 ruff 配置（项目无自有 ruff 配置时由 --config 注入）
+# 与 pyproject-snippet.toml 语义一致，但为 ruff 原生格式——
+# --config 指向带 [tool.ruff] 包装的文件会直接 TOML 解析失败（实测）。
+line-length = 120
+target-version = "py310"
+extend-exclude = [".venv", "build", "dist"]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort（import 排序）
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",
+    "B008",
+]
+
+# 插件钩子/脚本的结构性模式：sys.path 引导后才能 import 同仓模块，
+# 这些 import 必然不在文件顶部（E402 属实但不可迁移）。按目录豁免。
+[lint.per-file-ignores]
+"hooks/*.py" = ["E402"]
+"scripts/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -19,10 +20,13 @@ sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 from detect_lang import (
     LANG_COMMANDS,
+    detect_language,
     detect_languages,
+    get_overrides,
     probe_toolchain,
     project_uses_linter,
 )
+from scope import changed_files, scope_cmd
 
 # === git 提交内容安全检查：绝不该进版本库的文件 ===
 # 目录（路径任一段落匹配即违规）：依赖/虚拟环境/构建产物/IDE/缓存
@@ -109,8 +113,34 @@ def _gate_cache_path(project_root: Path) -> Path:
     return Path(tempfile.gettempdir()) / f"codeguard-gate-{os.getuid()}-{key}.json"
 
 
+def _worktree_fingerprint(project_root: Path) -> str:
+    """工作区指纹：staged + 未暂存 + 未跟踪三路 diff 的内容哈希。
+
+    只用 index mtime 会漏掉"文件已修但未 git add"——键不变 → 60 秒内继续
+    报修复前的旧失败（retry-timing 陷阱，实测踩过）。内容哈希一改即失效。
+    """
+    import hashlib
+
+    h = hashlib.sha1()
+    # 注意：("diff") 是字符串不是元组——*unpacking 会拆成字符。单元素必须带逗号。
+    for args in (("diff", "--cached"), ("diff",)):
+        out = _git(project_root, *args) or ""
+        h.update(out.encode("utf-8", "replace"))
+    # 未跟踪文件：ls-files 只给文件名——内容改动名字不变，必须叠加 stat 指纹
+    others = (_git(project_root, "ls-files", "--others") or "").splitlines()
+    for name in sorted(others)[:500]:
+        if not name.strip():
+            continue
+        try:
+            st = (project_root / name).stat()
+            h.update(f"{name}:{st.st_size}:{st.st_mtime_ns}".encode("utf-8", "replace"))
+        except OSError:
+            h.update(name.encode("utf-8", "replace"))
+    return h.hexdigest()[:16]
+
+
 def _gate_cache_key(project_root: Path, languages: list) -> str | None:
-    """缓存键：HEAD + 暂存区指纹（index mtime + 文件数）。文件一变即失效。"""
+    """缓存键：HEAD + 暂存区指纹 + 工作区内容指纹。任一变化即失效。"""
     head = _git(project_root, "rev-parse", "HEAD")
     if head is None:
         return None
@@ -119,7 +149,10 @@ def _gate_cache_key(project_root: Path, languages: list) -> str | None:
         idx_sig = f"{idx.stat().st_mtime_ns}:{idx.stat().st_size}" if idx.exists() else "no-index"
     except OSError:
         return None
-    return f"{head.strip()}|{idx_sig}|{','.join(sorted(languages))}"
+    return (
+        f"{head.strip()}|{idx_sig}|{_worktree_fingerprint(project_root)}"
+        f"|{','.join(sorted(languages))}"
+    )
 
 
 GATE_CACHE_TTL = 60  # 秒：UPS 软门禁与紧随的 PreToolUse 硬门禁之间复用
@@ -144,6 +177,12 @@ def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tu
         languages = detect_languages(project_root)
     if not languages:
         return [], []
+    # 作用域：项目可用 codeguard.json gate_scope 覆盖；缺省 = git 仓 delta、
+    # 非 git 目录全量。delta 只检查本次改动涉及的文件——存量问题不拦新提交。
+    changed = changed_files(project_root)
+    scope = (get_overrides(project_root) or {}).get("gate_scope") or (
+        "delta" if changed is not None else "repo"
+    )
     enabled = cfg.get("enabled_languages", [])
     if enabled and enabled != ["auto"]:
         languages = [lang for lang in languages if lang in enabled]
@@ -158,32 +197,80 @@ def run_gate(project_root: Path, cfg: dict, languages: list | None = None) -> tu
         except (OSError, ValueError, KeyError):
             pass
 
-    failures, skipped = _run_gate_uncached(project_root, cfg, languages)
+    failures, skipped = _run_gate_uncached(
+        project_root, cfg, languages,
+        scope=scope, changed=changed if scope == "delta" else None,
+    )
 
     if ck:
-        try:
+        with contextlib.suppress(OSError):
             cache_file.write_text(json.dumps(
                 {"key": ck, "ts": _time.time(), "failures": failures, "skipped": skipped},
                 ensure_ascii=False))
-        except OSError:
-            pass
     return failures, skipped
 
 
-def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[list, list]:
-    """单次全量门禁（多语言并行，结果顺序保持语言表顺序）"""
+def _log_path(project_root: Path, lang: str) -> Path:
+    import hashlib
+    import tempfile
+    key = hashlib.sha1(str(project_root.resolve()).encode()).hexdigest()[:12]
+    return Path(tempfile.gettempdir()) / f"codeguard-gate-{key}-{lang}.log"
+
+
+def _truncate_detail(full: str, project_root: Path, lang: str) -> str:
+    """节选 + 总量 + 完整日志路径：截断只留头 600 字符会让 AI 一次修 3 个、
+    重试再看 3 个（whack-a-mole）；必须给出"共几行、完整在哪"。"""
+    lines = [ln for ln in full.splitlines() if ln.strip()]
+    detail = full[:600]
+    if len(lines) > 8 or len(full) > 600:
+        try:
+            path = _log_path(project_root, lang)
+            path.write_text(full, encoding="utf-8")
+            detail += f"\n…（截断，共 {len(lines)} 行；完整输出: {path}）"
+        except OSError:
+            detail += f"\n…（截断，共 {len(lines)} 行）"
+    return detail
+
+
+def _run_gate_uncached(
+    project_root: Path,
+    cfg: dict,
+    languages: list,
+    *,
+    scope: str = "repo",
+    changed: list[str] | None = None,
+) -> tuple[list, list]:
+    """单次门禁（多语言并行，结果顺序保持语言表顺序）。
+
+    scope="delta" 时只检查 changed 里属于该语言的文件（存量问题不拦新提交；
+    lint 为 {file} 单文件模式则逐文件循环，上限 50 个，超出回退全量命令）。
+    scope="repo" 时按项目级 gate/lint 全量扫（ruff 注入默认配置并剔除依赖
+    快照目录——vendor 是供应链不可变内容，扫它只会得到不可修的永久红）。
+    """
     from concurrent.futures import ThreadPoolExecutor
 
     def check(lang: str):
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
             return None
-        gate_cmd = cmd_def.get("gate") or cmd_def.get("lint")
-        if not gate_cmd:
+        lang_files: list[str] = []
+        if scope == "delta":
+            lang_files = [
+                f for f in (changed or [])
+                if detect_language(f, project_root) == lang
+            ]
+            if not lang_files:
+                return (lang, None, f"{lang} 本次改动未涉及，跳过")
+        uses_delta_files = bool(lang_files) and len(lang_files) <= 50
+        base_cmd = (cmd_def.get("gate") or cmd_def.get("lint")) if (
+            scope != "delta" or not uses_delta_files
+        ) else cmd_def.get("lint")
+        base_cmd = base_cmd or cmd_def.get("gate") or cmd_def.get("lint")
+        if not base_cmd:
             return None
-        if "{file}" in " ".join(gate_cmd):
-            # {file} 占位符只在 PostToolUse 单文件模式下被替换；门禁拿字面量
-            # 当文件名跑必然报"文件不存在"→ 会被误判成 lint 失败。归跳过。
+        if scope != "delta" and "{file}" in " ".join(base_cmd):
+            # {file} 占位符只在文件模式下被替换；门禁拿字面量当文件名跑必然
+            # 报"文件不存在"→ 误判成 lint 失败。归跳过。
             return (lang, None, f"{lang} 未配置项目级 gate 命令（lint 为单文件模式），本次未验证")
         timeout = cfg.get("lint_timeout_seconds", 120)
         hint = cmd_def.get("install_hint") or "见 docs/LANGUAGES.md"
@@ -192,25 +279,51 @@ def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[
             return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
         if not project_uses_linter(cmd_def, project_root):
             return (lang, None, f"{lang} 项目未接入（缺 linter 配置文件），本次未验证")
-        try:
-            proc = subprocess.run(
-                gate_cmd, cwd=project_root, capture_output=True, check=False, text=True, timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
+
+        outputs: list[tuple[int, str, str]] = []
+        if scope == "delta" and uses_delta_files and "{file}" in " ".join(base_cmd or []):
+            for f in lang_files:
+                cmd = scope_cmd(base_cmd, project_root, single_file=f)
+                outputs.append(_run_one(cmd, timeout, lang, hint))
+                if outputs[-1][0] not in (0,):
+                    break
+        else:
+            if scope == "delta":
+                cmd = scope_cmd(base_cmd, project_root, files=lang_files if uses_delta_files else None)
+            else:
+                cmd = scope_cmd(base_cmd, project_root, full_excludes=True)
+            outputs.append(_run_one(cmd, timeout, lang, hint))
+
+        rc, out, err = outputs[0]
+        if rc == 124:
             return (lang, None, f"{lang} 检查超时（>{timeout}s），本次未验证")
-        except FileNotFoundError:
-            return (lang, None, f"{lang} linter 未安装，本次未验证（安装: {hint}）")
-        if proc.returncode == 0:
+        if rc == 0:
             return None
         if lang == "markdown":
             return (lang, None, "markdown 风格告警（不阻塞提交）")
-        if proc.returncode == 127:
+        if rc == 127:
             return (lang, None, f"{lang} 工具链异常未验证：命令不存在（exit 127）")
-        out = (proc.stdout or "").strip()
-        err = (proc.stderr or "").strip()
-        detail = "\n".join(ln for ln in f"{out}\n{err}".splitlines() if ln.strip())[:600]
+        if rc == 2:
+            # exit 2 = 工具用法/依赖/配置崩溃，与仓库内容无关（与 markdownlint
+            # 用法错误同族）。按"无法验证≠验证失败"归 skipped，绝不拦提交。
+            head = next((ln.strip() for ln in f"{out}\n{err}".splitlines() if ln.strip()), "")
+            return (lang, None, f"{lang} 工具链异常未验证：exit 2（非 lint 结论）{('｜' + head[:80]) if head else ''}")
+        full = "\n".join(seg for seg in ((out or "").rstrip(), (err or "").rstrip()) if seg)
+        detail = _truncate_detail(full or "（linter 无输出）", project_root, lang)
         fix = f"自动修复: {' '.join(cmd_def['format'])}" if cmd_def.get("format") else "按上述问题逐项修复"
         return (lang, (lang, detail, fix, hint), None)
+
+    def _run_one(cmd: list[str], timeout: int, lang: str, hint: str) -> tuple[int, str, str]:
+        try:
+            proc = subprocess.run(
+                cmd, cwd=project_root, capture_output=True, check=False,
+                text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "", f"timeout after {timeout}s"
+        except FileNotFoundError:
+            return 127, "", f"{lang} linter 未安装（安装: {hint}）"
+        return proc.returncode, proc.stdout or "", proc.stderr or ""
 
     results = []
     with ThreadPoolExecutor(max_workers=min(4, max(1, len(languages)))) as pool:
@@ -226,6 +339,86 @@ def _run_gate_uncached(project_root: Path, cfg: dict, languages: list) -> tuple[
         if skip:
             skipped.append(skip)
     return failures, skipped
+
+def skip_gate_via_git_config(project_root: Path) -> bool:
+    """仓库级豁免：git config codeguard.skipGate true。
+
+    CODEGUARD_SKIP_GATE 环境变量设在用户 shell，传不进宿主起的 hook 子进程
+    （宿主环境独立）；git config 由钩子进程在项目根读取，任何调用形态可用。
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "config", "--get", "codeguard.skipGate"],
+            cwd=project_root, capture_output=True, check=False, text=True, timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return proc.returncode == 0 and proc.stdout.strip().lower() in ("true", "1", "yes")
+
+
+def codeguard_home() -> Path:
+    """钩子共享状态目录（可用 CODEGUARD_HOME 覆盖，测试隔离用）。"""
+    import os as _os
+    return Path(_os.environ.get("CODEGUARD_HOME") or (Path.home() / ".codeguard"))
+
+
+def session_state_path() -> Path:
+    """会话 lint 状态（原先存插件安装目录——升级即清零、双副本各存一半）。"""
+    return codeguard_home() / "session_state.json"
+
+
+def record_skip_event(kind: str) -> None:
+    """记录一次绕过（skipGate/逃生门）到会话状态，Stop 汇总时可见。"""
+    state = {}
+    path = session_state_path()
+    try:
+        if path.exists():
+            state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    meta = state.setdefault("_skip", {"count": 0, "kinds": {}})
+    meta["count"] = int(meta.get("count", 0)) + 1
+    kinds = meta.setdefault("kinds", {})
+    kinds[kind] = int(kinds.get(kind, 0)) + 1
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def should_suppress_event(key: str, window: float = 2.0) -> bool:
+    """事件级双副本去重：同一 key 在窗口内重复触发只执行一次。
+
+    双副本（partme-ai + full-stack-plugins）同时启用时每个钩子事件会跑两遍
+    （PostToolUse 有文件级去重，这里给 PreToolUse/UserPromptSubmit 用）。key
+    由调用方带 hook 事件 id（tool_use_id/session_id）构造；测试 payload 通常
+    不带这些字段——此时调用方不调用本函数，保持旧行为。
+    """
+    import hashlib
+    import time as _time
+    path = codeguard_home() / "hook_dedup.json"
+    now = _time.monotonic()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        dedup = {}
+        if path.exists():
+            dedup = json.loads(path.read_text(encoding="utf-8"))
+        h = hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:24]
+        last = dedup.get(h) or {}
+        stale = [k for k, v in dedup.items() if now - v.get("ts", 0) > 60]
+        for k in stale:
+            dedup.pop(k, None)
+        if now - last.get("ts", 0) < window:
+            dedup[h] = last
+            path.write_text(json.dumps(dedup), encoding="utf-8")
+            return True
+        dedup[h] = {"ts": now}
+        path.write_text(json.dumps(dedup), encoding="utf-8")
+    except (OSError, ValueError):
+        return False
+    return False
+
 
 def summarize_failures(failures: list) -> str:
     """问题综述（一行，用作标题/通知标题）：哪几个生态、什么性质的问题"""
@@ -263,5 +456,8 @@ def gate_directive(failures: list) -> str:
         + "2) 修复过程中无需向用户确认；3) 全部修复完成后重新执行用户要做的提交操作。\n"
         + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
         + "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
-        + "只对手动直调 run_check 有效（无法传入宿主钩子进程）。"
+        + "只对手动直调 run_check 有效（无法传入宿主钩子进程）。\n\n"
+        + "**⚠️ 整个工具调用没有执行**：被拦截的是一次包含 git commit/push 的完整 Bash "
+        + "调用——其中非 git 的前序步骤（写文件、跑脚本）也全部未运行。请把「修复」与"
+        + "「提交」拆成两次独立的工具调用，修完再单独执行提交。"
     )
