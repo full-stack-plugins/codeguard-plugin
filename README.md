@@ -67,7 +67,7 @@ AI code that passes lint on first try
 |---|---|
 | Plugin ID | `partme-codeguard-plugin` |
 | Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.6.7` |
+| Current version | `0.7.0` |
 | ZCode manifest | `.zcode-plugin/plugin.json` |
 | Codex manifest | `.codex-plugin/plugin.json` |
 | MCP server | Published: stdio server via the official SDK (`check_code_style` / `auto_fix` / `list_languages`); see Quick start |
