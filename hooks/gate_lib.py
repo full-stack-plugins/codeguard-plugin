@@ -36,13 +36,17 @@ GUARD_EXCLUDE_DIRS = {
     ".nuxt", ".gradle", "vendor", ".idea", ".vscode", "coverage", ".terraform",
     ".tox", ".eggs", "htmlcov", ".turbo", ".parcel-cache",
 }
-# 文件名模式（fnmatch）：密钥/凭据/本地环境/数据库/系统垃圾
+# 文件名模式（fnmatch，任意层级）：密钥/凭据/本地环境/系统垃圾
 GUARD_EXCLUDE_FILES = [
     ".env", ".env.*", "*.env", "*.pem", "*.key", "*.p12", "*.pfx", "*.jks",
     "*.keystore", "id_rsa", "id_ed25519", "id_ecdsa", "*.pem.orig",
     "credentials*.json", "serviceAccount*.json", "*service-account*.json",
-    "*.sqlite", "*.sqlite3", "*.db", ".DS_Store", "Thumbs.db", "*.log", "*.pyc",
+    ".DS_Store", "Thumbs.db", "*.pyc",
 ]
+# 仅**仓根级**命中的模式：数据库/日志常作第一方 fixture 合法入库
+# （tests/fixtures/sample.db、docs 里的归档 log），只拦散落在根目录的
+# 数据转储与调试日志——此前与密钥同池任意层级匹配，误伤合法入库（实测）。
+GUARD_ROOT_ONLY_FILES = ["*.sqlite", "*.sqlite3", "*.db", "*.log"]
 
 
 def _git(project_root: Path, *args: str) -> str | None:
@@ -78,7 +82,17 @@ def check_commit_safety(project_root: Path, mode: str) -> list[tuple[str, str, s
         if not f:
             continue
         parts = f.split("/")
-        hit_dir = next((seg for seg in parts[:-1] if seg in GUARD_EXCLUDE_DIRS), None)
+        hit_dir = None
+        for idx, seg in enumerate(parts[:-1]):
+            if seg not in GUARD_EXCLUDE_DIRS:
+                continue
+            # vendor 仅**仓根级**=依赖快照；嵌套（scripts/vendor、tools/vendor）
+            # 是第一方源码树——裸段匹配曾把 skill_vendor.py 判成"移出版本库"
+            # （实测误伤，且打断依赖它的 skills-check CI）。
+            if seg == "vendor" and idx != 0:
+                continue
+            hit_dir = seg
+            break
         if hit_dir:
             violations.append((
                 f, f"目录 ./{hit_dir}/ 属于依赖/产物/本地环境，不应入库",
@@ -87,6 +101,11 @@ def check_commit_safety(project_root: Path, mode: str) -> list[tuple[str, str, s
             continue
         name = parts[-1]
         rule = next((pat for pat in GUARD_EXCLUDE_FILES if fnmatch.fnmatch(name, pat)), None)
+        if rule is None and len(parts) == 1:
+            # 仓根级 db/log/sqlite 单独一池（见 GUARD_ROOT_ONLY_FILES 注释）
+            rule = next(
+                (pat for pat in GUARD_ROOT_ONLY_FILES if fnmatch.fnmatch(name, pat)), None
+            )
         if rule:
             violations.append((
                 f, f"文件命中敏感模式 {rule}（密钥/凭据/本地配置类）",
@@ -466,7 +485,9 @@ def gate_directive(failures: list) -> str:
         + "\n\n"
         + "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
         + "请立即处理：1) 按上面「怎么修」逐项修复（能自动修复的先跑自动修复命令）；"
-        + "2) 修复过程中无需向用户确认；3) 全部修复完成后重新执行用户要做的提交操作。\n"
+        + "2) 纯 lint 类修复可直接继续、不必逐项追问；但凡涉及付费、发布、删除、"
+        + "密钥、或跨出本仓的操作，必须先征得用户同意再执行；"
+        + "3) 修复完成后重新执行用户要做的提交操作。\n"
         + "确需绕过（仅用户明确要求时）：在该仓库执行 git config codeguard.skipGate true，"
         + "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
         + "只对手动直调 run_check 有效（无法传入宿主钩子进程）。\n\n"

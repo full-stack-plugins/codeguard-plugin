@@ -187,15 +187,23 @@ def main() -> int:
     violations = check_commit_safety(project_root, mode)
 
     if failures or violations:
-        # 软引导：prompt 正常送达 AI，同时注入修复指令，AI 自动修复后重新提交
+        # 软引导：prompt 正常送达 AI，且注入修复指令，AI 自动修复后重新提交。
+        # 注意：可能"只有安全违规、零 lint 失败"——此前 notify 直接取
+        # failures[0][0] 越界，fail-open 吞成空输出（实测复现），两路都要兜。
         _first_issue = failures[0][1].splitlines()[0][:120] if failures and failures[0][1] else "详见对话"
-        notify(summarize_failures(failures), f"{failures[0][0]}: {_first_issue}")
+        _headline = (
+            f"{failures[0][0]}: {_first_issue}" if failures
+            else (f"提交安全: {violations[0][0]}" if violations else "提交门禁发现违规")
+        )
+        notify(summarize_failures(failures), _headline)
         parts = [gate_directive(failures)]
         if violations:
             parts.append(format_safety_report(violations))
         parts.append(
-            "**给 AI 的强制指令**：安全违规文件必须 git rm --cached + 补 .gitignore，"
-            "涉及密钥/凭据的提醒用户轮换；全部修复后重新执行提交，无需向用户确认。"
+            "**给 AI 的强制指令**：**密钥/凭据类**必须 git rm --cached 并提醒用户"
+            "轮换密钥；**非密钥类**先与用户确认是否为有意入库的第一方代码或合法"
+            " fixture，确认误入库再 git rm --cached + 补 .gitignore；确认并修复后"
+            "重新执行提交。"
         )
         print(json.dumps({
             "hookSpecificOutput": {

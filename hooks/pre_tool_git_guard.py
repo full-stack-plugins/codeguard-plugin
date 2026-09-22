@@ -94,12 +94,65 @@ def resolve_project_roots(command: str) -> list[Path]:
     return roots
 
 
-def _git_side_effect_sub(seg: str) -> str | None:
-    """命令段段首为 git commit|push 时返回子命令（commit/push），否则 None。
+_ASSIGN_RE = None  # 延迟编译，保持模块零顶层 re 依赖
+_ASSIGN_PATTERN = r"^[A-Za-z_][A-Za-z0-9_.-]*="
+_BARE_WRAPPERS = ("env", "sudo", "nohup", "command", "time", "nice", "ionice", "setsid", "stdbuf")
+_GIT_VALUE_FLAGS = ("-C", "-c", "--git-dir", "--work-tree", "--exec-path",
+                    "--namespace", "--config-env", "--attr-source")
+_GIT_BOOL_FLAGS = ("--no-pager", "--bare", "--literal-pathspecs",
+                   "--no-optional-locks", "--shallow-file", "--exec-path")
 
-    首 token 剥一层包裹引号（`bash -c "git commit …"` 切段后首词是 `"git`）。
+
+def _normalize_segment(seg: str) -> list[str]:
+    """剥掉段首的环境赋值/env/裸 wrapper 前缀与 git 全局选项，暴露子命令。
+
+    漏检实例（实测静默放行）：`VAR=1 git push` 段首是 `VAR=1`；`git -C path push`
+    tokens[1] 是 `-C`；`sudo git push` 段首是 `sudo`。剥完后若段首仍非 git 则
+    返回原 tokens（由调用方判定为非 git 段）。
+    能力边界（docstring 如实声明）：带值的 wrapper 参数（`sudo -u root …`）
+    不做完整解析，只剥裸 wrapper token。
     """
+    import re as _re
     tokens = seg.strip().split()
+    i, n = 0, len(tokens)
+    while True:
+        while i < n and _re.match(_ASSIGN_PATTERN, tokens[i]):
+            i += 1
+        if i < n and tokens[i] == "env":
+            i += 1
+            continue
+        break
+    while i < n and tokens[i] in _BARE_WRAPPERS:
+        i += 1
+    if i >= n:
+        return tokens
+    if tokens[i].strip("\"'") != "git":
+        return tokens[i:]
+    i += 1
+    while i < n:
+        tok = tokens[i].strip("\"'")
+        if tok in _GIT_BOOL_FLAGS:
+            i += 1
+            continue
+        if tok in _GIT_VALUE_FLAGS:
+            i += 2
+            continue
+        if tok.startswith(("-C", "-c", "--git-dir", "--work-tree", "--exec-path")) and len(tok) > 2:
+            i += 1
+            continue
+        break
+    # 保留 "git" 作为首 token（调用方按 [prog, sub, …] 形状判定），只剥掉前面的
+    # 前缀与后面的全局选项；`git` 裸段（无子命令）返回 ["git"] → len<2 → None。
+    return ["git"] + tokens[i:]
+
+
+def _git_side_effect_sub(seg: str) -> str | None:
+    """归一化后，段的子命令为 commit|push 则返回之，否则 None。
+
+    首 token 剥一层包裹引号（`bash -c "git commit …"` 切段后首词是 `"git`）；
+    前缀与 git 全局选项见 `_normalize_segment`。
+    """
+    tokens = _normalize_segment(seg)
     if len(tokens) < 2:
         return None
     first = tokens[0].strip("\"'")
@@ -258,9 +311,11 @@ def main() -> int:
         violations = check_commit_safety(project_root, mode)
         if violations:
             reports.append(format_safety_report(violations) + (
-                "\n\n**给 AI 的强制指令**：先把上述文件移出版本库"
-                "（git rm --cached + .gitignore），然后重新执行本次 git 命令；"
-                "涉及密钥/凭据的必须提醒用户轮换，不能只删了事。"
+                "\n\n**给 AI 的强制指令**：**密钥/凭据类**（.env、*.pem、id_* 等）"
+                "立即 git rm --cached 并提醒用户轮换密钥，不能只删了事；"
+                "**非密钥类**（依赖/产物目录、仓根 db/log 等）**先与用户确认**"
+                "是否为有意入库的第一方代码或合法 fixture——确认属误入库才执行"
+                "git rm --cached + .gitignore，确认后重新执行本次 git 命令。"
             ))
 
     if not reports:

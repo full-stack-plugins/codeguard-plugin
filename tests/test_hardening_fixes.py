@@ -511,3 +511,106 @@ class FourHookDedupTests(unittest.TestCase):
         b = _run_hook("stop_summary.py", {"session_id": "s-b"}, repo, env_extra=self.env)
         self.assertTrue(a.stdout.strip())
         self.assertTrue(b.stdout.strip())
+
+
+# ══════════ 2026-09-22 round-2 handoff batch（env前缀/vendor范围/db-log/指令措辞）══════════
+
+class EnvPrefixGuardTests(unittest.TestCase):
+    """转交项①：`VAR=1 git push` / `git -C path push` / wrapper 前缀曾静默放行。"""
+
+    def test_prefixed_and_flagged_forms_are_guarded(self) -> None:
+        cases = [
+            ("FOO=1 git push", "push"),
+            ("env FOO=1 git push", "push"),
+            ("git -C /repo push", "push"),
+            ("git -c user.name=x commit -m y", "commit"),
+            ("sudo git push", "push"),
+            ('bash -c "git commit -m x"', "commit"),
+            ("VAR=1 git add -A && git commit -m x", "commit"),
+            ("nohup git commit -m x", "commit"),
+        ]
+        for cmd, want in cases:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(guard._guarded_mode(cmd), want)
+
+    def test_non_git_after_normalization_stays_unguarded(self) -> None:
+        for cmd in ("VAR=1 echo git push", "echo git push", "git status", "VAR=1 ls", "git"):
+            with self.subTest(cmd=cmd):
+                self.assertIsNone(guard._guarded_mode(cmd))
+
+    def test_is_guarded_uses_the_same_normalizer(self) -> None:
+        self.assertTrue(guard.is_guarded("FOO=1 git push"))
+        self.assertFalse(guard.is_guarded('echo "git push"'))
+
+
+class SafetyScopeTests(unittest.TestCase):
+    """转交项②④：嵌套 vendor=第一方、仓根 db/log=转储；密钥类仍任意层级。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.repo = _fresh_repo()
+        (cls.repo / "scripts" / "vendor").mkdir(parents=True)
+        (cls.repo / "scripts" / "vendor" / "tool.py").write_text("x=1\n", encoding="utf-8")
+        (cls.repo / "tests" / "fixtures").mkdir(parents=True)
+        (cls.repo / "tests" / "fixtures" / "sample.db").write_bytes(b"SQLite fake")
+        (cls.repo / "tests" / "fixtures" / "archive.log").write_text("ok\n", encoding="utf-8")
+        (cls.repo / "vendor").mkdir()
+        (cls.repo / "vendor" / "dep.py").write_text("y=2\n", encoding="utf-8")
+        (cls.repo / "junk.db").write_bytes(b"root dump")
+        (cls.repo / "debug.log").write_text("trace\n", encoding="utf-8")
+        (cls.repo / "nested").mkdir()
+        (cls.repo / "nested" / ".env").write_text("SECRET=1\n", encoding="utf-8")
+        _git(cls.repo, "add", "-A")
+
+    def _paths(self) -> list[str]:
+        import gate_lib as gl
+        return [v[0] for v in gl.check_commit_safety(self.repo, "commit")]
+
+    def test_first_party_vendor_and_fixtures_pass(self) -> None:
+        paths = self._paths()
+        self.assertNotIn("scripts/vendor/tool.py", paths)
+        self.assertNotIn("tests/fixtures/sample.db", paths)
+        self.assertNotIn("tests/fixtures/archive.log", paths)
+
+    def test_root_vendor_and_root_dumps_still_blocked(self) -> None:
+        paths = self._paths()
+        self.assertIn("vendor/dep.py", paths)
+        self.assertIn("junk.db", paths)
+        self.assertIn("debug.log", paths)
+
+    def test_secrets_still_blocked_at_any_depth(self) -> None:
+        self.assertIn("nested/.env", self._paths())
+
+
+class DirectiveWordingTests(unittest.TestCase):
+    """转交项③：指令不再无条件"无需确认"；非密钥类命中先确认第一方身份。"""
+
+    def test_gate_directive_requires_consent_for_sensitive_ops(self) -> None:
+        text = gate_lib.gate_directive([("shell", "SC1", "f", "h")])
+        self.assertIn("先征得用户同意", text)
+        self.assertIn("纯 lint 类修复", text)
+        self.assertNotIn("无需向用户确认", text)
+
+    def test_guard_safety_paragraph_splits_secret_vs_structural(self) -> None:
+        repo = _fresh_repo()
+        (repo / "junk.db").write_bytes(b"root dump")
+        _git(repo, "add", "-A")
+        r = _run_hook(
+            "pre_tool_git_guard.py",
+            {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}},
+            repo, env_extra={"CODEGUARD_HOME": str(Path(tempfile.mkdtemp(prefix="cg-home-")))},
+        )
+        self.assertEqual(r.returncode, 2, r.stderr[:300])
+        self.assertIn("先与用户确认", r.stderr)
+        self.assertIn("第一方", r.stderr)
+
+    def test_ups_safety_paragraph_requires_confirmation(self) -> None:
+        repo = _fresh_repo()
+        (repo / "junk.db").write_bytes(b"root dump")
+        _git(repo, "add", "-A")
+        r = _run_hook(
+            "user_prompt_validator.py", {"user_prompt": "提交代码"}, repo,
+            env_extra={"CODEGUARD_HOME": str(Path(tempfile.mkdtemp(prefix="cg-home-")))},
+        )
+        self.assertIn("先与用户确认", r.stdout)
+        self.assertNotIn("无需向用户确认", r.stdout)

@@ -66,7 +66,7 @@ if __name__ == "__main__":
 ## 4. PreToolUse 硬拦截（exit 2）的语义边界
 
 `pre_tool_git_guard.py` 是**唯一**会 exit 2 的 hook——且仅当：
-1. 入参命令命中 `is_guarded()`：**直接**（分隔符切段后段首为 `git commit|push`；
+1. 入参命令命中 `is_guarded()`：**直接**（分隔符切段、剥除段首 `NAME=VAL`/`env`/常见裸 wrapper 前缀并跳过 git 全局选项（`-C`/`-c`/…）后子命令为 `git commit|push`；
    子串匹配会误伤 payload/echo 文本）**或一层解释器间接**（`bash|sh|python… <脚本>`
    的脚本文本、`-c` 内联代码按同规则扫描——`bash runner.sh` 式绕过曾连推 4 次漏网；
    拼接式 subprocess 不在静态扫描承诺内）；并且
