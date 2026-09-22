@@ -348,8 +348,24 @@ def _mentioned_files(full: str, project_root: Path) -> set[str]:
 
 
 def _stale_attribution(full: str, project_root: Path, lang: str, lang_files: list[str]) -> str | None:
-    """保留旧调用契约；没有实际基线复跑，禁止凭文件位置豁免失败。"""
-    # 没有同命令/同工具版本的基线证据，未修改调用方也可能被本次 API 变更破坏。
+    """[已弃用·保留接口] delta 失败路径下的"历史债"弱归因。
+
+    verdict-integrity 原则：**真正的豁免必须有基线复跑证据**（双跑
+    baseline_stale_finding）——本函数对此**永远不豁免**，遵循"宁可误拦
+    不误放行"：只靠失败文件是否在改动集推断存量债是危险的（同名文件被
+    替换时也会"不在改动集"，但其实是新债），必须有 baseline_ref 上同
+    命令同工具的实际复跑才能豁免。
+
+    历史与契约：
+    - 入口仍保留以兼容 tests/test_verdict_integrity.py 与 test_session_fixes
+      中的调用；这些测试断言本函数返回 None（不豁免），本实现亦满足。
+    - 真正的豁免路径在 baseline_stale_finding（hook_lib.py 行 ~430+），
+      由 _run_gate_uncached 在 delta 逐文件失败循环里调用。
+    - 如未来加入"按文件位置启发式豁免"，本函数将是扩展点：补基线 fallback
+      或与 baseline_stale_finding 双签名比对。
+
+    本函数当前实现永远返回 None。
+    """
     return None
 
 

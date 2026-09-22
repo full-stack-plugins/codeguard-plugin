@@ -4,7 +4,6 @@
 """
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 import unittest
@@ -21,10 +20,10 @@ class VersionBumpDowngradeTests(unittest.TestCase):
         root = Path(tempfile.mkdtemp())
         (root / "pom.xml").write_text(pom_content, encoding="utf-8")
         import subprocess
-        subprocess.run(["git", "init", "-q"], cwd=root, capture_output=True)
-        subprocess.run(["git", "add", "."], cwd=root, capture_output=True)
+        subprocess.run(["git", "init", "-q"], cwd=root, capture_output=True, check=False)
+        subprocess.run(["git", "add", "."], cwd=root, capture_output=True, check=False)
         subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
-                        "commit", "-qm", "init"], cwd=root, capture_output=True)
+                        "commit", "-qm", "init"], cwd=root, capture_output=True, check=False)
         return root
 
     def test_pure_version_bump_detected(self):
@@ -36,7 +35,7 @@ class VersionBumpDowngradeTests(unittest.TestCase):
         pom = root / "pom.xml"
         pom.write_text(pom.read_text().replace("1.0.0", "1.0.1"), encoding="utf-8")
         import subprocess
-        subprocess.run(["git", "add", "."], cwd=root, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=root, capture_output=True, check=False)
         self.assertTrue(_is_version_bump_only(root, ["pom.xml"]))
 
     def test_dependency_change_not_bump(self):
@@ -48,7 +47,7 @@ class VersionBumpDowngradeTests(unittest.TestCase):
         pom = root / "pom.xml"
         pom.write_text(pom.read_text().replace("foo", "bar"), encoding="utf-8")
         import subprocess
-        subprocess.run(["git", "add", "."], cwd=root, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=root, capture_output=True, check=False)
         self.assertFalse(_is_version_bump_only(root, ["pom.xml"]))
 
     def test_non_build_file_not_bump(self):
@@ -57,7 +56,7 @@ class VersionBumpDowngradeTests(unittest.TestCase):
         (root / "src/Main.java").parent.mkdir(parents=True, exist_ok=True)
         (root / "src/Main.java").write_text("class Main {}", encoding="utf-8")
         import subprocess
-        subprocess.run(["git", "add", "."], cwd=root, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=root, capture_output=True, check=False)
         self.assertFalse(_is_version_bump_only(root, ["pom.xml", "src/Main.java"]))
 
 
@@ -65,31 +64,31 @@ class ToolchainVerdictTests(unittest.TestCase):
     """P0-1：工具链失配归 UNVERIFIED，而非 FAIL。"""
 
     def test_maven_model_version_mismatch_is_unverified(self):
-        from verdict import lint_verdict, UNVERIFIED
+        from verdict import UNVERIFIED, lint_verdict
         output = "[FATAL] 'modelVersion' of '4.1.0' is newer than the versions supported by this version of Maven: [4.0.0]"
         status, reason = lint_verdict(1, ["mvn", "verify"], output)
         self.assertEqual(status, UNVERIFIED, f"got {status}: {reason}")
 
     def test_jdk_release_not_supported_is_unverified(self):
-        from verdict import lint_verdict, UNVERIFIED
+        from verdict import UNVERIFIED, lint_verdict
         output = "[ERROR] error: release version 1.8 not supported"
         status, reason = lint_verdict(1, ["javadoc", "-source", "1.8"], output)
         self.assertEqual(status, UNVERIFIED, f"got {status}: {reason}")
 
     def test_invalid_target_release_is_unverified(self):
-        from verdict import lint_verdict, UNVERIFIED
+        from verdict import UNVERIFIED, lint_verdict
         output = "[ERROR] error: invalid target release: 21"
         status, reason = lint_verdict(1, ["javac", "--release", "21"], output)
         self.assertEqual(status, UNVERIFIED, f"got {status}: {reason}")
 
     def test_class_version_mismatch_is_unverified(self):
-        from verdict import lint_verdict, UNVERIFIED
+        from verdict import UNVERIFIED, lint_verdict
         output = "java.lang.UnsupportedClassVersionError: Foo has been compiled by a more recent version of the Java Runtime"
         status, reason = lint_verdict(1, ["java", "-jar", "foo.jar"], output)
         self.assertEqual(status, UNVERIFIED, f"got {status}: {reason}")
 
     def test_real_violation_still_fails(self):
-        from verdict import lint_verdict, FAIL
+        from verdict import FAIL, lint_verdict
         output = "src/Main.java:5: warning: unused variable"
         status, reason = lint_verdict(1, ["mvn", "checkstyle:check"], output)
         self.assertEqual(status, FAIL, f"got {status}: {reason}")
