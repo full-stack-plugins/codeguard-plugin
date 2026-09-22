@@ -154,9 +154,18 @@ def run_fix(languages: list[str], project_root: Path,
         lang_files: list[str] | None = None
         if files is not None:
             lang_files = [f for f in files if detect_language(f, project_root) == lang]
+            # .zsh 剥离（与门禁同一份认知）：shfmt 只支持 POSIX shell/bash，
+            # 对 zsh 文件 -w 会重排方言语法造成损坏；跳过并明示修复指令。
+            zsh_files = [f for f in lang_files if f.endswith(".zsh")]
+            if zsh_files:
+                lang_files = [f for f in lang_files if not f.endswith(".zsh")]
+                results.append({"language": lang, "fixed": False, "skipped": True,
+                                "status": "SKIPPED", "exit_code": 0,
+                                "note": (f"{len(zsh_files)} 个 zsh 文件跳过 formatter"
+                                         "（shfmt 不支持 zsh；文件头添加"
+                                         " `# shellcheck shell=bash` 注释后"
+                                         " shellcheck 门禁即可正常送检）")})
             if not lang_files:
-                results.append({"language": lang, "fixed": False, "skipped": True, "status": "SKIPPED",
-                                "note": "本次改动未涉及该语言"})
                 continue
         fmt = cmd_def.get("format")
         if files is not None and not cmd_def.get("append_files", True):

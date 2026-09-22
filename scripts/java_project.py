@@ -236,6 +236,10 @@ def analyze(project_root: str | Path, changed: list[str] | None = None) -> dict:
         executable = "./" + wrapper if (root / wrapper).is_file() else ("mvn" if system == "maven" else "gradle")
         if (root / wrapper).exists() and os.name != "nt" and not os.access(root / wrapper, os.X_OK):
             raise ValueError(f"wrapper 不可执行: {wrapper}")
+        # 顶层 executable 键：门禁消费者（gate_lib Java 门禁）直接读取，
+        # 用于把 PATH 上的 mvn/gradle 替换为项目自带 wrapper——
+        # POM 4.1.0 等 Maven 4 仓库在 Maven 3 下必然解析失败（实测）。
+        plan["executable"] = executable
         relevant = None if changed is None else [p for p in changed if p.endswith((".java", ".kt", ".groovy", ".scala"))
                                                  or "/src/" in "/" + p
                                                  or Path(p).name in _BUILD_FILES or p.startswith((".mvn/", "gradle/"))]

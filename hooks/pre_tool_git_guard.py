@@ -33,6 +33,7 @@ from gate_lib import (
     should_suppress_event,
     skip_gate_via_git_config,  # 规范实现已上移 gate_lib（UPS 也要用）
 )
+from scope import changed_files
 
 # 拦截的 git 子命令（避免误拦 git status/diff/log 等只读命令）
 GUARDED_PATTERNS = ("git commit", "git push")
@@ -567,6 +568,20 @@ def is_guarded(command: str) -> bool:
     return _guarded_mode(command) is not None
 
 
+def _filter_fallback_roots(roots: list[Path], mode: str,
+                           lanes: tuple[str, ...] | list[str] | None) -> list[Path]:
+    """monorepo 兜底面收窄：只保留本次提交面非空的仓。
+
+    会话实测：openclaw 提交时，兜底把 workspace 下所有子仓连同根上散落脚本
+    一起纳入检测面——无关仓的存量违规也变成拦路面（误伤与提交完全无关的
+    仓库）。无提交面的仓跳过；全部为空返回 []（调用方审计后放行）。
+
+    lanes-only：兜底场景没有显式 cd，`git add <相对路径>` 的 extra 属于
+    会话根而非任何子仓，不参与归属判定。
+    """
+    return [r for r in roots if changed_files(r, mode=mode, lanes=lanes)]
+
+
 def main() -> int:
     ensure_user_path()
     payload = read_payload()
@@ -608,8 +623,16 @@ def main() -> int:
             )
             return 2
     if fallback_note:
+        # 兜底面收窄（会话实测误拦：无关仓存量违规连带拦提交）。全空 = 本次
+        # 无可拦对象，审计后放行。
+        before = len(roots)
+        roots = _filter_fallback_roots(roots, mode, None)
+        fallback_note += f"；提交面收窄 {before}→{len(roots)} 个仓"
+        if not roots:
+            record_skip_event("monorepo-fallback-empty", detail=fallback_note)
+            return 0
         # 兜底走通：仅在会话状态记录（不进 stderr，避免噪音），Stop 摘要可见
-        record_skip_event("monorepo-fallback", roots[0])
+        record_skip_event("monorepo-fallback", roots[0], detail=fallback_note)
     if any(skip_gate_via_git_config(r) for r in roots):
         record_skip_event("skipGate", roots[0])
         return 0
@@ -652,7 +675,7 @@ def main() -> int:
         if failures:
             # 版本自标识由 gate_directive 首行综述之后的第二行承担——
             # 此处不再前置横幅：stderr 首行必须是综述（三个契约测试锁定）。
-            reports.append(gate_directive(failures))
+            reports.append(gate_directive(failures, project_root=project_root))
         unknown = [s for s in _skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
                    and "markdown 风格告警" not in s]
         if unknown:
