@@ -48,7 +48,7 @@ codeguard check --lang java /path/to/project
 
 The planner reads Maven POM / Gradle Groovy or Kotlin DSL, prefers project wrappers, maps files to modules and computes reverse transitive dependencies. Changing api can require checking service and app even if their files did not change. Deletions, resources and build descriptors are included.
 
-Maven plans use verify, with -pl and -am for a safe subset. Gradle plans use root check or affected :module:check tasks. Profiles, unresolved properties, inherited dependencies or recognized dynamic/composite Gradle builds expand the plan conservatively. Planning never executes a build, downloads dependencies, installs tools or initializes CodeGraph.
+Maven plans use verify with -DskipTests (test code still compiles; only execution is skipped), with -pl and -am for a safe subset. Gradle plans use root check or affected :module:check tasks with -x test. The default level checks compilation, packaging and lifecycle-bound static checks; test execution belongs to CI or an explicit java.commands declaration. Profiles, unresolved properties, inherited dependencies or recognized dynamic/composite Gradle builds expand the plan conservatively. Planning never executes a build, downloads dependencies, installs tools or initializes CodeGraph.
 
 ### Explicit project commands
 
@@ -64,7 +64,7 @@ A root codeguard.json can declare authoritative argv lists:
 }
 ```
 
-Commands run in order, stopping on failure. They are trusted project configuration, not shell strings. Running check or the Git gate may execute project plugins/tests and access package registries; this is **not a sandbox**.
+Commands run in order, stopping on failure. They are trusted project configuration, not shell strings. Declaring commands is also how a project opts into a stronger level than the default — for example the full verify including test execution shown above. Running check or the Git gate executes project builds and may run project plugins; the default level skips test execution (-DskipTests / -x test), but configured commands or plugin-bound tasks may run tests, and package registries may be accessed — this is **not a sandbox**.
 
 Coverage is module-level, not a symbol call graph or business-semantic proof. A successful verify/check does not establish that Checkstyle, PMD, SpotBugs or tests are configured comprehensively. Inspect the plan's gaps and reasons.
 
@@ -117,7 +117,7 @@ Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables l
 
 Root codeguard.json may set gate_scope to delta or repo and customize extension/exclusion detection. User settings retain enabled_languages, auto_fix_on_save and lint_timeout_seconds. strict_mode is reserved and does not make PostToolUse block. See the [hook protocol](hooks/__protocol__.md).
 
-The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Full command inventory: [languages](docs/LANGUAGES.md).
+The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Python checks honor the project's own ruff configuration (ruff.toml / .ruff.toml / [tool.ruff]); when none exists, codeguard injects a default rule set pinned to the CI baseline (ruff==0.16.8) so verdicts do not drift with whichever ruff version a machine happens to have. Full command inventory: [languages](docs/LANGUAGES.md).
 
 The explicit escape hatch git config codeguard.skipGate true bypasses the hook gate and is recorded in session summaries. Shared hook state lives under CODEGUARD_HOME (default ~/.codeguard).
 

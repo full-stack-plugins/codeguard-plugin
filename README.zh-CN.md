@@ -48,7 +48,7 @@ codeguard check --lang java /path/to/project
 
 规划器读取 Maven POM / Gradle Groovy、Kotlin DSL，优先项目 wrapper，将文件映射到模块，再计算反向传递依赖。修改 api 可能要求复查 service 和 app，即使调用方文件没有变化。删除、资源与构建描述变更均纳入分析。
 
-Maven 使用 verify，安全子集增加 -pl、-am；Gradle 使用根 check 或受影响的 :module:check。profiles、未解析属性、父依赖继承或识别到的动态/复合 Gradle 构建会保守扩大范围。规划不会执行构建、下载依赖、安装工具或初始化 CodeGraph。
+Maven 使用 verify 并追加 -DskipTests（测试代码仍编译，仅跳过执行），安全子集增加 -pl、-am；Gradle 使用根 check 或受影响的 :module:check 并追加 -x test。默认等级检查编译、打包与生命周期绑定的静态检查；测试执行属于 CI 或显式 java.commands 声明的职责边界。profiles、未解析属性、父依赖继承或识别到的动态/复合 Gradle 构建会保守扩大范围。规划不会执行构建、下载依赖、安装工具或初始化 CodeGraph。
 
 ### 项目权威命令
 
@@ -64,7 +64,7 @@ Maven 使用 verify，安全子集增加 -pl、-am；Gradle 使用根 check 或�
 }
 ```
 
-命令顺序执行，失败停止。它们是可信项目配置，不是 shell 字符串。执行 check 或 Git 门禁可能运行项目插件、测试并访问依赖仓库；**这不是沙箱**。
+命令顺序执行，失败停止。它们是可信项目配置，不是 shell 字符串。声明命令也是项目升级检查等级的途径——例如上例执行含测试的完整 verify。执行 check 或 Git 门禁会运行项目构建、可能触发项目插件；默认等级跳过测试执行（-DskipTests / -x test），但配置命令或插件绑定任务可能运行测试，并可能访问依赖仓库；**这不是沙箱**。
 
 本轮覆盖模块级，不是符号调用图或业务语义证明。verify/check 成功不代表 Checkstyle、PMD、SpotBugs 或测试配置完整；应查看计划的 gaps 和 reasons。
 
@@ -117,7 +117,7 @@ python3 scripts/run_check.py --mcp /path/to/project
 
 仓根 codeguard.json 的 gate_scope 可选 delta/repo，也可定制扩展名和排除规则。用户设置保留 enabled_languages、auto_fix_on_save、lint_timeout_seconds。strict_mode 是保留字段，不会令 PostToolUse 阻断，详见[钩子协议](hooks/__protocol__.md)。
 
-注册表含 **54 个 Stable 适配器和 3 个 Planned 项**。“Stable” 不证明全部工具链或项目已验证。Markdown/YAML 需要项目配置，缺配置为 UNVERIFIED；Markdown 违规只告警。生成物和依赖目录从普通 lint 范围排除，不等于允许入库。完整命令见[语言清单](docs/LANGUAGES.md)。
+注册表含 **54 个 Stable 适配器和 3 个 Planned 项**。“Stable” 不证明全部工具链或项目已验证。Markdown/YAML 需要项目配置，缺配置为 UNVERIFIED；Markdown 违规只告警。生成物和依赖目录从普通 lint 范围排除，不等于允许入库。Python 检查优先使用项目自有 ruff 配置（ruff.toml / .ruff.toml / [tool.ruff]）；项目无自有配置时注入钉扎在 CI 基线（ruff==0.16.8）的默认规则集，判定不随机器上 ruff 版本漂移。完整命令见[语言清单](docs/LANGUAGES.md)。
 
 显式逃生门 git config codeguard.skipGate true 会绕过钩子门禁，并在会话总结中记录。共享状态位于 CODEGUARD_HOME（默认 ~/.codeguard）。
 

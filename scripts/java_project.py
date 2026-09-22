@@ -167,10 +167,15 @@ def analyze(project_root: str | Path, changed: list[str] | None = None) -> dict:
                 argv = [executable, "-B"]
                 if not full and "." not in affected:
                     argv += ["-pl", ",".join(sorted(affected)), "-am"]
-                argv += ["verify"]
+                # 默认等级不含测试执行（-DskipTests 只跳执行，测试代码仍编译）：
+                # 门禁管提交面的编译/打包/静态正确性，测试执行交 CI 或
+                # codeguard.json java.commands 显式声明——大仓全量测试普遍超
+                # 门禁超时预算，跑满也只剩 UNVERIFIED，反而给不出结论。
+                argv += ["-DskipTests", "verify"]
             else:
                 argv = [executable] + (["check"] if full or "." in affected else
                                         [":" + p.replace("/", ":") + ":check" for p in sorted(affected)])
+                argv += ["-x", "test"]
             commands = [{"kind": "verify", "argv": argv}]
             config = root / "codeguard.json"
             if config.exists():

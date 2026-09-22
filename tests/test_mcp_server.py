@@ -99,7 +99,7 @@ class McpServerTests(unittest.TestCase):
                 result = _read_until(proc, 3)
                 plan = json.loads(result["result"]["content"][0]["text"])
                 self.assertEqual(plan["status"], "PLANNED")
-                self.assertEqual(plan["commands"][0]["argv"], ["mvn", "-B", "verify"])
+                self.assertEqual(plan["commands"][0]["argv"], ["mvn", "-B", "-DskipTests", "verify"])
                 self.assertFalse((root / "target").exists())
         finally:
             try:
