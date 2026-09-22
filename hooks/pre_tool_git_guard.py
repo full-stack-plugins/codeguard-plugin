@@ -650,6 +650,8 @@ def main() -> int:
             exact=True, pending_commit=pending_commit,
         )
         if failures:
+            # 版本自标识由 gate_directive 首行综述之后的第二行承担——
+            # 此处不再前置横幅：stderr 首行必须是综述（三个契约测试锁定）。
             reports.append(gate_directive(failures))
         unknown = [s for s in _skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
                    and "markdown 风格告警" not in s]

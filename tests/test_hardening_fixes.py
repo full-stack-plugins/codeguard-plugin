@@ -90,6 +90,12 @@ class WholeCallNoticeTests(unittest.TestCase):
         self.assertIn("拆成两次独立的工具调用", text)
         # 首行契约保持：综述在最前
         self.assertTrue(text.splitlines()[0].startswith("codeguard ❌ 提交门禁未通过："))
+        # 版本自标识
+        self.assertIn("codeguard v", text)
+        # 构建产物清理自救指令
+        self.assertIn("rm -rf target/reports", text)
+        self.assertIn("不含 git commit/push", text)
+        self.assertIn("命令执行前拦截", text)
 
 
 class CacheKeyTests(unittest.TestCase):

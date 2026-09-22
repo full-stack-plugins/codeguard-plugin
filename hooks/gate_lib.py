@@ -42,6 +42,8 @@ from detect_lang import (
 from scope import FULL_SCAN_EXCLUDES, changed_files, scope_cmd
 
 # === git 提交内容安全检查：绝不该进版本库的文件 ===
+CODEGUARD_VERSION = "0.12.0"
+
 # 目录 = 构建产物/依赖快照**单一事实源**（scope.FULL_SCAN_EXCLUDES）+ IDE 目录。
 # 从单一来源派生：清单只在 scope.py 改一处，"入库面"与"扫描面"永不漂移
 # （此前两份手抄清单已经漂移：扫描面缺 out/.next/coverage 等 14 个目录，
@@ -140,7 +142,7 @@ def _gate_cache_path(project_root: Path) -> Path:
     return Path(tempfile.gettempdir()) / f"codeguard-gate-{os.getuid()}-{key}.json"
 
 
-def _worktree_fingerprint(project_root: Path) -> str:
+def _worktree_fingerprint(project_root: Path, *, max_files: int = 500) -> str:
     """工作区指纹：三路改动的**名字 + stat** 指纹（不再哈希全文内容）。
 
     只用 index mtime 会漏掉"文件已修但未 git add"——键不变 → 60 秒内继续
@@ -458,6 +460,24 @@ def _run_gate_uncached(
         ok, reason = probe_toolchain(cmd_def)
         if not ok:
             return (lang, None, f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）")
+
+        # Java 门禁接入 java_project 分析：mvnw 感知 + 工具链失配归跳过。
+        if lang == "java":
+            try:
+                from java_project import analyze as _jp_analyze
+                _jp = _jp_analyze(str(project_root))
+                if _jp.get("status") == "UNVERIFIED":
+                    return (lang, None,
+                            (f"{lang} 项目分析 UNVERIFIED（{_jp.get('build_system', '?')}），"
+                             f"原因: {'; '.join(_jp.get('reasons', []))}，本次未验证"))
+                exe = _jp.get("executable")
+                if exe and base_cmd and base_cmd[0] in ("mvn", "gradle"):
+                    base_cmd = [exe] + base_cmd[1:]
+            except Exception as exc:  # noqa: BLE001 — 分析失败不阻塞门禁，走原路径
+                print(f"[codeguard] java_project 分析失败（走原路径）: {exc!r}",
+                      file=sys.stderr)
+                record_gate_decision(project_root, lang, base_cmd, -1,
+                                     "UNVERIFIED", f"java_project 分析失败: {exc!r}")
 
         outputs: list[tuple[int, str, str]] = []
         stale_notes: list[str] = []
@@ -877,11 +897,16 @@ def gate_directive(failures: list) -> str:
     """
     header = [
         summarize_failures(failures),
+        f"codeguard v{CODEGUARD_VERSION}",
         "─" * 60,
         "**给 AI 的强制指令**：提交门禁未通过，禁止执行 git commit / git push。\n"
         + "**⚠️ 整个工具调用没有执行**：被拦截的是一次包含 git commit/push 的完整 Bash "
         "调用——其中非 git 的前序步骤（写文件、跑脚本）也全部未运行。请把「修复」与"
         "「提交」拆成两次独立的工具调用，修完再单独执行提交。\n"
+        + "**⚠️ 如果报错涉及 target/、dist/、build/ 下的构建产物**：请先单独"
+        "运行清理命令（如 `rm -rf target/reports`，不含 git commit/push），"
+        "清理完成后再重试提交——本门禁在命令执行前拦截，此前命令链中的清理"
+        "步骤不会被执行。\n"
         + "请立即处理：1) 按下面「怎么修」逐项修复（能自动修复的先跑自动修复命令）；"
         "2) 纯 lint 类修复可直接继续、不必逐项追问；但凡涉及付费、发布、删除、"
         "密钥、或跨出本仓的操作，必须先征得用户同意再执行；"
