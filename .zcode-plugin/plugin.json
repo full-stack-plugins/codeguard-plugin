@@ -5,11 +5,11 @@
     "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
-  "version": "0.11.1",
-  "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
+  "version": "0.12.0",
+  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "description_i18n": {
-    "en": "Cross-language code lint enforcement. PostToolUse hook auto-runs the language-specific linter on every AI-written file; failed lint blocks further writes when strict_mode is on. Ships ready-to-go .pre-commit-config.yaml templates for Java/Rust/TypeScript/Python.",
-    "zh-CN": "跨语言代码规范强制门禁插件，专为 ZCode / Claude Code / Codex CLI / Kimi Code 等 AI 编程助手设计。PostToolUse 钩子在 AI 写完文件后自动跑对应语言 linter；严格模式下失败会阻塞 AI 继续。内含可直接接入的 .pre-commit-config.yaml 模板。"
+    "en": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+    "zh-CN": "基于证据的代码检查与 Git 内容门禁，含 Java 模块影响分析。保存钩子只反馈，未验证项明确标注。"
   },
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
@@ -42,7 +42,7 @@
     "strict_mode": {
       "type": "boolean",
       "title": "严格模式",
-      "description": "启用后 PostToolUse 钩子会在 linter 失败时返回非 0 退出码，AI 必须修复后才能继续",
+      "description": "保留兼容字段，当前 PostToolUse 恒 exit 0；确定违规仅由 Git PreToolUse 门禁拦截。",
       "default": true
     },
     "auto_fix_on_save": {

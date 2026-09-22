@@ -348,15 +348,12 @@ def staging_intent(command: str) -> tuple[tuple[str, ...], list[str]]:
         if sub == "add":
             flags = [t for t in rest if t.startswith("-")]
             paths = [t for t in rest if not t.startswith("-")]
-            if not rest or any(f in ("-A", "-a", "-u", "--all", "--ignore-removal") for f in flags) \
-                    or any(p.strip("\"'") in (".", "./", "*", ":/") for p in paths):
-                add_all = True
-            elif paths:
+            if paths and not any(p.strip("\"'") in (".", "./", "*", ":/") for p in paths):
                 add_paths.extend(p.strip("\"'") for p in paths)
-            else:
-                add_all = True  # 无法预测形态时按宽口径（宁可多拦）
-            if any(f in ("-u", "--update") for f in flags):
+            elif any(f in ("-u", "--update") for f in flags):
                 add_tracked_only = True
+            else:
+                add_all = True
         elif sub == "commit" and any(t in ("-a", "-am", "--all") for t in rest):
             lanes.update(("staged", "unstaged"))
     if add_all:
@@ -366,7 +363,7 @@ def staging_intent(command: str) -> tuple[tuple[str, ...], list[str]]:
     for p in add_paths:
         if Path(p).is_absolute():
             continue
-        cand_root = last_cd if last_cd is not None else Path(".")
+        cand_root = last_cd if last_cd is not None else Path.cwd()
         # git add 的 pathspec 相对 shell 语境（last_cd 或 cwd）解析成绝对路径，
         # 再换算成**仓库根**相对路径——changed_files 的 paths 全部相对仓根；
         # cd 到仓库子目录（scripts/…）时相对 last_cd 会算错一截。
@@ -472,20 +469,29 @@ def main() -> int:
     # 按命令链预测实际提交面（纯 commit → 仅 staged；add -A/-a → 三路），
     # 并入 git add 显式路径（add 尚未执行、暂存区还是旧的）。
     lanes, extra = staging_intent(command)
+    pending_commit = "commit" in _collect_subs(command)
 
     # 每个被操作的仓库独立跑：linter 门禁 + 提交内容安全检查
     # （commit 查暂存区；push 查未推送提交的 diff，防已提交未发现的坏文件）
     reports = []
     for project_root in roots:
-        # extra 路径按各仓存在性过滤：多仓链里 add 的路径只属于其中一个仓，
-        # 幻影路径喂给 {file} 型 linter 会得到"文件不存在"的假失败。
-        root_extra = [p for p in extra if (project_root / p).exists()]
+        # 保留删除路径用于影响分析；单文件 linter 自行过滤不存在的文件。
+        root_extra = list(extra)
         failures, _skipped = run_gate(
             project_root, cfg, mode=mode, lanes=lanes, extra=root_extra,
+            exact=True, pending_commit=pending_commit,
         )
         if failures:
             reports.append(gate_directive(failures))
-        violations = check_commit_safety(project_root, mode)
+        unknown = [s for s in _skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
+                   and "markdown 风格告警" not in s]
+        if unknown:
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse", "additionalContext":
+                "codeguard: 存在未验证项，不能宣称全部通过：" + "；".join(unknown),
+            }}, ensure_ascii=False))
+        violations = check_commit_safety(project_root, mode, lanes=lanes, extra=root_extra,
+                                         pending_commit=pending_commit)
         if violations:
             reports.append(format_safety_report(violations) + (
                 "\n\n**给 AI 的强制指令**：**密钥/凭据类**（.env、*.pem、id_* 等）"

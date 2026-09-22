@@ -227,7 +227,7 @@ def test_hooks():
     ok("综述后跟细节（标题≠详情）", len(lines) > 3 and "具体问题" in r.stderr)
     ok("综述行未在细节中重复", lines.count(lines[0]) == 1)
 
-    # ── PreToolUse：干净仓 → 完全静默 ──
+    # ── PreToolUse：无 markdown 配置不能冒充检查通过（兼容 fail-open） ──
     clean = Path(tempfile.mkdtemp(prefix="cg-clean-"))
     git(clean, "init", "-q")
     git(clean, "config", "user.email", "t@t")
@@ -236,10 +236,10 @@ def test_hooks():
     git(clean, "add", "-A")
     r = run_hook("pre_tool_git_guard.py",
                  {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, clean)
-    ok("干净仓 exit 0 且零输出（通过即静默）", r.returncode == 0 and r.stdout == "" and r.stderr == "",
+    ok("未接入 linter 的仓放行但明确未验证", r.returncode == 0 and "未验证" in r.stdout,
        f"exit={r.returncode} out={r.stdout[:40]!r}")
     r = run_hook("user_prompt_validator.py", {"user_prompt": "提交代码"}, clean)
-    ok("干净仓提交意图注入通过确认", r.returncode == 0 and "✅" in r.stdout)
+    ok("未接入 linter 不注入通过确认", r.returncode == 0 and "未验证" in r.stdout and "✅" not in r.stdout)
 
     # ── PreToolUse：安全文件（.env/.venv 入库）→ 🛑 拦截 ──
     (repo / ".env").write_text("SECRET=1")
@@ -723,7 +723,7 @@ def test_cve():
     (d / "Cargo.lock").write_text("")
     orig_node = cve.ECOSYSTEM_SCANNERS["node"]["scan"]
     orig_rust = cve.ECOSYSTEM_SCANNERS["rust"]["scan"]
-    cve.ECOSYSTEM_SCANNERS["node"]["scan"] = lambda root, sev, fix: {"ecosystem": "node", "tool": "fake", "exit": 1, "failed": True}
+    cve.ECOSYSTEM_SCANNERS["node"]["scan"] = lambda root, sev, fix: {"ecosystem": "node", "tool": "fake", "exit": 1, "failed": True, "status": "FAIL"}
     cve.ECOSYSTEM_SCANNERS["rust"]["scan"] = lambda root, sev, fix: {"ecosystem": "rust", "tool": "fake", "exit": 127}
     try:
         sys.argv = ["cve_check.py", str(d)]

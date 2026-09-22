@@ -25,10 +25,10 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 sys.path.insert(0, str(PLUGIN / "hooks"))
 
-import gate_lib  # noqa: E402
-import pre_tool_git_guard as guard  # noqa: E402
-import scope  # noqa: E402
-from env_check import version_backlog_note  # noqa: E402
+import gate_lib
+import pre_tool_git_guard as guard
+import scope
+from env_check import version_backlog_note
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -49,7 +49,7 @@ def _run_guard(command: str, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(PLUGIN / "hooks" / "pre_tool_git_guard.py")],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
-        capture_output=True, text=True, cwd=cwd, env=env, timeout=120,
+        capture_output=True, text=True, cwd=cwd, env=env, timeout=120, check=False,
     )
 
 
@@ -272,7 +272,7 @@ class DirectiveFrontLoadTests(unittest.TestCase):
 
 
 class StaleAttributionTests(unittest.TestCase):
-    """#4：delta 下报错文件全在改动集外 → skipped；有交集/无法归因 → failure。"""
+    """没有独立基线证据时，不根据诊断位置把未修改调用方错误当成历史债。"""
 
     def setUp(self) -> None:
         self.repo = _fresh_repo()
@@ -282,15 +282,12 @@ class StaleAttributionTests(unittest.TestCase):
     def test_bare_filename_outside_changeset_is_stale(self) -> None:
         out = "old.py:1:1: E501 line too long\nold.py:2:2: E501 again"
         note = gate_lib._stale_attribution(out, self.repo, "python", ["new.py"])
-        self.assertIsNotNone(note)
-        self.assertIn("存量文件", note)
-        self.assertIn("old.py", note)
+        self.assertIsNone(note)
 
     def test_absolute_path_is_normalized_and_counted(self) -> None:
         out = f"{self.repo}/old.py:1:1: error"
         note = gate_lib._stale_attribution(out, self.repo, "python", ["new.py"])
-        self.assertIsNotNone(note)
-        self.assertIn("old.py", note)
+        self.assertIsNone(note)
 
     def test_intersection_keeps_failure(self) -> None:
         out = "new.py:1:1: E501"

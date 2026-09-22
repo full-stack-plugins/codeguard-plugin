@@ -2,7 +2,7 @@
   "version": 1,
   "description": "codeguard 语言注册表：单一事实源。detect_lang.py 读取本文件构建识别与命令表；docs/LANGUAGES.md 由 scripts/gen_language_docs.py 从本文件生成。",
   "status_levels": {
-    "stable": "默认强制，久经生产验证",
+    "stable": "已配置可执行命令；实际覆盖取决于项目接入、工具链和本次检查证据",
     "beta": "已启用强制，需按 install_hint 准备工具",
     "planned": "已识别扩展名，linter 集成在路线图上（安全跳过）"
   },
@@ -16,15 +16,17 @@
       ],
       "markers": [
         "pom.xml",
-        "build.gradle"
+        "build.gradle",
+        "build.gradle.kts",
+        "settings.gradle",
+        "settings.gradle.kts"
       ],
       "status": "stable",
       "since": "V0.1",
       "lint": [
         "mvn",
-        "-q",
-        "javadoc:jar",
-        "-DskipTests"
+        "-B",
+        "verify"
       ],
       "format": [
         "mvn",
@@ -36,7 +38,8 @@
         "pom.xml",
         "build.gradle",
         "build.gradle.kts",
-        "settings.gradle"
+        "settings.gradle",
+        "settings.gradle.kts"
       ],
       "linter_config_files": [
         ".pre-commit-config.yaml",

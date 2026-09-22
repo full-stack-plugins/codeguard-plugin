@@ -68,8 +68,8 @@ def _read_until(proc: subprocess.Popen, want_id: int, timeout: float = 30.0) -> 
 
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed (pip install -r requirements.txt)")
 class McpServerTests(unittest.TestCase):
-    def test_mcp_boot_lists_three_tools(self):
-        """3.2/6.3: server boots over stdio and exposes exactly the 3 tools."""
+    def test_mcp_boot_lists_four_tools(self):
+        """stdio 服务暴露三个兼容工具和 Java 只读分析。"""
         proc = _spawn_mcp()
         try:
             _send(proc, {
@@ -86,7 +86,17 @@ class McpServerTests(unittest.TestCase):
             _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
             listing = _read_until(proc, 2)
             names = {t["name"] for t in listing["result"]["tools"]}
-            self.assertEqual(names, {"check_code_style", "auto_fix", "list_languages"})
+            self.assertEqual(names, {"check_code_style", "auto_fix", "list_languages", "analyze_java_impact"})
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "pom.xml").write_text("<project><artifactId>demo</artifactId></project>")
+                _send(proc, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                             "params": {"name": "analyze_java_impact", "arguments": {"path": tmp}}})
+                result = _read_until(proc, 3)
+                plan = json.loads(result["result"]["content"][0]["text"])
+                self.assertEqual(plan["status"], "PLANNED")
+                self.assertEqual(plan["commands"][0]["argv"], ["mvn", "-B", "verify"])
+                self.assertFalse((root / "target").exists())
         finally:
             try:
                 if proc.stdin:
@@ -94,6 +104,9 @@ class McpServerTests(unittest.TestCase):
                 proc.wait(timeout=10)
             except Exception:  # noqa: BLE001 cleanup
                 proc.kill()
+                proc.wait(timeout=10)
+            proc.stdout.close()
+            proc.stderr.close()
 
     def test_mcp_list_languages_returns_id_and_name_only(self):
         """3.5/6.3: tool result enumerates id+name, never internal commands."""
@@ -127,6 +140,9 @@ class McpServerTests(unittest.TestCase):
                 proc.wait(timeout=10)
             except Exception:  # noqa: BLE001 cleanup
                 proc.kill()
+                proc.wait(timeout=10)
+            proc.stdout.close()
+            proc.stderr.close()
 
 
 class FailureLogTests(unittest.TestCase):

@@ -17,6 +17,10 @@ jobs:
           python-version: "3.12"
       - name: Install requirements (mcp SDK so MCP server tests run, not skip)
         run: python3 -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Install test checker (deterministic real-process fixtures)
+        run: python3 -m pip install --disable-pip-version-check ruff==0.16.8
+      - name: Check executable code quality
+        run: ruff check hooks scripts tests
       - name: Verify vendored skills match the lockfile digests
         run: python3 scripts/vendor/skill_vendor.py check --offline
       - name: Verify lockfile pins still match upstream refs and content

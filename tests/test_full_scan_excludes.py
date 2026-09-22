@@ -22,9 +22,9 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 sys.path.insert(0, str(PLUGIN / "hooks"))
 
-import gate_lib  # noqa: E402
-import scope  # noqa: E402
-import validate_languages_json as vlj  # noqa: E402
+import gate_lib
+import scope
+import validate_languages_json as vlj
 
 REGISTRY = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))
 SHELL_GATE = next(lang for lang in REGISTRY["languages"] if lang["id"] == "shell")["gate"]
@@ -78,7 +78,7 @@ class JavadocShScenarioTests(unittest.TestCase):
 
     def _gate_exit(self, root: Path) -> int:
         cmd = scope.scope_cmd(SHELL_GATE, str(root), full_excludes=True)
-        return subprocess.run(cmd, cwd=root, capture_output=True, timeout=60).returncode
+        return subprocess.run(cmd, cwd=root, capture_output=True, timeout=60, check=False).returncode
 
     def test_generated_javadoc_sh_under_target_passes(self) -> None:
         root = Path(tempfile.mkdtemp(prefix="cg-scan-"))

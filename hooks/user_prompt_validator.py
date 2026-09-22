@@ -221,12 +221,15 @@ def main() -> int:
     skipped_langs = {s.split()[0] for s in skipped}
     checked = sorted(set(detect_languages(project_root)) - skipped_langs)
     skipped_note = f"；跳过 {len(skipped)} 项（{'；'.join(skipped)}）" if skipped else ""
+    unknown = [s for s in skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
+               and "markdown 风格告警" not in s]
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (
-                f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态 + 暂存区安全"
-                f"（{', '.join(checked) or '无'}），可以提交{skipped_note}。"
+                ("codeguard ⚠️ 检查范围存在未验证项，不能宣称全部通过" if unknown
+                 else f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态 + 暂存区安全")
+                + f"（{', '.join(checked) or '无'}）{skipped_note}。"
             )
         }
     }, ensure_ascii=False))

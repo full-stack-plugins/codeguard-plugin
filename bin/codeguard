@@ -21,6 +21,9 @@ cmd="${1:-check}"
 [ $# -gt 0 ] && shift || true
 
 case "$cmd" in
+  java-plan)
+    exec python3 "$ROOT/scripts/java_project.py" "$@"
+    ;;
   check)
     exec python3 "$ROOT/scripts/run_check.py" "$@"
     ;;
@@ -49,7 +52,7 @@ EOF
     ;;
   *)
     echo "codeguard: 未知子命令 '$cmd'" >&2
-    echo "可用: check | fix | cve | dockerfile | detect | init" >&2
+    echo "可用: check | fix | cve | dockerfile | detect | java-plan | init" >&2
     exit 1
     ;;
 esac

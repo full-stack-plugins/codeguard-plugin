@@ -1,365 +1,150 @@
-# partme-codeguard-plugin Plugin
+# CodeGuard plugin
 
-> Parity note: `README.md` and `README.zh-CN.md` must stay structurally aligned (heading levels, local links, version strings) — enforced by `tests/test_readme_parity.py`; mirror any structural edit into both files in the same commit.
+> Parity: README.md and README.zh-CN.md must keep the same heading structure, local links and version strings; enforced by tests/test_readme_parity.py.
 
-<p align="center">
-  <img src="assets/banner.svg" alt="partme-codeguard-plugin — Make AI-written code pass lint on first try. Supports ZCode, Claude Code, Codex CLI, and Kimi Code." width="100%">
-</p>
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-<p align="center">
-  <strong>Lint on every AI-written file. Block on failure. Strict by default.</strong><br>
-  Cross-language code style enforcement for AI coding assistants: Java / Rust / TypeScript / Python.
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="docs/partme-codeguard-plugin-Architecture.zh_CN.md">Architecture</a> ·
-  <a href="docs/technical-roadmap.zh_CN.md">Technical roadmap</a>
-</p>
-
----
+![CodeGuard](assets/banner.svg)
 
 ## Positioning
 
-`partme-codeguard-plugin` makes AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code) produce code that **passes linters on the first attempt**. Instead of finding out at commit-time that your AI forgot a Javadoc tag or used `unwrap()`, this plugin runs the right linter the moment the AI writes a file — and blocks the AI from continuing until the lint passes.
+CodeGuard provides native check evidence and guards supported Git commit/push calls from AI coding assistants. PostToolUse gives feedback, not blocking. Verified violations block the Git call; unavailable checks remain explicitly UNVERIFIED. Passing a configured check is not proof of complete code correctness.
 
-It is a **constraint-type plugin** for AI assistants, not a productivity-type plugin: it produces no code itself, but enforces rules on the code the AI produces.
+Current development version: **0.12.0**. No new skills were added for this release: priority is verdict integrity and Java project awareness.
 
-### Who it is for
+### Runtime boundaries
 
-- Backend engineers whose AI assistant writes Java but skips Javadoc tags.
-- Rust teams where `cargo clippy` is non-negotiable, but AI reaches for `unwrap()` out of habit.
-- TypeScript / frontend teams tired of `any` types and unused imports from AI.
-- Python teams who want `ruff` discipline on AI-generated code.
-- Engineering leads who want **CI-like lint feedback inside the AI's "thinking mode"** instead of minutes later in PR review.
-
-### What problem it solves
-
-| Problem | What this plugin provides | Verifiable entry point |
+| Surface | What it checks | Result |
 |---|---|---|
-| AI skips Javadoc tags, javadoc errors only surface on `mvn install` | PostToolUse hook auto-runs `mvn javadoc:jar` after each AI-written `.java` | `hooks/post_tool_lint.py`, [Architecture §3.2](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
-| AI uses `unwrap()` in Rust business code | `cargo clippy -- -D warnings` runs on each `.rs` file | [Architecture §2.1](docs/partme-codeguard-plugin-Architecture.zh_CN.md) |
-| AI introduces `any` and unused vars in TypeScript | `eslint --max-warnings 0` blocks the AI | `linters/eslint/recommended.cjs` |
-| "did it pass lint?" is asked manually after every AI session | Stop hook summarizes lint pass/fail counts | `hooks/stop_summary.py` |
-| pre-commit and CI catch issues 30s+5min late, by then the AI has moved on | Three-layer defense: hook (<2s) → pre-commit (30s) → CI (5min) | [Technical roadmap §1](docs/technical-roadmap.zh_CN.md) |
+| PostToolUse | Edited file, for file-scoped tools | Feedback, exit 0; project-level checks deferred |
+| UserPromptSubmit | Working-tree changes relevant to commit intent | Advisory, never blocks the user message |
+| PreToolUse Git gate | Proposed index snapshot or HEAD snapshot for push | Verified violations exit 2; uncertain checks report UNVERIFIED and fail open |
+| CLI check / MCP check_code_style | Project checks, including Java build verification | Explicit status, reason, raw exit code and output log |
+| pre-commit / CI | Independently configured checks | Separate acceptance; not replaced by hook success |
 
-## At a glance
+Hooks do not run in every host command surface automatically. Historical V0.5.4 installation evidence is not acceptance of this version in Codex, ZCode or Kimi.
 
-```text
-AI writes file
-      │
-      ▼
-┌──────────────────────────────────────────────────────────┐
-│ partme-codeguard-plugin                                    │
-│  ① detect  project language (java / rust / ts / python)  │
-│  ② lint    run native linter on the file                 │
-│  ③ auto-fix spotless / cargo fmt / eslint / ruff          │
-│  ④ block   exit 2 if lint still fails (strict mode)      │
-│  ⑤ summary session-end lint pass/fail counts             │
-└──────────────────────────────────────────────────────────┘
-      │
-      ▼
-AI code that passes lint on first try
-```
+### Verdict contract
 
-| Property | Value |
-|---|---|
-| Plugin ID | `partme-codeguard-plugin` |
-| Hosts | ZCode, Claude Code, Codex CLI, Kimi Code |
-| Current version | `0.11.1` |
-| ZCode manifest | `.zcode-plugin/plugin.json` |
-| Codex manifest | `.codex-plugin/plugin.json` |
-| MCP server | Published: stdio server via the official SDK (`check_code_style` / `auto_fix` / `list_languages`); see Quick start |
-| Primary language | Python 3.10+ (hooks), YAML/JSON (config) |
-| License | Apache-2.0 |
+| Status | Meaning | passed |
+|---|---|---|
+| PASS | An actual check completed successfully | true |
+| FAIL | The checker reported a violation | false |
+| UNVERIFIED | Missing tool, timeout, invalid configuration, unavailable evidence | false |
+| SKIPPED | No applicable changed files | false |
+| PLANNED | A plan exists or no executable adapter is configured | false |
 
-## Supported languages
+CLI exit priority: FAIL → 2; otherwise UNVERIFIED/PLANNED → 1; verified success or no applicable changes → 0. Never interpret “not exit 2” as “passed”. Tools have different exit-code contracts: pylint 2 is not ESLint 2.
 
-**53 languages Stable (auto-enforced) + 4 Planned with platform tooling** — the widest coverage of any code-governance plugin. Every registered language has a SKILL; Planned languages are the ones without an independent CLI linter (platform IDE diagnostics only). Full per-language table: [docs/LANGUAGES.md](docs/LANGUAGES.md).
+## Java project awareness
 
-| Status | Languages |
-|---|---|
-| **Stable** (53, auto-enforced) | Java, Rust, TypeScript/JavaScript, Python, Go, C#, Kotlin, Swift, PHP, Ruby, Scala, Shell, Dockerfile, YAML, Elixir, CSS/SCSS, Markdown, SQL, TOML, HTML, Protobuf, Terraform/OpenTofu, Nix, Dart, Solidity, Ansible-playbooks, Perl, Groovy, Clojure, PowerShell, Zig, Nim, Crystal, Julia (format-only), Pascal (format-only), Elm, Lua, Luau, C++ (clang-tidy), Objective-C, CUDA, GraphQL, Protobuf digest, VB.NET, Erlang, R, CFML — and more; see LANGUAGES.md |
-
-> **Markdown / YAML opt-in semantics**: both declare `requiresConfig` — without a root linter config
-> (e.g. `.markdownlint-cli2.jsonc` / `.yamllint`) the project counts as not opted in: safely skipped,
-> never blocked, never swept by tool default rules. The markdown gate is advisory (reported in skipped, non-blocking).
-> Its lint command previously lacked a glob and always exited with a usage error; it now returns real results.
-> `codeguard init` copies the lenient config template.
-| **Planned** (4, no independent CLI linter) | Metal, ArkTS (HarmonyOS), COBOL, Liquid (Shopify theme-check 已列为工具，待接通) |
-
-## Governance skills (Git & Security)
-
-Beyond linting, codeguard ships standalone governance skills sourced from the team's engineering-standards wiki:
-
-| Skill | Covers |
-|---|---|
-| `codeguard-git-branch` | 7 mainstream models — Gitflow, Gitflow+ (team), GitLab branch rules, GitHub Flow, GitLab Flow, Trunk-Based Development, OneFlow, Release Flow — with model detection, branch naming gates (`feature/{version}_{function}_{author}_{datetime}`), merge-direction gates, merge strategy (merge/squash/rebase) |
-| `codeguard-git-commit` | Conventional Commits (Angular regex gate `linters/git/commit-msg`), Gitmoji prefixes, Udacity long-form, commitlint tooling |
-| `codeguard-security-code` | Source & config leakage prevention, CVE dependency scanning (dependency-check / trivy / npm audit / MurphySec) |
-| `codeguard-security-api` | Privilege-escalation guards (Shiro / Spring Security annotations), data-permission checks, 3-layer file-upload control, apikey+timestamp+signature |
-| `codeguard-security-data` | Encrypted-at-rest fields (SM2/SM3/SM4 国密), response masking, single-device login, MLPS (等保) & commercial-crypto evaluation (密评) notes |
-| `codeguard-dockerfile` | Dockerfile security risks — root user, latest tag, ADD abuse, sudo, secrets in layers, missing HEALTHCHECK (hadolint + trivy config) |
-
-The commit gate is pre-wired in the pre-commit template (`stages: [commit-msg]`); branch and security skills guide the AI during branch creation, interface development, and pre-merge review.
-
-### External skill source
-
-The 68 portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills), not independently inside this plugin. This repository vendors the complete `v0.1.2` snapshot so installed plugins work offline:
-
-- `skills.lock.json` pins the upstream repository, immutable tag, resolved commit, managed skill names, and per-skill SHA-256 digests.
-- `python3 scripts/vendor/skill_vendor.py update` refreshes only the skill names listed in the lock.
-- `python3 scripts/vendor/skill_vendor.py check --offline` verifies the packaged snapshot; omit `--offline` to verify the upstream ref and content too.
-- Do not directly edit a locked skill directory. Change and release `codeguard-skills`, update the lock ref, then run the vendor update.
-- Plugin-specific skills may remain under `skills/` only when they are intentionally absent from `skills.lock.json` and explicitly listed in `plugin-local-skills.json`; the vendor preserves declared directories and rejects undeclared exceptions.
-
-Hooks, linters, commands, MCP wiring, and executable scripts remain plugin-owned. The authoring standard is documented in [docs/CODEGUARD_SKILLS_SPEC.md](docs/CODEGUARD_SKILLS_SPEC.md).
-
-## Capabilities and boundaries
-
-### Supported
-
-| Capability | Input | Output | Limit | Status |
-|---|---|---|---|---|
-| Per-file language detection | file path from hook payload | language string (`java`/`rust`/`typescript`/`python`) | — | Stable |
-| Language-specific lint | `mvn javadoc:jar` / `cargo clippy` / `npx eslint` / `ruff check` | exit code + stderr | timeout configurable (default 120s) | Stable |
-| Auto-fix on failure | `mvn spotless:apply` / `cargo fmt` / `eslint --fix` / `ruff --fix` | retry lint with fixed files | best-effort, no business-logic changes | Stable |
-| Commit/push gate | "commit" / "push" / "deploy" keyword in user prompt | run all linters, exit 2 if any fails | — | Stable |
-| One-line project bootstrap | `/init` slash command | copy linter configs + `.pre-commit-config.yaml` + AGENTS.md snippet | — | Stable |
-| Session-end summary | Stop hook | table of lint pass/fail/auto-fix counts | — | Stable |
-
-### Three-layer defense
-
-The plugin does not replace pre-commit or CI — it adds a **faster** layer in front of them.
-
-| Layer | Latency | Force | Purpose |
-|---|---|---|---|
-| **PostToolUse hook (this plugin)** | <2s | Block AI from continuing | Catch errors while the AI is still in "fix it now" mode |
-| pre-commit | 30s | Block git commit | Catch errors when the user is ready to commit |
-| CI | minutes | Block PR merge | Last-resort gate |
-
-PostToolUse is the **highest-ROI** layer because it gives the AI feedback **while it still cares**.
-
-### Not responsible for
-
-- Running your code. This plugin lints; it does not execute.
-- Generating code. This plugin enforces rules on what AI generates.
-- Replacing peer review. Linters catch mechanical errors; humans catch design errors.
-- Cloud / SaaS linter services. This plugin is **strictly client-side** (see [PRIVACY.md](./PRIVACY.md)).
-- Languages without an active linter yet (Planned tier above — their files are detected but safely skipped by the hook).
-
-## Quick start
-
-### CLI (codeguard)
-
-`bin/codeguard` is a bash dispatcher: each subcommand (`check` / `fix` / `cve` / `dockerfile` / `detect`) routes to the matching `scripts/*.py` implementation.
+### Read-only planning
 
 ```bash
-# Optional one-time setup: put the CLI on PATH
-ln -s $PWD/bin/codeguard /usr/local/bin/codeguard
-
-codeguard check                     # multi-language lint gate
-codeguard fix                       # auto-fix lint issues
-codeguard cve                       # CVE dependency scan (Maven/npm/Python/Rust + universal trivy fallback)
-codeguard cve --fix                 # scan + auto-fix (npm audit fix)
-codeguard cve --severity MEDIUM     # threshold-and-above: MEDIUM+HIGH+CRITICAL fail
-codeguard cve --ecosystem java      # alias for maven; unknown values exit 3 before any scan
-codeguard detect                    # detect project languages
+codeguard java-plan /path/to/project --json
+codeguard java-plan /path/to/project --json --changed api/src/main/java/Api.java
+codeguard check --lang java /path/to/project
 ```
 
-CVE exit codes: `0` pass, `1` unverifiable (tool missing / nothing scannable), `2` findings, `3` usage error.
-Ecosystems without a native scanner fall back to `trivy fs --scanners vuln` when detected; native tools are never replaced by the fallback. Severity means threshold-and-above on every scanner (maven maps to CVSS band floors: HIGH⇒7).
+The planner reads Maven POM / Gradle Groovy or Kotlin DSL, prefers project wrappers, maps files to modules and computes reverse transitive dependencies. Changing api can require checking service and app even if their files did not change. Deletions, resources and build descriptors are included.
 
-Maven CVE scanning uses OWASP dependency-check (pom snippet in
-`linters/maven/dependency-check-pom-snippet.xml`; build fails at `CVSS>=7`).
-**A finding must be fixed, not filed away**: every report ships with the fix command
-per ecosystem (upgrade paths / suppression filing); npm supports `audit fix` auto-repair.
+Maven plans use verify, with -pl and -am for a safe subset. Gradle plans use root check or affected :module:check tasks. Profiles, unresolved properties, inherited dependencies or recognized dynamic/composite Gradle builds expand the plan conservatively. Planning never executes a build, downloads dependencies, installs tools or initializes CodeGraph.
 
-### As a user
+### Explicit project commands
+
+A root codeguard.json can declare authoritative argv lists:
+
+```json
+{
+  "java": {
+    "commands": [
+      ["./mvnw", "verify", "-Pquality"]
+    ]
+  }
+}
+```
+
+Commands run in order, stopping on failure. They are trusted project configuration, not shell strings. Running check or the Git gate may execute project plugins/tests and access package registries; this is **not a sandbox**.
+
+Coverage is module-level, not a symbol call graph or business-semantic proof. A successful verify/check does not establish that Checkstyle, PMD, SpotBugs or tests are configured comprehensively. Inspect the plan's gaps and reasons.
+
+## Git content integrity
+
+A plain commit checks the index, not an unstaged repair. Supported preceding git add operations overlay predicted worktree paths; pure push checks HEAD and upstream differences. Without a resolvable upstream, the HEAD tree is checked. Sensitive-file rules use the same proposed scope; removing a sensitive file is not treated as introducing it.
+
+Checks materialize temporary Git blobs without stash, checkout or modifying the real index. The exact-content gate does not reuse the soft working-tree cache. Missing ignored dependencies remain UNVERIFIED rather than silently falling back to different source content.
+
+Limits: 20,000 tracked files / 256 MiB Git content / 32 MiB per overlay file. Symlinks, submodules, conflicts and unsupported content need separate validation. Complex shell rewrites, arbitrary Git refspecs, dynamic aliases and concurrent edits are not a fully modeled transaction. A hook is not a replacement for protected-branch CI.
+
+There is no “historical debt” exemption based only on an unchanged diagnostic filename; a modified API can break an unchanged caller.
+
+## CLI and MCP
+
+### CLI
 
 ```bash
-# Step 1: install (one of these, per your host)
-ln -s $PWD ~/.zcode/plugins/partme-codeguard-plugin
-ln -s $PWD ~/.codex/plugins/partme-codeguard-plugin
-ln -s $PWD ~/.kimi/plugins/partme-codeguard-plugin
-
-# Step 2: in any project, ask the AI:
-/init    # copy linter configs + .pre-commit + AGENTS.md
-/check   # run full lint suite with report
-/fix     # auto-fix what can be fixed
+# Run directly from this checkout; no global installation required.
+./bin/codeguard detect /path/to/project
+./bin/codeguard check /path/to/project
+./bin/codeguard fix /path/to/project --dry-run
+./bin/codeguard fix /path/to/project
+./bin/codeguard fix /path/to/project --all
+./bin/codeguard cve /path/to/project --json
+./bin/codeguard cve /path/to/project --ecosystem universal --severity HIGH
 ```
 
-### As an AI
+fix defaults to Git-changed files; project-wide formatters require explicit --all. A non-Git CLI directory retains the legacy full-scope behavior. --fix may modify files; it is not a preview.
 
-When this plugin is active, you do **not** need to do anything manually:
-
-- Every file you write is auto-linted immediately.
-- If lint fails and cannot be auto-fixed, you will see the error and **must fix before continuing**.
-- When the user says "commit", you will receive a final all-linters-must-pass gate check.
-- At session end, you will see a summary of which lints passed/failed.
+CVE exits: 0 pass, 1 unverified, 2 findings, 3 invalid ecosystem. Maven/npm/pip-audit/cargo-audit/Trivy results require structured report evidence. Network failures are not vulnerabilities. npm moderate maps to MEDIUM; after npm audit fix the new scan controls the verdict. Native Python/Rust findings without comparable severity remain UNVERIFIED above LOW, with findings preserved; explicitly select Trivy to assess severity. Python audits project requirements/pyproject, not the host environment.
 
 ### MCP server
 
-`run_check.py --mcp` starts a stdio MCP server (official `mcp` SDK; install
-dependencies with `pip install -r requirements.txt`) exposing three tools:
+```bash
+# Requires the dependencies declared in requirements.txt.
+python3 scripts/run_check.py --mcp /path/to/project
+```
 
-| Tool | Purpose |
+| Tool | Contract |
 |---|---|
-| `check_code_style` | Run lint and return a per-language envelope with `stderr_path` and `log_path` |
-| `auto_fix` | Run the formatter chain, then re-run lint and embed the check envelope |
-| `list_languages` | List supported language ids and display names (no internal commands) |
+| check_code_style | Per-language status/reason/passed/raw exit code and full output log path |
+| auto_fix | Format Git-changed files and recheck the same scope; refuse unbounded project formatters; fixed means actual modifications |
+| list_languages | Registry ids and display names |
+| analyze_java_impact | Read-only plan; accepts path and optional changed array |
+
+Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables log writing. MCP auto_fix does not write when a Git scope cannot be established.
+
+## Configuration and coverage
+
+Root codeguard.json may set gate_scope to delta or repo and customize extension/exclusion detection. User settings retain enabled_languages, auto_fix_on_save and lint_timeout_seconds. strict_mode is reserved and does not make PostToolUse block. See the [hook protocol](hooks/__protocol__.md).
+
+The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Full command inventory: [languages](docs/LANGUAGES.md).
+
+The explicit escape hatch git config codeguard.skipGate true bypasses the hook gate and is recorded in session summaries. Shared hook state lives under CODEGUARD_HOME (default ~/.codeguard).
+
+## External skills
+
+The **68** portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills). This plugin packages immutable **v0.1.2** through skills.lock.json, pinning tag, commit and per-skill digests.
+
+Do not edit locked skill directories. Update/release the source skills, update the lock and run the vendor tool. Only declared entries in plugin-local-skills.json may be plugin-owned; currently none are declared. See [authoring rules](docs/CODEGUARD_SKILLS_SPEC.md).
 
 ```bash
-python3 scripts/run_check.py --mcp .
+python3 scripts/vendor/skill_vendor.py check --offline
+python3 scripts/vendor/skill_vendor.py check
 ```
 
-Failed runs write the full combined output to `<project>/out/.codeguard-last.log`
-(the same path appears in the tool envelope and the CLI summary line; suppress
-with `--quiet`).
-
-## Configuration
-
-User config in `~/.zcode/settings.local.yaml` (ZCode) or equivalent for other hosts:
-
-```yaml
-codeguard:
-  enabled_languages: auto      # or [java, rust, typescript, python]
-  strict_mode: true            # PostToolUse exit 2 on lint fail (BLOCKS AI)
-  auto_fix_on_save: true       # try spotless/cargo fmt/eslint --fix/ruff --fix first
-  lint_timeout_seconds: 120
-```
-
-| Key | Default | Effect |
-|---|---|---|
-| `enabled_languages` | `auto` (detect) | Restrict which linters run |
-| `strict_mode` | `true` | Reserved, currently unwired: PostToolUse never blocks (always exit 0, see `hooks/__protocol__.md`) |
-| `auto_fix_on_save` | `true` | Whether to attempt auto-fix before reporting failure |
-| `lint_timeout_seconds` | `120` | Per-linter timeout |
-
-### Gate scope, escape audit, and unverified verdicts
-
-Gate scanning is scoped to **what you are about to change**, decided by git state:
-
-- **Commit face** (`staged + unstaged + untracked`): checked before `git commit`.
-  Pre-existing issues in HEAD do not block an unrelated new commit.
-- **Push face** (commit face ∪ unpushed commits, `up...HEAD`): checked before
-  `git push`, so a bad commit made outside the gate is still caught on the way out.
-- Project-level `codeguard.json` (repo root) overrides the default:
-  `{"gate_scope": "repo"}` restores full-repository scanning; `extensions` and
-  `exclude` customize language detection. Full scans always skip vendor/build
-  snapshots (immutable supply-chain content) and build-output directories
-  (`target`, `dist`, `build`, … — also injected into `find -print0` style gates,
-  so generated artifacts like maven-javadoc's `javadoc.sh` no longer trip the
-  shell gate). The >50-file delta fallback to a full command applies the same
-  exclusions. Java gate failures caused by unresolvable dependencies now carry
-  an actionable hint (run `mvn install` first) instead of a bare maven stack.
-
-Verdict honesty: a linter crashing with exit 2 (usage/dependency failure) is
-reported as **unverified**, never as a lint failure — "cannot verify" is not
-"verified bad", and a tool crash never triggers auto-fix. Exit 127 (command
-missing) is split by context on purpose: interactive hooks skip it (never block
-a person for missing tooling), while `check`/CI treats it as **failure** — a
-health surface must go red when tooling is absent.
-
-Escape hatch: `git config codeguard.skipGate true` bypasses both the soft and
-hard gate for one repository; every bypass is counted and surfaced by the Stop
-summary, which also warns when the flag is left enabled. The audit keeps the
-last 20 events (timestamp + repository + kind). Shared hook state lives
-under `CODEGUARD_HOME` (default `~/.codeguard`): session lint statistics,
-double-install dedup keys, and the skip audit.
-
-## Repository layout
-
-```
-partme-codeguard-plugin/
-├── .zcode-plugin/plugin.json     # ZCode manifest (primary)
-├── .codex-plugin/plugin.json    # Codex CLI manifest
-├── hooks/
-│   ├── hooks.json                # 4 hook definitions
-│   ├── env_check.py              # SessionStart: detect language + inject rules
-│   ├── post_tool_lint.py         # PostToolUse: core enforcement hook
-│   ├── user_prompt_validator.py  # UserPromptSubmit: commit gate
-│   └── stop_summary.py           # Stop: session summary
-├── scripts/
-│   ├── detect_lang.py            # language detection + linter command table (shared)
-│   ├── run_check.py              # main CLI: detect + run all linters + report
-│   ├── fix.py                    # auto-fix CLI
-│   └── vendor/skill_vendor.py    # lock-driven external skill vendor/check
-├── skills.lock.json              # upstream tag/commit + managed skills + SHA-256 digests
-├── plugin-local-skills.json      # explicit plugin-only skill exceptions (currently empty)
-├── skills/                       # 68 vendored skills from codeguard-skills v0.1.2
-│   ├── codeguard/                # main entry
-│   ├── codeguard-init/           # one-line bootstrap
-│   ├── codeguard-{java,rust,typescript,python}/
-│   ├── codeguard-{go,csharp,kotlin,swift,php,ruby,scala}/   # V0.2 languages
-│   ├── codeguard-git-{branch,commit}/                      # branch & commit governance
-│   └── codeguard-security-{code,api,data}/                 # security governance
-├── commands/                     # 3 slash commands (/check /fix /init)
-│   ├── check.json
-│   ├── fix.json
-│   └── init.json
-├── bin/codeguard                 # CLI entry (check / fix / cve / detect / init)
-├── linters/                      # copy-paste templates per language
-│   ├── checkstyle/               # Alibaba P3C + javadoc enforced
-│   ├── clippy/                   # deny warnings + unwrap/expect/panic
-│   ├── eslint/                   # recommended + TS rules
-│   ├── ruff/                     # [tool.ruff] block
-│   ├── maven/                     # OWASP dependency-check pom snippet
-│   └── git/                        # commit-msg gate script
-│   └── pre-commit/               # .pre-commit-config.template.yaml
-├── docs/
-│   ├── partme-codeguard-plugin-Architecture.zh_CN.md
-│   └── technical-roadmap.zh_CN.md
-├── README.md                     # this file
-├── README.zh-CN.md               # Chinese
-├── LICENSE                       # Apache-2.0
-├── PRIVACY.md                    # zero data collection
-└── TERMS.md
-```
-
-## Compatibility
-
-| Host | Plugin manifest | Install path | Status |
-|---|---|---|---|
-| **ZCode** | `.zcode-plugin/plugin.json` | `~/.zcode/cli/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.4 verified |
-| **Codex CLI** | `.codex-plugin/plugin.json` | `~/.codex/plugins/cache/<marketplace>/codeguard/<version>/` | ✅ V0.5.4 verified |
-| **Claude Code** | (uses Codex manifest via marketplace) | `~/.claude/plugins/partme-codeguard-plugin/` | 🔧 V0.2 |
-| **Kimi Code** | `kimi.plugin.json` | `~/.kimi-code/plugins/managed/codeguard/` | ✅ V0.5.4 verified |
-
-The hooks, scripts, linters, and skills are **shared across all hosts** — only the manifest differs.
-
-## Verification
-
-After install, smoke-test in any project:
+## Verification and remaining work
 
 ```bash
-# Should output ["java"] (or similar) and exit 0
-python3 scripts/detect_lang.py /path/to/java-project
-
-# Should print table of pass/fail per language
-python3 scripts/run_check.py --timeout 60
-
-# Should auto-fix what can be fixed and re-run lint
-python3 scripts/fix.py --dry-run   # see what would change
-python3 scripts/fix.py             # actually change
+python3 -m unittest discover -s tests -q
+python3 tests/run_all.py
+python3 scripts/validate_languages_json.py
+ruff check hooks scripts tests
 ```
 
-In any AI session, after writing a `.java` file, you should see in the AI log:
+Tests include real temporary Git repositories, native subprocess fixtures and official-SDK stdio MCP calls. Fixture wrapper success is not a real Maven/Gradle integration build. Live Codex/ZCode/Kimi loading, real project builds, online CVE scanner runs and precision/recall benchmarks require separate acceptance.
 
-```
-[codeguard] lint java: src/main/java/Foo.java
-[codeguard] ❌ java lint failed for src/main/java/Foo.java
-[codeguard] fix with: mvn -q spotless:apply
-```
+Current implementation and evidence: [architecture](docs/verdict-java-architecture.md), [verification report](docs/verification-verdict-java.md). Earlier design documents remain historical context: [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
 
-Exit code 2 if strict mode is on (the AI must fix); exit code 0 with warnings if strict mode is off.
+## License and privacy
 
-## Related skills
-
-- **[full-stack-doc](https://github.com/partme-ai/skills/tree/main/full-stack-doc)** — Documentation standard this plugin's `docs/` follows.
-- **partme-blender-plugin** — Sibling plugin using the same hook/manifest/skills pattern.
-
-## License
-
-Apache-2.0 — see [LICENSE](./LICENSE).
+Apache-2.0 — [LICENSE](./LICENSE). Native build/scanning tools may access dependency registries and vulnerability databases; review [PRIVACY.md](./PRIVACY.md) and [TERMS.md](./TERMS.md).

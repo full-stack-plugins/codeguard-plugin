@@ -58,17 +58,38 @@ def run(cmd: list[str], cwd: Path, timeout: int = 600) -> tuple[int, str, str]:
 
 
 def scan_maven(root: Path, threshold: int) -> dict:
-    """OWASP dependency-check-maven：failBuildOnCVSS 按阈值，报告落 target/dependency-check-report.html"""
-    rc, out, err = run(
-        ["mvn", "-q", "org.owasp:dependency-check-maven:check",
-         f"-DfailBuildOnCVSS={threshold}"],
-        cwd=root, timeout=1800,
-    )
+    """每次独立 JSON 报告目录，拒绝复用旧报告冒充本次漏洞证据。"""
+    import tempfile
+    findings, status = [], "UNVERIFIED"
+    with tempfile.TemporaryDirectory(prefix="codeguard-cve-") as output_dir:
+        rc, out, err = run(
+            ["./mvnw" if (root / "mvnw").exists() else "mvn", "-q",
+             "org.owasp:dependency-check-maven:aggregate", f"-DfailBuildOnCVSS={threshold}",
+             "-Dformat=JSON", f"-Dodc.outputDirectory={output_dir}"], cwd=root, timeout=1800)
+        try:
+            report = json.loads((Path(output_dir) / "dependency-check-report.json").read_text())
+            if not isinstance(report.get("dependencies"), list):
+                raise TypeError("报告缺少 dependencies")
+            unknown_score = False
+            for dependency in report["dependencies"]:
+                for finding in dependency.get("vulnerabilities", []):
+                    scores = [finding.get(key, {}).get("baseScore", finding.get(key, {}).get("score"))
+                              for key in ("cvssv4", "cvssv3", "cvssv2")]
+                    score = next((s for s in scores if isinstance(s, (int, float))), None)
+                    if score is None:
+                        unknown_score = True
+                    elif score >= threshold:
+                        findings.append({"id": finding.get("name"), "score": score})
+            if rc in (0, 1):
+                status = "FAIL" if findings else ("UNVERIFIED" if unknown_score or rc else "PASS")
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
     fix_hint = (
         "修复路径: mvn versions:display-dependency-updates 查看可升级依赖；"
         "升级受影响组件版本，或在 dependency-check-suppressions.xml 登记误报"
     )
     return {"ecosystem": "maven", "tool": "owasp dependency-check", "exit": rc,
+            "status": status, "findings": findings,
             "summary_tail": (out + err)[-2500:], "fix_hint": fix_hint}
 
 
@@ -80,47 +101,103 @@ def scan_node(root: Path, threshold: str, allow_fix: bool) -> dict:
     counts = {}
     fixed_hint = "npm audit fix"
     try:
-        meta = json.loads(out).get("metadata", {}).get("vulnerabilities", {})
+        meta = json.loads(out).get("metadata", {}).get("vulnerabilities")
+        if not isinstance(meta, dict) or not meta or any(
+                not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in meta.values()):
+            raise ValueError("无有效漏洞统计")
         counts = {k.lower(): v for k, v in meta.items()}
-    except json.JSONDecodeError:
-        pass
+        counts["medium"] = counts.pop("moderate", counts.get("medium", 0))
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        return {"ecosystem": "node", "tool": "npm audit", "exit": rc,
+                "status": "UNVERIFIED", "reason": "扫描未返回有效漏洞报告",
+                "summary_tail": (out + err)[-1000:], "fix_hint": "修复扫描环境后重试"}
+    if rc not in (0, 1):
+        return {"ecosystem": "node", "tool": "npm audit", "exit": rc,
+                "status": "UNVERIFIED", "reason": "扫描进程未正常完成",
+                "summary_tail": err[-1000:], "fix_hint": "检查网络与扫描器"}
     over = [s for s in SEVERITY_ORDER
             if SEVERITY_ORDER[s] >= SEVERITY_ORDER.get(threshold.upper(), 2)
             and counts.get(s.lower(), 0) > 0]
     failed = bool(over)
     fix_hint = fixed_hint if failed else ""
     return {"ecosystem": "node", "tool": "npm audit", "exit": rc,
+            "status": "FAIL" if failed else "PASS", "reason": "依据 npm 漏洞统计与严重级别阈值",
             "counts": counts, "over_threshold": over, "failed": failed,
             "summary_tail": err[-1000:], "fix_hint": fix_hint}
 
 
-def scan_pip(root: Path) -> dict:
-    rc, out, err = run(["pip-audit", "--strict"], cwd=root, timeout=900)
+def _native_report_status(rc: int, findings: list, threshold: str) -> tuple[str, str]:
+    """无严重度的原生报告不能证明 HIGH 阈值通过，也不能冒充高危漏洞。"""
+    if rc not in (0, 1):
+        return "UNVERIFIED", "扫描进程未正常完成"
+    if findings:
+        if threshold == "LOW":
+            return "FAIL", "有效报告包含漏洞；LOW 模式报告全部漏洞"
+        return "UNVERIFIED", "原生报告缺少可比较严重度；已发现漏洞，但不能判定阈值，请用 trivy 复核"
+    return ("PASS", "有效报告未发现漏洞") if rc == 0 else ("UNVERIFIED", "非零退出但无漏洞证据")
+
+
+def scan_pip(root: Path, threshold: str = "LOW") -> dict:
+    # 不扫描宿主 Python 环境：必须明确项目依赖输入。
+    requirements = next((name for name in ("requirements.txt", "requirements-dev.txt")
+                         if (root / name).is_file()), None)
+    if requirements:
+        target = ["--requirement", requirements]
+    elif (root / "pyproject.toml").is_file():
+        target = ["."]
+    else:
+        return {"ecosystem": "python", "tool": "pip-audit", "exit": 1,
+                "status": "UNVERIFIED", "reason": "没有支持的 requirements/pyproject 项目输入"}
+    rc, out, err = run(["pip-audit", "--strict", "--format", "json", *target], cwd=root, timeout=900)
     if rc == 127:
         return {"ecosystem": "python", "tool": "pip-audit", "exit": 127,
                 "summary_tail": "pip-audit not installed (pip install pip-audit)",
                 "fix_hint": "pip install pip-audit"}
-    fix_hint = "pip-audit 无内置修复；按报告升级 requirements/pyproject 中的受影响包"
+    status, reason, findings = "UNVERIFIED", "扫描未返回有效漏洞报告", []
+    try:
+        dependencies = json.loads(out)["dependencies"]
+        if not isinstance(dependencies, list) or any(
+                not isinstance(d, dict) or not isinstance(d.get("vulns"), list) for d in dependencies):
+            raise TypeError("无有效依赖列表")
+        findings = [v for d in dependencies for v in d["vulns"]]
+        if any(not isinstance(v, dict) or not v.get("id") for v in findings):
+            raise ValueError("漏洞缺少标识")
+        status, reason = _native_report_status(rc, findings, threshold)
+    except (ValueError, TypeError, KeyError):
+        pass
+    fix_hint = "按报告升级 requirements/pyproject 中的受影响包；本入口不自动修改 Python 依赖"
     return {"ecosystem": "python", "tool": "pip-audit", "exit": rc,
+            "status": status, "reason": reason, "findings": findings,
             "summary_tail": (out + err)[-2500:], "fix_hint": fix_hint}
 
 
-def scan_cargo(root: Path) -> dict:
+def scan_cargo(root: Path, threshold: str = "LOW") -> dict:
     # cargo 本体存在但 audit 是外部子命令——先探测，未安装返回 127（无法验证）
     rc_v, _, err_v = run(["cargo", "audit", "--version"], cwd=root, timeout=60)
     if rc_v == 127 or "no such command" in (err_v or "").lower() or "unrecognized" in (err_v or "").lower():
         return {"ecosystem": "rust", "tool": "cargo audit", "exit": 127,
                 "summary_tail": "cargo-audit not installed (cargo install cargo-audit)",
                 "fix_hint": "cargo install cargo-audit"}
-    rc, out, err = run(["cargo", "audit"], cwd=root, timeout=900)
+    rc, out, err = run(["cargo", "audit", "--json"], cwd=root, timeout=900)
+    status, reason, findings = "UNVERIFIED", "扫描未返回有效漏洞报告", []
+    try:
+        findings = json.loads(out)["vulnerabilities"]["list"]
+        if not isinstance(findings, list):
+            raise TypeError("无有效漏洞列表")
+        if any(not isinstance(v, dict) or not v.get("advisory", {}).get("id") for v in findings):
+            raise ValueError("漏洞缺少 advisory 标识")
+        status, reason = _native_report_status(rc, findings, threshold)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
     fix_hint = "按报告升级 Cargo.toml 中的受影响 crate（cargo update 可试）"
     return {"ecosystem": "rust", "tool": "cargo audit", "exit": rc,
+            "status": status, "reason": reason, "findings": findings,
             "summary_tail": (out + err)[-2500:], "fix_hint": fix_hint}
 
 
 def scan_trivy(root: Path, threshold: str) -> dict:
     rc, out, err = run(
-        ["trivy", "fs", "--scanners", "vuln",
+        ["trivy", "fs", "--scanners", "vuln", "--format", "json", "--exit-code", "2",
          "--severity", ",".join(severities_at_and_above(threshold)),
          "."],
         cwd=root, timeout=1800,
@@ -129,7 +206,16 @@ def scan_trivy(root: Path, threshold: str) -> dict:
         return {"ecosystem": "universal", "tool": "trivy", "exit": 127,
                 "summary_tail": "trivy not installed (brew install trivy)",
                 "fix_hint": "brew install trivy"}
-    return {"ecosystem": "universal", "tool": "trivy", "exit": rc,
+    status = "UNVERIFIED"
+    try:
+        report = json.loads(out)
+        if isinstance(report, dict) and "Results" in report and rc in (0, 2):
+            findings = [v for item in report["Results"] or [] for v in item.get("Vulnerabilities", []) or []
+                        if v.get("Severity") in severities_at_and_above(threshold)]
+            status = "FAIL" if findings else "PASS"
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return {"ecosystem": "universal", "tool": "trivy", "exit": rc, "status": status,
             "summary_tail": (out + err)[-2500:],
             "fix_hint": "按报告升级受影响依赖版本"}
 
@@ -146,16 +232,18 @@ def _scan_node_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
     if allow_fix and result.get("failed"):
         print("[codeguard-cve] npm audit fix ...")
         run(["npm", "audit", "fix"], cwd=root, timeout=900)
-        result["after_fix"] = scan_node(root, severity, False)
+        after = scan_node(root, severity, False)
+        after["before_fix"] = result
+        result = after
     return result
 
 
 def _scan_pip_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
-    return scan_pip(root)
+    return scan_pip(root, severity)
 
 
 def _scan_cargo_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
-    return scan_cargo(root)
+    return scan_cargo(root, severity)
 
 
 def _scan_trivy_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
@@ -245,7 +333,26 @@ def main() -> int:
     ap.add_argument("--severity", default="HIGH", choices=list(SEVERITY_ORDER))
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("path", nargs="?", default=".")
-    args = ap.parse_args()
+    try:
+        args = ap.parse_args()
+    except SystemExit as exc:
+        if exc.code == 2:
+            return EXIT_USAGE
+        raise
+
+    results = []
+    if args.as_json:
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = _scan(args, results)
+        print(json.dumps({"status": {0: "PASS", 1: "UNVERIFIED", 2: "FAIL", 3: "USAGE"}[rc],
+                          "exit_code": rc, "results": results}, ensure_ascii=False))
+        return rc
+    return _scan(args, results)
+
+
+def _scan(args, results: list) -> int:
 
     root = find_project_root(args.path) or Path(args.path).resolve()
 
@@ -272,26 +379,27 @@ def main() -> int:
     print(f"[codeguard-cve] project: {root}")
     print(f"[codeguard-cve] ecosystems: {ecosystems or '(none detected)'}")
 
-    results = []
     for eco in ecosystems:
         spec = ECOSYSTEM_SCANNERS[eco]
         scannable, why = precheck(root, eco)
         if not scannable:
-            results.append({"ecosystem": eco, "tool": eco, "exit": 127,
+            results.append({"ecosystem": eco, "tool": eco, "exit": 127, "status": "UNVERIFIED",
                             "summary_tail": f"无法验证: {why}", "fix_hint": "确认项目类型后重试"})
             print(f"  {eco:8s} SKIP（{why}）")
             continue
         r = spec["scan"](root, args.severity, args.fix)
         results.append(r)
-        status = "PASS" if r["exit"] == 0 else f"FAILED(exit={r['exit']})"
+        # 未提供结构化证据的原生适配器只接受成功；非零不能凭空证明有漏洞。
+        r.setdefault("status", "PASS" if r["exit"] == 0 else "UNVERIFIED")
+        status = r["status"]
         print(f"  {eco:8s} {r['tool']:28s} {status}")
 
     if not results:
         print("[codeguard-cve] 无可扫描生态（或对应工具未安装）")
         return EXIT_UNVERIFIED
 
-    failed = [r for r in results if r["exit"] not in (0, 127) or r.get("failed")]
-    unverifiable = [r for r in results if r["exit"] == 127]
+    failed = [r for r in results if r.get("status") == "FAIL"]
+    unverifiable = [r for r in results if r.get("status", "UNVERIFIED") == "UNVERIFIED"]
     print()
     for r in failed:
         print(f"[codeguard-cve] ❌ {r['ecosystem']} 有漏洞需修复:")
@@ -299,7 +407,7 @@ def main() -> int:
             print("  " + r["summary_tail"].replace("\n", "\n  ")[:2000])
         print(f"  ➜ {r.get('fix_hint', '')}")
     for r in unverifiable:
-        print(f"[codeguard-cve] ⚠️  {r['ecosystem']} 无法验证（工具未安装）: {r.get('summary_tail', '')}")
+        print(f"[codeguard-cve] ⚠️  {r['ecosystem']} 无法验证: {r.get('reason', '')} {r.get('summary_tail', '')}")
         print(f"  ➜ 安装后重跑: {r.get('fix_hint', '')}")
     if failed:
         n = len(failed)
