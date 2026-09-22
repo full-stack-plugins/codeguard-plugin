@@ -14,7 +14,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from detect_lang import LANG_COMMANDS, detect_language
+from detect_lang import LANG_COMMANDS, detect_language, project_uses_linter
 from scope import scope_cmd
 
 __all__ = ["run_check", "run_fix"]
@@ -33,7 +33,8 @@ def _run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
 
 def run_check(languages: list[str], project_root: Path,
               *, timeout: int = 120, fix: bool = False,
-              dry_run: bool = False, log_dir: Path | None = None) -> list[dict]:
+              dry_run: bool = False, log_dir: Path | None = None,
+              files: list[str] | None = None) -> list[dict]:
     """对每个语言跑 lint；fix=True 时失败后自动跑 format 复检一次。
 
     `log_dir` 非空且有语言失败时，完整输出（stdout+stderr 合并——ruff 等
@@ -41,55 +42,68 @@ def run_check(languages: list[str], project_root: Path,
     （组头含语言与退出码），失败条目附带 `log_path`；
     全部通过则不产生日志文件。
     """
+    from verdict import FAIL, PASS, PLANNED, SKIPPED, UNVERIFIED, lint_verdict, result
+
     results: list[dict] = []
     log_entries: list[tuple[str, int, str]] = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
-            results.append({"language": lang, "passed": False, "error": "no command defined"})
+            results.append(result(lang, PLANNED, "没有可执行检查命令"))
             continue
-        lint_cmd = cmd_def.get("lint")
+        lang_files = None if files is None else [f for f in files
+                    if detect_language(f, project_root) == lang and (project_root / f).is_file()]
+        if lang != "java" and lang_files == []:
+            results.append(result(lang, SKIPPED, "本次改动未涉及该语言的现存文件"))
+            continue
+        if not project_uses_linter(cmd_def, project_root):
+            results.append(result(lang, UNVERIFIED, "项目缺少已声明的检查配置，未执行"))
+            continue
+        lint_cmd = (cmd_def.get("gate") or cmd_def.get("lint")) if files is None else cmd_def.get("lint")
+        java_plan = None
+        if lang == "java":
+            from java_project import analyze
+            java_plan = analyze(project_root, files)
+            if not java_plan["commands"]:
+                results.append(result(lang, java_plan["status"], "；".join(java_plan["reasons"]),
+                                      java_plan=java_plan))
+                continue
+            lint_cmd = java_plan["commands"][0]["argv"]
         if dry_run or not lint_cmd:
-            results.append({"language": lang, "passed": True,
-                            "dry_run": True, "command": lint_cmd or []})
+            results.append(result(lang, PLANNED, "计划检查，尚未执行",
+                                  dry_run=True, command=lint_cmd or []))
             continue
         # CLI/MCP 是仓健康检查（全量）：注入默认 ruff 配置 + 剔除 vendor 快照，
         # 否则规则集随机器漂移、供应链快照给出不可修的永久红。
-        lint_cmd = scope_cmd(lint_cmd, project_root, full_excludes=True)
-        rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
-        if rc == 2:
-            # exit 2 = 用法/依赖/配置崩溃，与仓库内容无关 → unverified
-            # （不计失败、不触发 fix、不写失败日志）。
-            # exit 127（命令不存在）**故意保持失败**：check CLI 是 CI/健康面，
-            # "工具没装"在那里就该红——test_mcp_server 的失败日志与安静模式用例
-            # 依赖这条环境无关性（CI 无 ruff，靠 127=失败才进得了失败路径）。
-            # 交互钩子路径对 127 归 skipped（不挡人工作）：按场景的有意分歧，
-            # 不是口径 bug（v0.8.1 曾误统一过一次，本提交修正）。
-            results.append({
-                "language": lang,
-                "passed": True,
-                "exit_code": 2,
-                "unverified": "exit 2（工具链异常，非 lint 结论）",
-                "stderr_tail": err[-2000:] if err else "",
-                "stdout_tail": out[-1000:] if out else "",
-            })
-            continue
-        passed = rc == 0
-        if not passed and fix:
-            fmt = cmd_def.get("format")
-            if fmt:
-                _run(scope_cmd(fmt, project_root, full_excludes=True),
-                     cwd=project_root, timeout=timeout + 60)
-                rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
-                passed = rc == 0
-        results.append({
-            "language": lang,
-            "passed": passed,
-            "exit_code": rc,
-            "stderr_tail": err[-2000:] if err else "",
-            "stdout_tail": out[-1000:] if out else "",
-        })
-        if not passed and (err or out):
+        if java_plan:
+            commands = [c["argv"] for c in java_plan["commands"]]
+        elif "{file}" in " ".join(lint_cmd):
+            if lang_files is None:
+                results.append(result(lang, UNVERIFIED, "只有单文件命令，未配置项目 gate"))
+                continue
+            commands = [scope_cmd(lint_cmd, project_root, single_file=f) for f in lang_files]
+        else:
+            commands = [scope_cmd(lint_cmd, project_root, files=lang_files,
+                                  full_excludes=lang_files is None,
+                                  append_files=cmd_def.get("append_files", True))]
+        for lint_cmd in commands:
+            rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
+            if rc != 0:
+                break
+        status, reason = lint_verdict(rc, lint_cmd, out + err)
+        if status == FAIL and fix:
+            fixed = run_fix([lang], project_root, timeout=timeout + 60, files=files)[0]
+            if fixed.get("fixed") and not fixed.get("dry_run"):
+                for lint_cmd in commands:
+                    rc, out, err = _run(lint_cmd, cwd=project_root, timeout=timeout)
+                    if rc:
+                        break
+                status, reason = lint_verdict(rc, lint_cmd, out + err)
+        results.append(result(lang, status, reason, exit_code=rc,
+                              unverified=reason if status == UNVERIFIED else "",
+                              command=lint_cmd, java_plan=java_plan,
+                              stderr_tail=err[-2000:], stdout_tail=out[-1000:]))
+        if status != PASS and (err or out):
             combined = ""
             if out:
                 combined += out
@@ -126,6 +140,11 @@ def run_fix(languages: list[str], project_root: Path,
     `files` 非空 = 仅修复这些文件（fix.py 缺省 delta 模式）；某语言在改动
     里没有文件 → 该语言整行跳过（skipped 标记），绝不动仓里其它存量文件。
     """
+    if files is not None and any(
+            (project_root / f).is_symlink() or not (project_root / f).resolve().is_relative_to(project_root.resolve())
+            for f in files):
+        return [{"language": lang, "fixed": False, "status": "UNVERIFIED", "exit_code": 1,
+                 "note": "修复范围含符号链接或仓外路径，未执行 formatter"} for lang in languages]
     results: list[dict] = []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
@@ -136,17 +155,33 @@ def run_fix(languages: list[str], project_root: Path,
         if files is not None:
             lang_files = [f for f in files if detect_language(f, project_root) == lang]
             if not lang_files:
-                results.append({"language": lang, "fixed": True, "skipped": True,
+                results.append({"language": lang, "fixed": False, "skipped": True, "status": "SKIPPED",
                                 "note": "本次改动未涉及该语言"})
                 continue
         fmt = cmd_def.get("format")
-        if dry_run or not fmt:
-            results.append({"language": lang, "fixed": True,
-                            "dry_run": True, "command": fmt or []})
+        if files is not None and not cmd_def.get("append_files", True):
+            results.append({"language": lang, "fixed": False, "status": "UNVERIFIED",
+                            "note": "项目级 formatter 无法限制到改动文件；需显式 --all", "exit_code": 1})
             continue
-        cmd = scope_cmd(fmt, project_root, files=lang_files,
-                        full_excludes=(lang_files is None))
-        rc, _out, err = _run(cmd, cwd=project_root, timeout=timeout)
+        if not fmt or dry_run:
+            results.append({"language": lang, "fixed": False, "status": "PLANNED",
+                            "dry_run": dry_run, "command": fmt or [], "exit_code": 1,
+                            "note": "尚未执行修复" if dry_run else "未配置 formatter"})
+            continue
+        if "{file}" in " ".join(fmt):
+            if lang_files is None:
+                results.append({"language": lang, "fixed": False, "status": "UNVERIFIED",
+                                "note": "formatter 需要明确文件列表", "exit_code": 1})
+                continue
+            commands = [scope_cmd(fmt, project_root, single_file=f) for f in lang_files]
+        else:
+            commands = [scope_cmd(fmt, project_root, files=lang_files,
+                                  full_excludes=(lang_files is None),
+                                  append_files=cmd_def.get("append_files", True))]
+        for cmd in commands:
+            rc, _out, err = _run(cmd, cwd=project_root, timeout=timeout)
+            if rc:
+                break
         results.append({
             "language": lang,
             "fixed": rc == 0,

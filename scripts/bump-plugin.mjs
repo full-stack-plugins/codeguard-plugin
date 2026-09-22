@@ -87,14 +87,25 @@ if (!plugin) {
 
 const oldVersion = plugin.version;
 const newVersion = bump(oldVersion);
-const today = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+const today = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date()).replaceAll("-", "");
 const repoDir = path.join(workspace, plugin.localDirectory);
 
 const edits = [{ file: catalogPath, description: `${pluginId}: ${oldVersion} -> ${newVersion}` }];
+const plainManifestRels = [".zcode-plugin/plugin.json", "kimi.plugin.json"];
+if (fs.existsSync(path.join(repoDir, "plugin.json"))) plainManifestRels.push("plugin.json");
 
-for (const rel of [".zcode-plugin/plugin.json", "kimi.plugin.json", ".agents/plugins/marketplace.json"]) {
+for (const rel of plainManifestRels) {
   edits.push({ file: path.join(repoDir, rel), description: `${rel}: ${oldVersion} -> ${newVersion}` });
 }
+edits.push({
+  file: path.join(repoDir, ".agents/plugins/marketplace.json"),
+  description: `.agents/plugins/marketplace.json: ${oldVersion} -> ${newVersion} + release URLs`,
+});
 // codex manifest 允许 <version>+codex.<date> 后缀（sync 校验认可的形状）
 edits.push({
   file: path.join(repoDir, ".codex-plugin/plugin.json"),
@@ -118,20 +129,38 @@ fs.writeFileSync(catalogPath, catalogText);
 
 // 2) 各仓 manifest
 const bumpPlain = (text) => text.replace(`"version": "${oldVersion}"`, `"version": "${newVersion}"`);
-const bumpCodex = (text) => text.replace(/"version": "\d+\.\d+\.\d+\+codex\.\d+"/, `"version": "${newVersion}+codex.${today}"`);
+const bumpCodex = (text) => text.replace(/"version": "\d+\.\d+\.\d+(?:\+codex\.\d+)?"/, `"version": "${newVersion}+codex.${today}"`);
 
-fs.writeFileSync(edits[1].file, bumpPlain(fs.readFileSync(edits[1].file, "utf8")));
-fs.writeFileSync(edits[2].file, bumpPlain(fs.readFileSync(edits[2].file, "utf8")));
-fs.writeFileSync(edits[3].file, bumpPlain(fs.readFileSync(edits[3].file, "utf8")));
-fs.writeFileSync(edits[4].file, bumpCodex(fs.readFileSync(edits[4].file, "utf8")));
+for (const rel of plainManifestRels) {
+  const manifest = path.join(repoDir, rel);
+  fs.writeFileSync(manifest, bumpPlain(fs.readFileSync(manifest, "utf8")));
+}
+const repositoryMarketplace = path.join(repoDir, ".agents/plugins/marketplace.json");
+const marketplace = JSON.parse(fs.readFileSync(repositoryMarketplace, "utf8"));
+if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length !== 1) {
+  throw new Error(`${pluginId}: repository marketplace must contain exactly one plugin`);
+}
+const marketplacePlugin = marketplace.plugins[0];
+const releaseRef = `v${newVersion}`;
+const logoUrl = `https://cdn.jsdelivr.net/gh/${plugin.repository}@${releaseRef}/${plugin.logo}`;
+marketplacePlugin.version = newVersion;
+marketplacePlugin.description = plugin.description;
+marketplacePlugin.interface.shortDescription = plugin.shortDescription;
+marketplacePlugin.source.ref = releaseRef;
+marketplacePlugin.icon = logoUrl;
+marketplacePlugin.interface.logo = logoUrl;
+fs.writeFileSync(repositoryMarketplace, `${JSON.stringify(marketplace, null, 2)}\n`);
+const codexManifest = path.join(repoDir, ".codex-plugin/plugin.json");
+fs.writeFileSync(codexManifest, bumpCodex(fs.readFileSync(codexManifest, "utf8")));
 
 // 3) 重新生成三平台清单 + 全量校验
-execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), "--write"], { stdio: "inherit" });
-execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs")], { stdio: "inherit" });
+const pluginFilter = `--plugin=${pluginId}`;
+execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), "--write", pluginFilter], { stdio: "inherit" });
+execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), pluginFilter], { stdio: "inherit" });
 
 // 4) 提交提示
 console.log(`
-✅ ${pluginId} ${newVersion} 发版完成。剩余步骤：
+✅ ${pluginId} ${newVersion} 本地元数据已准备；尚未提交、推送或发布。剩余步骤：
   cd ${root} && git add -A && git commit -m "release: ${pluginId} ${newVersion}" && git push
   cd ${repoDir} && git add -A && git commit -m "release: v${newVersion}" && git push
   ZCode 插件市场刷新后即可看到「可更新」`);

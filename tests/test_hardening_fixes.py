@@ -19,9 +19,9 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 sys.path.insert(0, str(PLUGIN / "hooks"))
 
-import gate_lib  # noqa: E402
-import pre_tool_git_guard as guard  # noqa: E402
-import scope  # noqa: E402
+import gate_lib
+import pre_tool_git_guard as guard
+import scope
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -43,7 +43,7 @@ def _run_hook(script: str, payload: dict | None, cwd: Path,
     return subprocess.run(
         [sys.executable, str(PLUGIN / "hooks" / script)],
         input=json.dumps(payload) if payload is not None else "",
-        capture_output=True, text=True, cwd=cwd, env=env, timeout=120,
+        capture_output=True, text=True, cwd=cwd, env=env, timeout=120, check=False,
     )
 
 
@@ -366,7 +366,7 @@ def _pushable_repo() -> Path:
     bare = Path(tempfile.mkdtemp(prefix="cg-bare-"))
     work = Path(tempfile.mkdtemp(prefix="cg-work-"))
     subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
-    subprocess.run(["git", "clone", "-q", str(bare), str(work)], capture_output=True)
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], capture_output=True, check=True)
     _git(work, "config", "user.email", "t@t")
     _git(work, "config", "user.name", "t")
     (work / "good.txt").write_text("ok\n", encoding="utf-8")
@@ -374,7 +374,7 @@ def _pushable_repo() -> Path:
     _git(work, "commit", "-q", "-m", "init")
     r = subprocess.run(
         ["git", "push", "-q", "-u", "origin", "HEAD"], cwd=work,
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     assert r.returncode == 0, r.stderr
     # 绕过门禁（模拟用户手动提交/装插件前的提交）：坏 shell 文件入库
@@ -464,8 +464,8 @@ class UnverifiedParityTests(unittest.TestCase):
             results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-127-")))
         finally:
             rpl.subprocess.run = original
-        self.assertFalse(results[0]["passed"], "CLI 面工具缺失必须报失败")
-        self.assertNotIn("unverified", results[0])
+        self.assertFalse(results[0]["passed"], "CLI 面工具缺失不能通过")
+        self.assertEqual(results[0]["status"], "UNVERIFIED")
 
     def test_rc_2_is_unverified_in_cli(self) -> None:
         import run_per_language as rpl
@@ -475,8 +475,9 @@ class UnverifiedParityTests(unittest.TestCase):
             results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-2-")))
         finally:
             rpl.subprocess.run = original
-        self.assertTrue(results[0]["passed"])
-        self.assertIn("exit 2", results[0].get("unverified", ""))
+        self.assertFalse(results[0]["passed"])
+        self.assertEqual(results[0]["status"], "UNVERIFIED")
+        self.assertTrue(results[0].get("reason"))
 
 
 class FourHookDedupTests(unittest.TestCase):

@@ -66,24 +66,20 @@ def _git(project_root: Path, *args: str) -> str | None:
     return proc.stdout if proc.returncode == 0 else None
 
 
-def check_commit_safety(project_root: Path, mode: str) -> list[tuple[str, str, str]]:
+def check_commit_safety(project_root: Path, mode: str, *, lanes=None, extra=None,
+                        pending_commit=False) -> list[tuple[str, str, str]]:
     """检查即将进入版本库的文件（commit=暂存区；push=未推送提交的 diff）。
 
     返回违规列表 [(路径, 命中规则, 建议操作)]；无法判定（非 git 仓/无对比基线）
     返回空列表并由调用方按 skipped 处理——安全检查不做静默失败。
     """
-    if mode == "commit":
-        out = _git(project_root, "diff", "--cached", "--name-only", "-z")
-    else:  # push：检查所有未推送提交触及的文件
-        out = _git(project_root, "diff", "--name-only", "-z", "@{upstream}..HEAD")
-        if out is None:
-            out = _git(project_root, "diff", "--name-only", "-z", "origin/main..HEAD")
-    if not out:
-        return []
+    from git_snapshot import proposed_paths
+    paths = proposed_paths(project_root, mode, lanes=lanes, extra=extra,
+                           pending_commit=pending_commit)
 
     import fnmatch
     violations: list[tuple[str, str, str]] = []
-    for raw in out.split("\0"):
+    for raw in paths:
         f = raw.strip()
         if not f:
             continue
@@ -218,6 +214,8 @@ def run_gate(
     mode: str = "commit",
     lanes: tuple[str, ...] | list[str] | None = None,
     extra: tuple[str, ...] | list[str] | None = None,
+    exact: bool = False,
+    pending_commit: bool = False,
 ) -> tuple[list, list]:
     """运行 linter 门禁（跨进程结果缓存 + 并行执行）。
 
@@ -236,6 +234,21 @@ def run_gate(
     - skipped:  [str] 无法验证的说明（工具未装/超时），不阻塞
     """
     import time as _time
+    if exact:
+        from git_snapshot import SnapshotError, validation_tree
+        from scope import is_build_artifact
+        try:
+            with validation_tree(project_root, mode, lanes=lanes, extra=extra,
+                                 pending_commit=pending_commit) as (snapshot, paths):
+                selected = languages if languages is not None else detect_languages(snapshot)
+                enabled = cfg.get("enabled_languages", [])
+                if enabled and enabled != ["auto"]:
+                    selected = [lang for lang in selected if lang in enabled]
+                requested_scope = (get_overrides(snapshot) or {}).get("gate_scope") or "delta"
+                return _run_gate_uncached(snapshot, cfg, selected, scope=requested_scope,
+                                          changed=[p for p in paths if not is_build_artifact(p)])
+        except (SnapshotError, OSError, ValueError) as exc:
+            return [], [f"git UNVERIFIED：无法验证准确内容快照：{exc}"]
     if languages is None:
         languages = detect_languages(project_root)
     if not languages:
@@ -327,31 +340,9 @@ def _mentioned_files(full: str, project_root: Path) -> set[str]:
 
 
 def _stale_attribution(full: str, project_root: Path, lang: str, lang_files: list[str]) -> str | None:
-    """delta 面存量归因：报错提到的文件全部在本次改动集之外 → 存量，不拦。
-
-    永久红场景（实测）：项目级命令（mvn javadoc:jar）因工具链/历史债在**与本次
-    改动无关**的文件上失败，若一律按 failure 就变成"不还历史债就永远提交不了"
-    → 用户只能 skipGate，门禁信誉清零。返回 skipped 说明（含完整日志路径）或
-    None（无法归因/有交集 → 维持 failure，宁可多拦不漏拦）。
-    """
-    mentioned = _mentioned_files(full, project_root)
-    if not mentioned:
-        return None
-    changed_set = set(lang_files)
-    if mentioned & changed_set:
-        return None
-    shown = sorted(mentioned)
-    head = ", ".join(shown[:3]) + ("…" if len(shown) > 3 else "")
-    try:
-        path = _log_path(project_root, lang)
-        path.write_text(full, encoding="utf-8")
-        tail = f"；完整输出: {path}"
-    except OSError:
-        tail = ""
-    return (
-        f"{lang} 报错均位于本次改动之外的存量文件（{head}，共 {len(shown)} 个）"
-        f"——不拦本次提交{tail}。如需清偿存量问题请单独修复或建 baseline。"
-    )
+    """保留旧调用契约；没有实际基线复跑，禁止凭文件位置豁免失败。"""
+    # 没有同命令/同工具版本的基线证据，未修改调用方也可能被本次 API 变更破坏。
+    return None
 
 
 def _run_gate_uncached(
@@ -374,12 +365,25 @@ def _run_gate_uncached(
     def check(lang: str):
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
-            return None
+            return (lang, None, f"{lang} PLANNED：没有可执行检查命令")
+        if lang == "java":
+            from run_per_language import run_check
+            outcome = run_check([lang], project_root, timeout=cfg.get("lint_timeout_seconds", 120),
+                                files=changed if scope == "delta" else None,
+                                log_dir=_log_path(project_root, lang).with_suffix(""))[0]
+            if outcome["status"] == "PASS":
+                return None
+            if outcome["status"] != "FAIL":
+                return (lang, None, f"java {outcome['status']}: {outcome['reason']}")
+            detail = _truncate_detail(outcome.get("stdout_tail", "") + outcome.get("stderr_tail", ""), project_root, lang)
+            if outcome.get("log_path"):
+                detail += f"\n完整输出: {outcome['log_path']}"
+            return (lang, (lang, detail, "按 Java 影响计划修复并复跑 verify/check", "优先项目 wrapper"), None)
         lang_files: list[str] = []
         if scope == "delta":
             lang_files = [
                 f for f in (changed or [])
-                if detect_language(f, project_root) == lang
+                if detect_language(f, project_root) == lang and (project_root / f).is_file()
             ]
             if not lang_files:
                 return (lang, None, f"{lang} 本次改动未涉及，跳过")
@@ -431,23 +435,19 @@ def _run_gate_uncached(
                 cmd = scope_cmd(base_cmd, project_root, full_excludes=True)
             outputs.append(_run_one(cmd, timeout, lang, hint))
 
-        rc, out, err = outputs[0]
-        if rc == 124:
-            return (lang, None, f"{lang} 检查超时（>{timeout}s），本次未验证")
+        # 任一后续文件失败都不能被首个文件的成功覆盖。
+        rc, out, err = next((entry for entry in outputs if entry[0] != 0), outputs[0])
         if rc == 0:
             return None
+        from verdict import UNVERIFIED, lint_verdict
+        status, reason = lint_verdict(rc, base_cmd, out + err)
+        if status == UNVERIFIED:
+            return (lang, None, f"{lang} 工具链异常未验证：{reason} (exit {rc})")
         if lang == "markdown":
             return (lang, None, "markdown 风格告警（不阻塞提交）")
-        if rc == 127:
-            return (lang, None, f"{lang} 工具链异常未验证：命令不存在（exit 127）")
-        if rc == 2:
-            # exit 2 = 工具用法/依赖/配置崩溃，与仓库内容无关（与 markdownlint
-            # 用法错误同族）。按"无法验证≠验证失败"归 skipped，绝不拦提交。
-            head = next((ln.strip() for ln in f"{out}\n{err}".splitlines() if ln.strip()), "")
-            return (lang, None, f"{lang} 工具链异常未验证：exit 2（非 lint 结论）{('｜' + head[:80]) if head else ''}")
         full = "\n".join(seg for seg in ((out or "").rstrip(), (err or "").rstrip()) if seg)
         if scope == "delta" and lang_files:
-            # 存量归因：项目级命令在与本次改动无关的文件上失败 → skipped 不拦
+            # 无基线时不做“历史债”推断；保留接口供未来双跑基线扩展。
             stale = _stale_attribution(full, project_root, lang, lang_files)
             if stale is not None:
                 return (lang, None, stale)
@@ -642,8 +642,7 @@ def format_failure_report(failures: list) -> str:
         summarize_failures(failures),
         "─" * 60,
     ]
-    for block in _failure_detail_blocks(failures):
-        lines.append(block)
+    lines.extend(_failure_detail_blocks(failures))
     lines.append(f"一键尝试自动修复: python3 {PLUGIN_ROOT}/scripts/fix.py")
     return "\n".join(lines)
 

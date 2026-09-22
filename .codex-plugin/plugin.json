@@ -1,7 +1,7 @@
 {
   "name": "codeguard",
-  "version": "0.11.1+codex.20260922",
-  "description": "Cross-language code lint enforcement for AI coding assistants (ZCode, Claude Code, Codex CLI, Kimi Code): Java, Rust, TypeScript, Python. PostToolUse hook auto-runs the native linter on every AI-written file and blocks on failure in strict mode.",
+  "version": "0.12.0+codex.20260922",
+  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
@@ -24,8 +24,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "代码规范守卫",
-    "shortDescription": "Make AI-written code pass lint on first try",
-    "longDescription": "Detects project languages, runs the appropriate linter (mvn javadoc+checkstyle, cargo clippy+fmt, npx eslint, ruff check) on every file the AI writes or edits, and blocks further writes when lints fail. Ships ready-to-use .pre-commit-config.yaml templates and AGENTS.md snippets for one-line project bootstrap. Supports ZCode, Claude Code, Codex CLI, and Kimi Code through their respective plugin manifests.",
+    "shortDescription": "Trustworthy code checks and Java impact analysis",
+    "longDescription": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit. Java planning is read-only; executing project checks runs trusted build/test commands, not a security sandbox.",
     "developerName": "Full Stack Skills / PartMe.AI",
     "category": "Developer Tools",
     "capabilities": [
@@ -38,7 +38,7 @@
     "defaultPrompt": [
       "Run /check on the current project and fix what fails",
       "Initialize codeguard on this repository with /init",
-      "Run Java javadoc + checkstyle on the current project"
+      "Analyze Java module impact, then run the project's verification plan"
     ],
     "brandColor": "#2563EB",
     "composerIcon": "./assets/composer-icon.png",

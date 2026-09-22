@@ -92,6 +92,7 @@ for _id, _lang in REGISTRY.items():
                 "probe": _lang.get("probe"),     # 显式探活命令（npx 系必配，覆盖包未装场景）
                 "requiresConfig": _lang.get("requiresConfig"),  # 未接入配置的项目归 skipped
                 "install_hint": _lang.get("install_hint"),
+                "append_files": _lang.get("append_files", True),
             }
     if _lang.get("install_hint"):
         LANG_INSTALL_HINTS[_id] = _lang["install_hint"]

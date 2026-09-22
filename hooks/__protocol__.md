@@ -14,7 +14,7 @@
 |---|---|---|---|---|---|
 | SessionStart | `env_check.py` | 人类可读一行摘要 `codeguard 插件环境：...` | 仅内部错误时 | 0 | 否 |
 | UserPromptSubmit | `user_prompt_validator.py` | JSON `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"..."}}` | 仅内部错误时 | 0 | 否 |
-| PreToolUse `Bash` | `pre_tool_git_guard.py` | 通过：空 | 通过：空；失败：完整修复指令 | 0（通过）/ 2（拦截） | 通过：否；失败：是 |
+| PreToolUse `Bash` | `pre_tool_git_guard.py` | 通过：空；未验证：JSON additionalContext | 通过：空；失败：完整修复指令 | 0（通过/放行）/ 2（拦截） | 放行：否；确定违规：是 |
 | PostToolUse `Write\|Edit\|MultiEdit` | `post_tool_lint.py` | JSON `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}, "systemMessage":"..."}` | 仅内部错误时 | 0 | 否 |
 | Stop | `stop_summary.py` | 人类可读会话摘要 | 仅内部错误时 | 0 | 否 |
 
@@ -92,10 +92,10 @@ if __name__ == "__main__":
   **整个 Bash 工具调用**，此前未声明这一点，AI 反复把写文件与提交塞进同一调用
   并误判"编辑被吞"。
 
-**禁止**在 lint skipped（工具未装/项目未接入/本次改动未涉及/exit 2 工具链异常/
-**存量归因**——delta 报错提到的文件全部在本次改动集之外）时 exit 2——这是
-「无法验证」而非「验证失败」；存量归因是防"历史债不还就永远提交不了 → 只能
-skipGate → 门禁信誉清零"的最后一道闸。
+**禁止**因工具未装、项目未接入、检查超时等 UNVERIFIED 状态 exit 2；保留 fail-open，
+但 MUST 明确未验证，不能输出“全部通过”。没有适用改动是 SKIPPED，不等于工具故障。
+退出码按工具解释，不能全局把 2 当崩溃（例如 pylint 的 2 是违规）。
+**取消无基线存量归因**：报错在未修改文件上也可能是本次 API 变化造成的，不能凭路径放行。
 
 **一致性约束**：`UserPromptSubmit` 软门禁与本硬门禁共用同一条 skipGate 豁免，
 且**都不得在非 git 目录回退成"扫描 cwd"**——UPS 对非 git 目录输出一行
@@ -108,13 +108,20 @@ payload 不带这些字段（测试协议/其它宿主）时不去重，保持�
 纯 `git commit` → 仅暂存区；`git add -A/-a/-u` 或 `commit -a` → 相应扩到
 未暂存/未跟踪；`git add <paths>` → 并入这些路径——add 在 PreToolUse 时**尚未执行**，
 不并入会漏检"即将暂存"的文件；并行会话留在工作树的未暂存 WIP 不属于本次提交，
-曾因此被误拦）；push 面 = 并集未推送提交（`up...HEAD`）。lanes/extra 必须进
-缓存键——同一工作树状态下窄面 pass 不得被宽面复用（staged 干净 + 未暂存有病
-时，纯 commit 通过的结果若被 `add -A && commit` 复用 = 绕过）。
+曾因此被误拦）；纯 push 在 HEAD 快照中检查未推送差异（`up...HEAD`），无上游时检查 HEAD 树。
+commit+push 使用预测提交快照并合并未推送范围。删除文件进入影响分析，不作为新增敏感文件。
+硬门禁从 Git blobs 物化一次性目录，不借真实 .git，不修改原 index/工作树，也不复用软门禁缓存。
+符号链接/子模块/冲突、超限、依赖不可用都明确 UNVERIFIED。快照是内容隔离，不是执行沙箱；
+复杂命令链、非 HEAD refspec、并发修改仍需独立 CI 验证。
 UserPromptSubmit 按提示词里的 `push/推送` 选 commit/push 面，但**不传 lanes =
 三路宽口径**——软门禁没有待执行命令可预测，按"工作树有待提交改动就提醒"注入
 （注入非阻断，多提醒不算错；硬门禁少拦才是底线），软硬两门只在 skipGate 豁免
 上严格一致。
+
+PostToolUse 只运行可限定到单文件的检查和 formatter。append_files=false 的项目命令推迟到
+显式 check/Git 门禁；保存不能触发整项目 formatter。工具异常不能自动修复。
+CLI/MCP 共用 PASS/FAIL/UNVERIFIED/SKIPPED/PLANNED，只有 PASS 的 passed=true。
+CLI 的 0/1/2 与 hook 的 fail-open 退出码是不同协议，不能混用。
 
 ---
 

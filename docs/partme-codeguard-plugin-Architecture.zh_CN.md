@@ -1,5 +1,7 @@
 # partme-codeguard-plugin 系统架构设计
 
+> **历史设计，不作为当前行为证明**：下文保存早期架构思路，其中 PostToolUse 阻断、javadoc 默认命令、延迟和“全覆盖”等叙述已不适用。当前 0.12.0 实现以[判定与 Java 架构](verdict-java-architecture.md)、[钩子协议](../hooks/__protocol__.md)及 OpenSpec 为准；历史图表中的指标不是本次实测。
+
 > **文档说明**：本架构文档描述 partme-codeguard-plugin 插件的内部结构、模块划分、数据流与三端适配设计。
 >
 > **版本**：V1.1

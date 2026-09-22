@@ -27,7 +27,10 @@ from detect_lang import (  # ensure_user_path/load_user_config 实际定义：sc
     project_uses_linter,
 )
 from gate_lib import codeguard_home, session_state_path
-from scope import is_build_artifact, scope_cmd  # 状态目录 ~/.codeguard（可 CODEGUARD_HOME 覆盖）
+from scope import (  # 状态目录 ~/.codeguard（可 CODEGUARD_HOME 覆盖）
+    is_build_artifact,
+    scope_cmd,
+)
 
 # 双副本去重：同一插件可能以多个 marketplace 副本安装（partme-ai/ 与
 # full-stack-plugins/ 各一份，钩子双份触发——实测），用户级固定路径跨副本共享
@@ -228,6 +231,14 @@ def main() -> int:
     if not cmd_def:
         return 0
 
+    if not cmd_def.get("append_files", True):
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": f"codeguard: {lang} 是项目级检查；本次保存未验证，"
+            "请使用 codeguard check 或提交门禁。不会自动格式化整个项目。",
+        }}, ensure_ascii=False))
+        return 0
+
     # 项目未接入该 linter（无配置文件）时，生态型 linter（eslint）必然报错
     # 退出——那是「未接入」不是「代码违规」（qumall-mall-ui 无 .eslintrc 实测）
     if not project_uses_linter(cmd_def, project_root):
@@ -253,6 +264,16 @@ def main() -> int:
 
     rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
+    from verdict import UNVERIFIED, lint_verdict
+    verdict, reason = lint_verdict(rc, lint_cmd, stdout + stderr)
+    if verdict == UNVERIFIED:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": f"codeguard: UNVERIFIED [{lang}] {reason} (exit {rc})；"
+            "没有代码结论，不自动修复。",
+        }}, ensure_ascii=False))
+        return 0
+
     if rc == 0:
         bump_state(lang, passed=True)
         # 注入 AI 上下文：告诉 AI 该文件通过了门禁
@@ -271,7 +292,6 @@ def main() -> int:
     if cfg.get("auto_fix_on_save", True):
         fmt_cmd = cmd_def.get("format")
         if fmt_cmd:
-            print(f"[codeguard] ⚠️ {lang} lint failed, attempting auto-fix...")
 
             def _porcelain() -> set[str]:
                 try:
@@ -297,9 +317,16 @@ def main() -> int:
                     name for name in (after - before)
                     if not name.rstrip("/").endswith(Path(file_path).name)
                 )
-                print("[codeguard] ✅ auto-fix succeeded, re-running lint...")
                 rc, stdout, stderr = run(materialize(lint_cmd), cwd=project_root, timeout=timeout)
 
+    verdict, reason = lint_verdict(rc, lint_cmd, stdout + stderr)
+    if verdict == UNVERIFIED:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": f"codeguard: UNVERIFIED [{lang}] 修复后复检未完成：{reason}；"
+            "formatter 可能已修改文件，请重新读取。没有通过/失败结论。",
+        }}, ensure_ascii=False))
+        return 0
     passed = rc == 0
     bump_state(lang, passed=passed, auto_fixed=auto_fixed)
 

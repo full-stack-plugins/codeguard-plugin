@@ -9,7 +9,7 @@ CLI 模式：
     python3 run_check.py --mcp             # MCP server 模式（官方 SDK stdio）
 
 MCP 模式（OpenSpec 2026-09-22-fix-gate-trigger-and-mcp）：
-    暴露 check_code_style / auto_fix / list_languages 三个工具；
+    暴露 check_code_style / auto_fix / list_languages / analyze_java_impact 四个工具；
     依赖 `mcp>=1.0`（见根 requirements.txt）。按语言执行细节全部委托给
     `scripts/run_per_language.py`；本文件负责 argparse、报告输出与 MCP 接线。
 """
@@ -81,12 +81,10 @@ def cli_main():
         timeout=args.timeout, fix=args.fix, log_dir=log_dir,
     )
     for r, lang in zip(results, languages, strict=False):
-        if r.get("dry_run"):
-            continue
-        if not r["passed"] and args.fix:
+        if r.get("status") == "FAIL" and args.fix:
             print(f"[codeguard] ⚠️  {lang} lint failed, attempting auto-fix...")
-        if r.get("passed") and r.get("unverified"):
-            status = f"⚠️ unverified ({r['unverified']})"
+        if r.get("status") in ("UNVERIFIED", "PLANNED", "SKIPPED"):
+            status = f"⚠️ {r['status']} ({r.get('reason', '')})"
         else:
             status = "✅ passed" if r["passed"] else f"❌ FAILED (exit={r.get('exit_code')})"
         print(f"  {lang:12s} {status}")
@@ -94,11 +92,15 @@ def cli_main():
             print(f"     └─ 完整日志: {r['log_path']}")
 
     print()
-    if all(r["passed"] for r in results):
-        print("[codeguard] ✅ all passed")
+    from verdict import exit_status
+    verdict_code = exit_status(results)
+    if verdict_code == 0:
+        print("[codeguard] ✅ all passed" if all(r["passed"] for r in results)
+              else "[codeguard] 无须检查的项已跳过；其余检查通过")
         return 0
-    print("[codeguard] ❌ some lints failed")
-    return 2
+    print("[codeguard] ❌ some lints failed" if verdict_code == 2
+          else "[codeguard] ⚠️ UNVERIFIED：检查未完成，不能视为通过")
+    return verdict_code
 
 
 # ══════════════════════════ MCP server（官方 SDK） ══════════════════════════
@@ -114,6 +116,8 @@ def _mcp_envelope(results: list[dict]) -> list[dict]:
         envelope.append({
             "language": r.get("language", ""),
             "passed": bool(r.get("passed")),
+            "status": r.get("status", "PASS" if r.get("passed") else "FAIL"),
+            "reason": r.get("reason") or r.get("unverified", ""),
             "exit_code": int(r.get("exit_code", 0)),
             "stderr_path": log_path,
             "log_path": log_path,
@@ -129,8 +133,23 @@ def _load_registry_entries() -> list[dict]:
     ]
 
 
+def _auto_fix(root: Path, langs: list[str]) -> dict:
+    """默认仅修复实际改动；无法取得 Git 范围时不扩大写入范围。"""
+    from scope import changed_files
+    files = changed_files(root)
+    if files is None:
+        return {"fixed": False, "status": "UNVERIFIED", "reason": "无法确定 Git 改动范围；请显式使用 CLI fix --all",
+                "check": []}
+    targets = [root / f for f in files if (root / f).is_file() and not (root / f).is_symlink()]
+    before = {p: p.read_bytes() for p in targets}
+    fix_results = run_per_language.run_fix(langs, root, files=files)
+    results = run_per_language.run_check(langs, root, files=files, log_dir=root / "out")
+    changed = any(not p.is_file() or p.read_bytes() != body for p, body in before.items())
+    return {"fixed": changed, "fix_results": fix_results, "check": _mcp_envelope(results)}
+
+
 def mcp_main(project_root: Path) -> int:
-    """官方 mcp SDK stdio server：check_code_style / auto_fix / list_languages。"""
+    """官方 mcp SDK stdio server，含只读 Java 影响分析。"""
     try:
         import mcp.types as mcp_types
         from mcp.server import Server
@@ -162,7 +181,7 @@ def mcp_main(project_root: Path) -> int:
             ),
             mcp_types.Tool(
                 name="auto_fix",
-                description="先跑 formatter 链，再复检 lint（嵌入 check 信封）",
+                description="仅对 Git 改动文件跑 formatter 并按相同范围复检；项目级 formatter 不自动扩展范围",
                 inputSchema=input_schema,
             ),
             mcp_types.Tool(
@@ -170,10 +189,20 @@ def mcp_main(project_root: Path) -> int:
                 description="列出支持的语言 id 与显示名（不含内部 lint/format 命令）",
                 inputSchema={"type": "object", "properties": {}},
             ),
+            mcp_types.Tool(
+                name="analyze_java_impact", description="只读分析 Java 构建系统、模块依赖和受影响检查计划；不执行构建",
+                inputSchema={"type": "object", "properties": {
+                    "path": {"type": "string"}, "changed": {"type": "array", "items": {"type": "string"}},
+                }},
+            ),
         ]
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list:
+        if name == "analyze_java_impact":
+            from java_project import analyze
+            args = arguments or {}
+            return [text_block(analyze(args.get("path") or project_root, args.get("changed")))]
         if name == "list_languages":
             return [text_block(_load_registry_entries())]
         if name not in ("check_code_style", "auto_fix"):
@@ -186,15 +215,7 @@ def mcp_main(project_root: Path) -> int:
         if not langs:
             return [text_block({"error": "未识别到语言", "path": str(root)})]
         if name == "auto_fix":
-            fix_results = run_per_language.run_fix(langs, root)
-            results = run_per_language.run_check(langs, root, log_dir=root / "out")
-            any_fixed = any(
-                r.get("fixed") for r in fix_results if not r.get("dry_run")
-            )
-            payload = {
-                "fixed": bool(any_fixed),
-                "check": _mcp_envelope(results),
-            }
+            payload = _auto_fix(root, langs)
         else:
             results = run_per_language.run_check(langs, root, log_dir=root / "out")
             payload = _mcp_envelope(results)

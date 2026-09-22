@@ -2,7 +2,9 @@
 
 ## Purpose
 定义语言注册表中每个条目所声明命令的可执行性要求：`lint` / `format` / `probe` 必须能以声明的方式真正运行，需要路径或文件参数时必须以显式占位符或 glob 表达；并定义语言声明配置前置条件的能力，使「项目未接入」与「检查失败」不再混为一谈。
+
 ## Requirements
+
 ### Requirement: Declared commands must be runnable as written
 
 注册表声明的 `lint` / `format` / `probe` 命令 SHALL 能按声明形式直接执行；需要文件或路径参数的 SHALL 以 `{file}` 占位符或显式 glob 表达，不得依赖调用方补全。
@@ -88,48 +90,52 @@ The functions `load_user_config`, `load_project_overrides`, and `get_overrides` 
 
 ### Requirement: Gates in git repositories SHALL default to changed-file scope
 
-git 仓库内的门禁 MUST 缺省只检查**本次操作面**涉及的文件，并按语言归属过滤；存量问题 MUST NOT 阻塞无关的新提交。操作面 MUST 由操作类型决定：**commit 面**（`git commit` 前）= staged + 未暂存 + 未跟踪；**push 面**（`git push` 前）= 提交面并集**未推送提交**（`up...HEAD` 三点差；无 upstream 时按 `origin/<当前分支>`→`origin/main`→`origin/master` 逐个尝试，均不可解析则不猜测、不崩溃）。面的判定 MUST 单源：命中判定与选面共用同一套扫描，直接命令与一层解释器间接不得分叉；同时命中 commit 与 push 时 MUST 取 push 面。提示词触发的软门禁 MUST 以同一套面语义选择（推送意图选 push 面）。项目可用 `codeguard.json` 的 `gate_scope`（`delta`/`repo`）显式覆盖；非 git 目录缺省为全量。构建产物与依赖快照 MUST 有**单一事实源清单**（`scope.FULL_SCAN_EXCLUDES`），覆盖全量与 delta 两条路径的**所有门禁族**：ruff `--exclude`、find 型 gate 的 `-not -path` 注入（`-print0`/`-exec`/无 NUL 锚三形态全覆盖）、PostToolUse 对产物路径静默跳过、`changed_files` 过滤产物路径（force-add 的 target 文件不进 delta 面）；「入库面」清单 MUST 由该单一事实源派生（+IDE 目录），两侧不得各自手抄。html 门禁 MUST 以 NUL 管道传递文件清单——`-exec … {} + | xargs -0` 的换行分隔会在产物数百个时把整串路径塞进单参数（`xargs: insufficient space` 实测）。门禁结果缓存 MUST 按面隔离（mode 进缓存键），同一 HEAD 下两面不得互相污染。
+Git 门禁 MUST 默认 delta，项目可用 gate_scope=repo 选择全量；构建产物/依赖目录继续使用 scope.FULL_SCAN_EXCLUDES 单源排除。纯 commit 取 index 改动，预测 add 叠加工作树，纯 push 取 HEAD 中的未推送差异，无可解析上游时检查 HEAD 树。提交+推送检查两者并集。精确快照不复用软门禁缓存。只提醒的 UserPromptSubmit 可用工作树宽口径。项目级检查失败不得仅凭未修改文件位置豁免。
 
 #### Scenario: A committed legacy issue is untouched by a clean change
-
-- **WHEN** 仓内 HEAD 已含存量 lint 问题，本次提交只涉及无问题的文档文件
-- **THEN** commit 面判定通过，存量问题不拦截本次提交
+- **WHEN** 改动只有文档且项目检查不适用
+- **THEN** 无须执行的检查跳过；不伪称完成项目验证
 
 #### Scenario: A new staged file introduces a problem
-
-- **WHEN** 新增或修改的文件被暂存且含 lint 问题
-- **THEN** commit 面按改动集检出该问题并正常拦截
+- **WHEN** staged 内容违规但工作树已修好
+- **THEN** index 快照检出违规
 
 #### Scenario: A bad commit made outside the gate must not slip through the push
-
-- **WHEN** 工作树干净、提交已完成（绕过或早于门禁的坏提交），上游可解析
-- **THEN** push 面检出未推送提交中的问题文件并拦截 `git push`
+- **WHEN** HEAD 含未推送违规内容
+- **THEN** HEAD 快照检出违规，不读取工作树修复冒充通过
 
 #### Scenario: Push with no resolvable upstream does not crash
-
-- **WHEN** 仓库无 upstream 且 `origin/main`/`origin/master` 均不存在
-- **THEN** 提交面照常计算、push 面保持空集，门禁不报错、按提交面结论决定
+- **WHEN** 没有可解析上游
+- **THEN** 精确硬门禁检查 HEAD 树，不因空基线跳过全部文件
 
 #### Scenario: A chained commit-and-push takes the wider face
-
-- **WHEN** 单条命令链同时包含 `git commit` 与 `git push`（或间接脚本体内两者并存）
-- **THEN** 生效面为 push 面（提交面的超集），两面的文件并集被检查
+- **WHEN** 可识别链中同时提交和推送
+- **THEN** 预测快照包含拟提交内容与未推送差异
 
 ### Requirement: A toolchain crash SHALL be recorded as unverified, not as a lint failure
 
-linter 以 exit 2（用法/依赖/配置崩溃）退出时，门禁 MUST 记为未验证（hook 路径归 skipped；CLI/MCP 标记 unverified 且不计为失败），MUST NOT 作为 lint 失败上报或触发自动修复。
+检查器退出码 MUST 结合工具契约判定。配置/依赖/用法错误、缺失工具和超时 MUST 记为 UNVERIFIED，禁止自动修复；不得把所有工具的 exit 2 一概视为配置错误。无法验证不计为 PASS，CLI 返回 1，MCP 保留原因，hook 放行时必须明确提示未验证。
 
 #### Scenario: An npx tool crashes with exit 2
-
-- **WHEN** 某语言的检查命令因包/运行时问题以 exit 2 退出且无 lint 结论
-- **THEN** 结果为"工具链异常未验证"，不阻塞提交、不计入失败
+- **WHEN** ESLint 因配置问题以 exit 2 退出
+- **THEN** 结果为 UNVERIFIED，不作为 lint 违规也不作为通过
 
 ### Requirement: Single-file hook commands MUST NOT silently expand to whole-repository scans
 
-PostToolUse 的 lint 与 format 命令 MUST 物化到被编辑文件的单文件作用域：存在 `{file}` 或全仓扫描 token（`.`、`**/*.md`）时 MUST 收敛为该文件，裸命令 MUST 追加该文件路径。自动修复成功后，若改动波及被编辑文件之外的文件，MUST 把文件清单注入返回上下文。
+PostToolUse MUST 将文件型命令限制到编辑文件；项目级命令 MUST 保留 append_files=false，不追加源码文件参数，并推迟到显式仓库检查或 Git 门禁。不得因单文件事件自动执行全项目 formatter。所有 CLI/MCP/hook 命令构造 MUST 保留注册表作用域约束。
 
 #### Scenario: Editing one Python file triggers format
+- **WHEN** AI 保存单个 Python 文件且该文件存在可修复 lint 违规
+- **THEN** formatter 仅处理该文件并复检
 
-- **WHEN** AI 保存单个 `.py` 文件且该文件 lint 失败触发自动修复
-- **THEN** format 命令只作用于该文件；若仍有其它文件被改动，返回上下文列出被改动文件并要求重新读取
+#### Scenario: Editing a Java file
+- **WHEN** Java 检查/修复是项目级命令
+- **THEN** 保存事件提示项目级检查入口，不生成 mvn 加源码文件的错误命令，不自动格式化全仓
 
+### Requirement: Diagnostics outside the diff SHALL NOT be assumed historical
+
+没有独立基线证据时，系统 MUST NOT 仅因诊断落在未修改文件就跳过失败。
+
+#### Scenario: Changed API breaks an unchanged caller
+- **WHEN** 新修改接口导致未修改调用方报告错误
+- **THEN** 保留失败结论，不自动标记存量债务

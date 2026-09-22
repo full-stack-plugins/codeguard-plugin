@@ -24,8 +24,8 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 sys.path.insert(0, str(PLUGIN / "hooks"))
 
-import gate_lib  # noqa: E402
-import scope  # noqa: E402
+import gate_lib
+import scope
 
 # 双副本/历史漂移中真实缺失过的产物目录（扫描面曾缺前 14 个，入库面曾缺 upstream）
 CRITICAL_ARTIFACTS = (
@@ -149,14 +149,15 @@ class PostToolUseArtifactSkipTests(unittest.TestCase):
     """3b) PostToolUse：写到 target/ 的生成物静默跳过（不跑 linter、零输出）。"""
 
     def _run_hook(self, file_path: str) -> subprocess.CompletedProcess:
-        import json as _json, os
+        import json as _json
+        import os
         env = {**os.environ, "CODEGUARD_HOME": tempfile.mkdtemp(prefix="cg-h-"),
                "PYTHONIOENCODING": "utf-8"}
         return subprocess.run(
             [sys.executable, str(PLUGIN / "hooks" / "post_tool_lint.py")],
             input=_json.dumps({"tool_name": "Write",
                                "tool_input": {"file_path": file_path}}),
-            capture_output=True, text=True, cwd=PLUGIN, env=env, timeout=120,
+            capture_output=True, text=True, cwd=PLUGIN, env=env, timeout=120, check=False,
         )
 
     def test_generated_html_under_target_silently_skipped(self) -> None:
