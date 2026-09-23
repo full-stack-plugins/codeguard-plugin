@@ -146,7 +146,7 @@ ruff check hooks scripts tests
 
 Tests include real temporary Git repositories, native subprocess fixtures and official-SDK stdio MCP calls. Fixture wrapper success is not a real Maven/Gradle integration build. Live Codex/ZCode/Kimi loading, real project builds, online CVE scanner runs and precision/recall benchmarks require separate acceptance.
 
-Current implementation and evidence: [architecture and extension guide](docs/current-architecture.md), [refactor verification](openspec/changes/refactor-codeguard-architecture/verification.md). Earlier documents remain historical context: [verdict and Java architecture](docs/verdict-java-architecture.md), [prior verification](docs/verification-verdict-java.md), [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
+Current implementation and evidence: [architecture and extension guide](docs/current-architecture.md), [refactor verification](openspec/changes/archive/2026-09-23-refactor-codeguard-architecture/verification.md). Earlier documents remain historical context: [verdict and Java architecture](docs/verdict-java-architecture.md), [prior verification](docs/verification-verdict-java.md), [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
 
 Version history: see [CHANGELOG.md](CHANGELOG.md) for release highlights by version.
 
