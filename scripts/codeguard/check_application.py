@@ -10,6 +10,7 @@ from .discovery import detect_languages, find_project_root
 from .java_analysis import analyze
 from .language_check import run_check, run_fix
 from .registry import REGISTRY
+from .storage import write_private_text
 
 
 def filter_languages(project_root: Path, lang_arg: str | None) -> list[str]:
@@ -66,6 +67,32 @@ def result_envelope(results: list[dict]) -> list[dict]:
     return envelope
 
 
+def _public_fix_results(root: Path, results: list[dict]) -> list[dict]:
+    """仅公开修复状态；原始 formatter 诊断进入私有日志。"""
+    public = []
+    diagnostics = []
+    for number, item in enumerate(results, start=1):
+        safe = {key: item[key] for key in (
+            "language", "fixed", "status", "exit_code", "note", "reason", "error", "skipped", "dry_run",
+        ) if key in item}
+        if "execution_trace" in item:
+            safe["execution_trace"] = _public_trace(item["execution_trace"])
+        tail = item.get("stderr_tail")
+        if isinstance(tail, str) and tail:
+            safe["stderr_chars"] = len(tail)
+            diagnostics.append((len(public), f"===== {item.get('language', '')} fix #{number} =====\n{tail}"))
+        public.append(safe)
+    if diagnostics:
+        path = root / "out" / ".codeguard-fix.log"
+        try:
+            write_private_text(path, "\n".join(block for _, block in diagnostics))
+        except OSError:
+            return public
+        for index, _ in diagnostics:
+            public[index]["stderr_path"] = str(path.resolve())
+    return public
+
+
 def auto_fix(root: Path, languages: list[str]) -> dict:
     """仅修复当前 Git 改动；无法确定范围时不扩大写入面。"""
     files = changed_files(root)
@@ -77,8 +104,7 @@ def auto_fix(root: Path, languages: list[str]) -> dict:
     fix_results = run_fix(languages, root, files=files)
     results = run_check(languages, root, files=files, log_dir=root / "out")
     changed = any(not path.is_file() or path.read_bytes() != body for path, body in before.items())
-    public_fixes = [{**item, "execution_trace": _public_trace(item["execution_trace"])}
-                    if "execution_trace" in item else item for item in fix_results]
+    public_fixes = _public_fix_results(root, fix_results)
     return {"fixed": changed, "fix_results": public_fixes, "check": result_envelope(results)}
 
 

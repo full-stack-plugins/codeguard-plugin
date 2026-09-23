@@ -58,7 +58,7 @@ CORE_DEPENDENCIES = {
                                   "codeguard.java_analysis"},
     "codeguard.check_application": {"__future__", "pathlib", "scope", "codeguard.config",
                                     "codeguard.discovery", "codeguard.java_analysis",
-                                    "codeguard.language_check", "codeguard.registry"},
+                                    "codeguard.language_check", "codeguard.registry", "codeguard.storage"},
     "codeguard.session_application": {"__future__", "collections.abc", "dataclasses", "pathlib",
                                       "codeguard.execution",
                                       "codeguard.hook_state", "codeguard.repository_policy",
@@ -96,7 +96,7 @@ CORE_DEPENDENCIES = {
     "codeguard.gate": {"__future__", "concurrent", "functools", "pathlib", "scope", "git_snapshot",
                        "codeguard.config", "codeguard.discovery", "codeguard.registry", "codeguard.toolchain",
                        "codeguard.cache", "codeguard.fingerprint", "codeguard.gate_checks", "codeguard.hook_state",
-                       "codeguard.spec_validation"},
+                       "codeguard.models", "codeguard.spec_validation"},
 }
 
 

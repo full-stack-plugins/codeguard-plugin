@@ -143,8 +143,13 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
                    and "markdown 风格告警" not in item]
         if unknown:
             contexts.append("codeguard: 存在未验证项，不能宣称全部通过：" + "；".join(unknown))
-        violations = check_commit_safety(project_root, root_mode, lanes=lanes, extra=root_extra,
-                                         pending_commit=pending_commit)
+        try:
+            violations = check_commit_safety(project_root, root_mode, lanes=lanes, extra=root_extra,
+                                             pending_commit=pending_commit)
+        except SnapshotError:
+            contexts.append("codeguard: Git 安全路径 UNVERIFIED：无法读取拟入库路径；"
+                            "请检查 Git index/仓库状态并重试，不能宣称安全扫描通过。")
+            continue
         if violations:
             reports.append(format_safety_report(violations) + (
                 "\n\n**给 AI 的强制指令**：**密钥/凭据类**（.env、*.pem、id_* 等）"

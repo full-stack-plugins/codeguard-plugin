@@ -27,7 +27,7 @@ flowchart TD
 ```
 
 `execution` 只记录进程证据，不把非零退出自动认定为代码违规。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
-`language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。失败日志保留各已执行检查的完整输出，可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。
+`language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。`auto_fix` 的 `fix_results` 也只公开状态与安全元数据；formatter stderr 尾部写入私有 `.codeguard-fix.log` 后只公开路径，日志不可用时不退回公开原文。失败日志保留各已执行检查的完整输出，可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。
 Git 命令的仓库定位与拟暂存解析共用入口传入的 cwd；显式 `cd`/`git -C` 无法绑定 Git 工作树时，硬门禁给出目标未验证并阻断，不退回到调用者仓或无关子仓。未给出显式目标且调用目录非仓时仍保留 workspace 子仓兜底。静态命令解析不等于完整 Shell 执行模拟。
 一条命令链中的 Git 副作用先绑定为仓库与操作的有序对，再按仓库聚合检查面：纯 push 不读取该仓未提交的 index，同仓 commit→push 则保留已有 HEAD 与拟提交内容的并集。仓库级、内联及链式 `skipGate` 均按目标仓与操作顺序生效；已存在的仓库配置也可被同链先行 `git config --unset` 取消。链式设置跨 `||`、`;` 或换行时无法证明生效，门禁要求拆分命令；写入其它文件的 config 设置也不构成本仓豁免。语法、仓库归属、间接脚本与拟暂存分析共用引号/转义感知切分；参数文本中的控制符不能合成豁免。解析能力仍限于受支持的静态 Shell 形态。
 一层 `bash`/`sh`/`zsh` 的 `-c`（含组合短选项）及可读脚本现在携带调用目录与正文进入同一 Git 操作计划；脚本内的 `git add` 可进入拟暂存范围，外层和内层 Git 操作按仓分别检查。识别到无法建模的间接 Git 操作、脚本内 `skipGate` 配置变更或跨解释器的暂存/提交关系时，明确以 Git 意图 UNVERIFIED 阻断，不借用调用者仓的检查结果。动态脚本、任意控制流及 Python/Node 中构造的 subprocess 仍未建模。
@@ -39,9 +39,9 @@ Git 命令的仓库定位与拟暂存解析共用入口传入的 cwd；显式 `c
 |---|---|---|
 | `bin/codeguard`、`scripts/run_check.py`、`scripts/fix.py` | CLI 参数、输出与 MCP stdio 注册 | 不复制扫描器或判定逻辑 |
 | `hooks/` | 宿主 JSON、会话事件、通知与退出协议 | 五类 Hook 将检查编排委托应用服务；入口保留旧导入兼容面及 fail-open 协议 |
-| `scripts/codeguard/check_application.py`、`language_check.py` | 语言选择、检查与修复请求、MCP 工具分发 | 不导入 MCP SDK；旧 `run_per_language.py` 仅再导出 |
+| `scripts/codeguard/check_application.py`、`language_check.py` | 语言选择、检查与修复请求、MCP 工具分发 | 不导入 MCP SDK；修复结果公开投影不复制内部原始命令/输出；旧 `run_per_language.py` 仅再导出 |
 | `startup_application.py`、`session_application.py`、`prompt_application.py`、`git_guard_application.py`、`save_application.py` | 五类 Hook 的盘点、状态消费、软提示、Git 守卫及保存反馈编排 | 返回结构化结果，不打印或调用宿主通知；Hook 控制输出、通知与 fail-open。Stop、软提示与保存反馈在 stdout 刷新后确认状态；Git 已知拦截在输出故障时仍拦截但不缓存。并发或交付重试可能重复反馈，不得丢掉未交付记录 |
-| `gate.py`、`gate_checks.py`、`repository_policy.py`、`baseline.py` | Git 门禁、单语言结果、安全规则及有证据的存量比较 | 只有准确基线失败且逐条诊断的文件归属、内容及次数覆盖当前结果才可豁免；基线临时路径映射回被检查文件 |
+| `gate.py`、`gate_checks.py`、`repository_policy.py`、`baseline.py` | Git 门禁、单语言结果、安全规则及有证据的存量比较 | 单个语言 worker 异常只标该语言 UNVERIFIED，保留其它结论；安全路径快照失败明确报告未验证，不能抹掉已确认拦截。只有准确基线失败且逐条诊断的文件归属、内容及次数覆盖当前结果才可豁免 |
 | `java_build.py`、`java_impact.py`、`java_planning.py` 等 | 构建读取、纯影响闭包、命令选择与环境观察 | 默认保留跳过测试的行为；复杂构建保守扩大检查范围 |
 | `cve_reports.py`、`cve_policy.py`、`cve_scanners.py`、`cve.py` | 漏洞报告、阈值、进程适配与复扫编排 | 无有效结构化报告就没有安全通过结论 |
 | `dockerfile_reports.py`、`dockerfile.py` | hadolint/Trivy 结构化证据与逐文件扫描 | `dockerfile_security.py` 只解析参数和呈现报告 |
