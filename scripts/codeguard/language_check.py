@@ -115,7 +115,7 @@ def run_check(languages: list[str], project_root: Path,
         outcome = execution.terminal
         rc, out, err = outcome.as_tuple()
         lint_cmd = list(outcome.argv)
-        status, reason = lint_verdict(rc, lint_cmd, out + err)
+        status, reason = lint_verdict(rc, lint_cmd, out + err, failure=outcome.failure)
         if status == FAIL and fix:
             repairs = run_fix([lang], project_root, timeout=timeout + 60, files=files)
             for repair in repairs:
@@ -127,7 +127,7 @@ def run_check(languages: list[str], project_root: Path,
                 outcome = execution.terminal
                 rc, out, err = outcome.as_tuple()
                 lint_cmd = list(outcome.argv)
-                status, reason = lint_verdict(rc, lint_cmd, out + err)
+                status, reason = lint_verdict(rc, lint_cmd, out + err, failure=outcome.failure)
         results.append(result(lang, status, reason, exit_code=rc,
                               unverified=reason if status == UNVERIFIED else "",
                               command=lint_cmd, java_plan=java_plan,

@@ -81,7 +81,8 @@ def check_language(root: Path, cfg: dict, lang: str, *, scope: str,
     timeout = cfg.get("lint_timeout_seconds", 120)
     for index, command in enumerate(plan.commands):
         outcome = execute(command.argv, plan.cwd, timeout)
-        status, reason = lint_verdict(outcome.returncode, list(command.argv), outcome.stdout + outcome.stderr)
+        status, reason = lint_verdict(outcome.returncode, list(command.argv),
+                                      outcome.stdout + outcome.stderr, failure=outcome.failure)
         # 当前或基线工具状态未知都不授予豁免；不是先比较文本再猜工具是否运行成功。
         if status == FAIL and delta and "{file}" in " ".join(base):
             stale = baseline_stale_finding(root, files[index], base, outcome.stdout + outcome.stderr,

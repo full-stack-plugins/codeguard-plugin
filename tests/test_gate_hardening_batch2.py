@@ -20,7 +20,8 @@ sys.path[:0] = [str(PLUGIN / "scripts"), str(PLUGIN / "hooks")]
 import gate_lib
 import pre_tool_git_guard
 import scope
-from codeguard import spec_validation
+from codeguard import repository_policy, spec_validation
+from codeguard.models import ProcessResult
 from git_snapshot import validation_tree
 from verdict import FAIL, UNVERIFIED, finding_signatures, lint_verdict
 
@@ -313,18 +314,19 @@ class SkipGateRetryTests(GitRepoCase):
     def test_retry_after_timeout_then_success(self):
         _git(self.root, "config", "codeguard.skipGate", "true")
         calls = {"n": 0}
-        real_run = subprocess.run
+        real_execute = repository_policy.execute
 
         def flaky(*args, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
-                raise subprocess.TimeoutExpired("git", 3)
-            return real_run(*args, **kwargs)
+                return ProcessResult(("git", "config", "--get", "codeguard.skipGate"), self.root,
+                                     124, stderr="timeout after 3s", failure="timeout")
+            return real_execute(*args, **kwargs)
 
         from unittest.mock import patch
         os.environ["CODEGUARD_HOME"] = str(Path(self._td.name) / "home")
         try:
-            with patch.object(subprocess, "run", side_effect=flaky):
+            with patch.object(repository_policy, "execute", side_effect=flaky):
                 self.assertTrue(gate_lib.skip_gate_via_git_config(self.root),
                                 "第一次超时后重试成功必须算豁免")
             state = (Path(self._td.name) / "home" / "session_state.json")
@@ -337,8 +339,9 @@ class SkipGateRetryTests(GitRepoCase):
         home = Path(self._td.name) / "home"
         os.environ["CODEGUARD_HOME"] = str(home)
         try:
-            with patch.object(subprocess, "run",
-                              side_effect=subprocess.TimeoutExpired("git", 3)):
+            failure = ProcessResult(("git", "config", "--get", "codeguard.skipGate"), self.root,
+                                    124, stderr="timeout after 3s", failure="timeout")
+            with patch.object(repository_policy, "execute", return_value=failure):
                 self.assertFalse(gate_lib.skip_gate_via_git_config(self.root))
             state = json.loads((home / "session_state.json").read_text(encoding="utf-8"))
             self.assertIn("skipGate-read-error", state["_skip"]["kinds"])

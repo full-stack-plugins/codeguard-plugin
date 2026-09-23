@@ -5,7 +5,7 @@
     "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
-  "version": "0.14.13",
+  "version": "0.14.14",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "description_i18n": {
     "en": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",

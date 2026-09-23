@@ -46,7 +46,7 @@ class ProcessResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
-    failure: Literal["timeout", "not_found", "os_error"] | None = None
+    failure: Literal["timeout", "not_found", "os_error", "output_limit"] | None = None
 
     def as_tuple(self) -> tuple[int, str, str]:
         """兼容旧脚本的 (rc, stdout, stderr) 返回约定。"""
