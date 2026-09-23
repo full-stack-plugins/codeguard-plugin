@@ -1,12 +1,26 @@
 """会话结束应用服务：消费本会话统计，返回不依赖宿主的展示行。"""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .execution import execute
 from .hook_state import state_path
 from .repository_policy import skip_gate_via_git_config
-from .storage import read_json, take_json
+from .storage import consume_if_unchanged, read_json
+
+
+@dataclass(frozen=True)
+class StopSummary:
+    """已准备但未确认交付的会话总结。"""
+
+    lines: tuple[str, ...]
+    _on_delivered: Callable[[], bool] = field(repr=False, compare=False)
+
+    def acknowledge(self) -> bool:
+        """宿主成功刷新输出后才消费；并发写入时保留整份状态供后续展示。"""
+        return self._on_delivered()
 
 
 def load_state(legacy_state_file: Path) -> dict:
@@ -50,11 +64,19 @@ def skipgate_left_enabled(project_root: Path) -> bool:
         return False
 
 
-def consume_summary(legacy_state_file: Path, project_root: Path) -> tuple[str, ...]:
-    """原子消费当前作用域状态，并返回需要由宿主输出的消息。"""
-    state = take_json(state_path(legacy_state_file))
+def prepare_summary(legacy_state_file: Path, project_root: Path) -> StopSummary:
+    """准备总结而不先消费；确认前状态仍可由失败的宿主输出重试。"""
+    path = state_path(legacy_state_file)
+    state = read_json(path)
     lines = [summarize(state)]
     if skipgate_left_enabled(project_root):
         lines.append("[codeguard] ⚠️ git config codeguard.skipGate 仍为 true——该仓门禁处于豁免状态；"
                      "若绕过已完成，请执行 git config --unset codeguard.skipGate 恢复")
-    return tuple(lines)
+    return StopSummary(tuple(lines), lambda: consume_if_unchanged(path, state))
+
+
+def consume_summary(legacy_state_file: Path, project_root: Path) -> tuple[str, ...]:
+    """兼容旧直接消费接口；宿主 Hook 必须改用 prepare_summary 后确认。"""
+    prepared = prepare_summary(legacy_state_file, project_root)
+    prepared.acknowledge()
+    return prepared.lines

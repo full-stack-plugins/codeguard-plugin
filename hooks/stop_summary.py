@@ -45,8 +45,11 @@ def main(payload: dict | None = None) -> int:
 
 
 def _main(payload: dict | None = None) -> int:
-    for line in session_application.consume_summary(LEGACY_STATE_FILE, Path.cwd()):
+    prepared = session_application.prepare_summary(LEGACY_STATE_FILE, Path.cwd())
+    for line in prepared.lines:
         print(line)
+    sys.stdout.flush()
+    prepared.acknowledge()
     return 0
 
 

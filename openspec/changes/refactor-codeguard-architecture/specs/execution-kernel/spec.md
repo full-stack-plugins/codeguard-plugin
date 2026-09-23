@@ -61,6 +61,7 @@
 ### Requirement: Hook state SHALL preserve concurrent and session ownership
 
 统计、绕过明细、冷却与审计的读改写 MUST 在进程锁内完成并原子替换文件。宿主提供 session_id 时，统计 MUST 绑定会话与当前 worktree；Stop MUST 只消费该作用域的记录，并与并发写入互斥。无 session_id 时保留旧共享状态兼容，MUST 明示不能证明跨会话隔离。去重 MUST NOT 把未完成或 UNVERIFIED 的检查当成已完成检查。
+Stop MUST 在宿主输出成功刷新后才确认消费；输出失败时记录必须保留供重试。若确认前有并发新写入，允许后续 Stop 重复展示旧统计，但不得删除未展示的新记录。
 
 #### Scenario: Concurrent writers preserve all increments
 - **WHEN** 多个 Hook 进程同时更新同一统计、绕过记录或审计日志
@@ -69,6 +70,10 @@
 #### Scenario: Stop only drains its own session and worktree
 - **WHEN** 两个会话或两个 worktree 同时有检查记录，其中一个收到 Stop
 - **THEN** 只汇总并清理当前作用域，其余记录保持可供各自 Stop 消费
+
+#### Scenario: Stop output fails or state changes during delivery
+- **WHEN** Stop 已准备总结但宿主 stdout 写入或刷新失败，或在输出期间有新统计写入
+- **THEN** 输出失败时旧统计可在重试中再次展示；并发新统计不得被确认消费误删，允许为了不丢记录而在后续 Stop 重复展示旧统计
 
 #### Scenario: Retry follows an unverified save check
 - **WHEN** 相同文件未变化，上次保存检查未能获得结论，紧接着再次触发
@@ -93,7 +98,7 @@
 ### Requirement: Gate application SHALL separate checks from host presentation
 
 门禁应用 MUST 不依赖 hooks 导入或宿主 SDK。单个语言检查 MUST 返回独立结果，汇总 MUST 保持输入顺序，不用共享可变备注列表连接并发检查。准确快照的审计 MUST 保留原 worktree 和会话归属，实际执行目录只作为执行上下文，不冒充项目身份。基线比较遇到未验证工具结果 MUST NOT 产生存量豁免。
-基线豁免 MUST 比较逐条诊断内容及出现次数，且基线检查器本身 MUST 确认失败；规则码集合或仅有文本输出不足以证明当前发现已存在。
+基线豁免 MUST 比较逐条诊断内容、出现次数及可识别的文件归属，且基线检查器本身 MUST 确认失败；规则码集合或仅有文本输出不足以证明当前发现已存在。基线临时文件路径可以映射回被检查的仓库相对路径，行列号移动不应单独取消同文件的存量豁免；不同文件的同文本诊断不得互相抵扣。
 
 #### Scenario: Exact snapshot audit retains ownership
 - **WHEN** 带会话 ID 的提交门禁从临时 Git 快照执行检查
@@ -106,6 +111,10 @@
 #### Scenario: Baseline evidence must cover every current finding
 - **WHEN** 基线检查器返回成功码却打印诊断、同一规则新增第二处违规，或规则码相同但诊断内容变化
 - **THEN** 当前违规不得获得存量豁免；只有基线自身确认失败且逐条诊断及出现次数覆盖当前结果时才能豁免
+
+#### Scenario: Identical diagnostics belong to different files
+- **WHEN** 当前输出将同一规则和描述归于另一文件，而基线输出归于被检查文件；或者 ShellCheck 的 `In <file> line N` 段属于另一文件
+- **THEN** 不得以文本相同授予存量豁免；被检查文件自身仅行列号变化时仍可保留有证据的旧发现豁免
 
 ### Requirement: Language services SHALL have explicit input and lifetime
 

@@ -88,6 +88,15 @@ def take_json(path: Path) -> dict:
         return value
 
 
+def consume_if_unchanged(path: Path, expected: dict) -> bool:
+    """输出完成后只消费原样快照；并发新写入优先保留以避免丢计数。"""
+    with locked(path):
+        if read_json(path) != expected:
+            return False
+        path.unlink(missing_ok=True)
+        return True
+
+
 def append_jsonl(path: Path, entry: dict, limit: int) -> None:
     """有界审计日志，保留窗口内并发写入不互相覆盖。"""
     with locked(path):
