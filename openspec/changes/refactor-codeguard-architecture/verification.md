@@ -292,3 +292,5 @@
 - 统一执行器现并发读取 stdout/stderr，默认共享 16 MiB 捕获预算；超限停止进程，保留预算内两流诊断，返回 `output_limit`/125 并由语言判定显式转 UNVERIFIED。退出码 125 由工具自己返回时不伪造执行器故障。POSIX 独立进程组有助于停止子孙进程；Windows 子孙进程回收尚未实机证明。已有 argv 字面值、工作目录、非法 UTF-8、超时部分诊断、非零双流和旧 tuple 协议继续通过。
 - 首轮全量发现旧 SkipGate 重试用例 mock `subprocess.run`，执行器改用 `Popen` 后该 mock 不再触及业务边界；改为在 `repository_policy.execute` 注入相同的首次超时/两次超时证据，两项断言仍核验重试和审计。最终隔离工作树本地完整单测 **549/549、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。
 - 该护栏只约束文本检查执行器；Git 二进制快照使用独立 `git_snapshot.git()`，其 `cat-file` 传输、覆盖层累计磁盘预算与恶意 Git 输出仍需另行审计。本批未 bump、推送或发布；三宿主现场、Windows、在线 CVE 与大型 Maven/Gradle 项目没有获得新证据。
+
+- 第二十八批随后发布为 v0.14.14：源码 PR #62 合并到 `479d87815be8478d409e598ab473412dc6997383`，市场 PR #18 合并到 `9bea1d06a07d1c111c93f597b5cc0da7e89720ae`。源码 PR 的 `vendor-check` 与合并后 main 的 `skills-check` 均成功；市场 PR 无 CI 检查，不称其 CI 已通过。受保护注释 tag `v0.14.14` 解引用到源码 main 合并提交，正式 Release 非 draft、非 prerelease，Codex/ZCode/Kimi 市场元数据和中英文导航均为 0.14.14。本次发布不证明三宿主已安装运行、Windows、在线 CVE、大型 Maven/Gradle 或 Git 二进制快照的资源上限；task 5.6 全目标审计、规格同步与归档保持未完成。
