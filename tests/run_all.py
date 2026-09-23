@@ -241,7 +241,7 @@ def test_hooks():
     r = run_hook("user_prompt_validator.py", {"user_prompt": "提交代码"}, clean)
     ok("未接入 linter 不注入通过确认", r.returncode == 0 and "未验证" in r.stdout and "✅" not in r.stdout)
 
-    # ── PreToolUse：安全文件（.env/.venv 入库）→ 🛑 拦截 ──
+    # ── PreToolUse：安全文件（.env 入库）→ 🛑 拦截；点目录 .venv 默认忽略 ──
     (repo / ".env").write_text("SECRET=1")
     (repo / ".venv" / "lib").mkdir(parents=True)
     (repo / ".venv" / "lib" / "x.py").write_text("x=1")
@@ -249,7 +249,8 @@ def test_hooks():
     r = run_hook("pre_tool_git_guard.py",
                  {"tool_name": "Bash", "tool_input": {"command": "git commit -m t"}}, repo)
     ok("安全违规 exit 2", r.returncode == 2)
-    ok("安全报告含 .env 与 .venv", ".env" in r.stderr and ".venv" in r.stderr)
+    ok("安全报告含 .env", ".env" in r.stderr)
+    ok("点目录 .venv 默认忽略（2026-09-23 策略）", ".venv" not in r.stderr)
     ok("安全报告给出 rm --cached 修法", "rm --cached" in r.stderr)
 
     # ── PreToolUse：多 cd 命令链 → 逐 git 段解析边界 ──

@@ -23,7 +23,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from codeguard.path_policy import FULL_SCAN_EXCLUDES, is_build_artifact
+from codeguard.path_policy import FULL_SCAN_EXCLUDES, is_build_artifact, is_dot_prefixed
 
 __all__ = [
     "DEFAULT_LANES",
@@ -31,6 +31,7 @@ __all__ = [
     "changed_files",
     "child_git_repo_names",
     "is_build_artifact",
+    "is_dot_prefixed",
     "is_git_repo",
     "ruff_config_args",
     "scope_cmd",
@@ -79,7 +80,10 @@ def _inject_find_excludes(expr: str, excludes: tuple[str, ...] | list[str] = FUL
     """
     if "find " not in expr:
         return expr
-    additions = "".join(
+    # 点前缀默认忽略（scan-scope-policy）：`*/.*` 要求路径含 `/.` 段接点，
+    # `./src/x.py` 不命中、`./.cursor/x.py` 与 `./x/.eslintrc.js` 命中
+    additions = "" if "'*/.*'" in expr else " -not -path '*/.*'"
+    additions += "".join(
         f" -not -path '*/{d}/*'"
         for d in excludes
         if f"'*/{d}/*'" not in expr and f"'*/{d}'" not in expr
@@ -195,6 +199,9 @@ def scope_cmd(
         if full_excludes:
             for d in scan_excludes:
                 out += ["--exclude", d]
+            # 点前缀默认忽略（scan-scope-policy）：两种 glob 兜住
+            # 「basename 任意层匹配」与「全路径匹配」两种语义读法
+            out += ["--exclude", ".*", "--exclude", "**/.*"]
     elif full_excludes and Path(out[0]).name in {"bash", "sh", "dash", "zsh", "ksh"}:
         # 只改 Shell 的命令体；普通 argv/Python -c 中的 "find " 是字面数据，不能注入语法。
         for index in range(1, len(out) - 1):
@@ -298,4 +305,5 @@ def changed_files(
         names.update(_unpushed_files(root))
     # 构建产物不进任何面：force-add 进索引的 target 文件、未被 gitignore 的
     # 生成物，对 linter 只是"下次构建就重写"的假红（单一事实源谓词过滤）
-    return sorted(n for n in names if not is_build_artifact(n))
+    return sorted(n for n in names
+                  if not is_build_artifact(n) and not is_dot_prefixed(n, root))

@@ -52,7 +52,7 @@ CORE_DEPENDENCIES = {
     "codeguard.registry_schema": {"__future__", "re"},
     "codeguard.registry": {"__future__", "json", "pathlib", "typing", "codeguard.registry_schema"},
     "codeguard.config": {"__future__", "json", "re", "pathlib", "codeguard.registry"},
-    "codeguard.discovery": {"__future__", "fnmatch", "re", "pathlib", "codeguard.config", "codeguard.registry"},
+    "codeguard.discovery": {"__future__", "fnmatch", "re", "pathlib", "codeguard.config", "codeguard.path_policy", "codeguard.registry"},
     "codeguard.toolchain": {"__future__", "pathlib", "threading", "codeguard.execution"},
     "codeguard.language_check": {"__future__", "pathlib", "codeguard.config", "codeguard.discovery",
                                   "codeguard.execution", "codeguard.models", "codeguard.planning",

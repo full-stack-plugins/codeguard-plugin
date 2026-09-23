@@ -123,6 +123,7 @@ def build_startup_report(project_root: Path, *, plugin_version: str = "",
         if note:
             lines.append(note)
 
+    lines.append("- **硬性约束：`.` 开头的目录与文件默认忽略**——不扫描、不检查、不报告（.cursor/、.claude/、.eslintrc.js 等宿主工具目录与配置文件）；两个例外照常生效：入库安全检查照拦密钥模式（.env/*.pem 等），linter 配置发现照常匹配点文件")
     lines.append("- AI 写完代码会被 PostToolUse 钩子自动 lint，告警会出现在这里，按告警里的「怎么修」处理")
     lines.append("- 用户要求「提交/push」时，UserPromptSubmit 钩子会再次确认所有 linter 通过，未通过会拦截提交")
     lines.append("")
