@@ -203,3 +203,13 @@
 - 一层 bash/sh/zsh `-c`（含 `-lc`）或可读脚本现在按解释器实际参数位置、调用目录解析；内层 Git 操作携带来源正文与 cwd，和外层操作按仓聚合。拟暂存分析合并外层与内层来源，真实 Hook 子进程证明未实际执行 `git add` 就拦截 `.env` 且 index 字节不变。纯 push 不纳入未提交 index；外层 skipGate 设置只传递给所属仓的内层操作。
 - 不能可靠建模的 Python/Node 间接命中、脚本内 skipGate 配置变化、交互暂存与后续提交跨解释器边界时，明确返回 Git 意图 UNVERIFIED 并阻断；仅在纯 push 之后的独立暂存不误扩该 push 面。脚本的普通 `-c` 参数不再被误认成解释器代码。动态脚本与任意 subprocess 构造仍是未覆盖边界。
 - RED→GREEN 的目标用例及最终完整单测 **495/495、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。受管技能及 lock 未改；这些是本地契约证据，不是三宿主安装、在线漏洞库、Windows 或第十九批发布证据。本批已准备 v0.14.5 元数据；远端发布须另行核对 PR、CI、tag、Release 与市场主线。
+
+- 第十九批随后发布为 v0.14.5：源码 PR #51 合并为 `3f1266d8b57625e282989a51b20c528d578a01e1`，市场 PR #8 合并为 `a910cde2f6bfd5ebc6ca88d11fbb834687fb9084`；PR/main `skills-check` 成功，远端注释 tag 解引用到源码 main 合并提交，GitHub Release 为非 draft、非 prerelease，市场 Codex/ZCode/Kimi 及双语导航为 0.14.5。此证据不覆盖以下新工作树。
+
+## 第二十批实际验证：裸前缀不遮蔽 Shell Git 副作用
+
+- 将最新 v0.14.5 `main` 同步至已有临时 CodeGraph 索引（136 文件；源码仓未初始化索引），追踪 `git_syntax._analyze_segment`、`git_context._indirect_body`、`_guarded_mode`、`resolve_git_operations` 与 `staging_intent`。真实临时 Git 仓和纯函数探测先 RED：裸 `bash -c 'git commit'` 进入门禁，而 `FOO=1`、`env FOO=1`、`command`、`sudo` 前缀令同一 Shell 正文完全不命中；带敏感 `.env` 的暂存内容可被错误放行。
+- 直接 Git 与解释器入口现共用 `git_syntax` 的裸前缀归一化；一层脚本仍由同一个调用目录与正文进入仓库归属和拟暂存分析。RED→GREEN 用例覆盖五类前缀、内层 add/index 不变、`cd` 后相对脚本、真实 PreToolUse 子进程；带值 wrapper 参数、动态命令及任意控制流仍不在静态保证范围内。
+- `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **498 unittest、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。CodeGraph 的 `affected` 对本次核心文件返回空，但真实目标测试存在且已运行，故不把空图谱结果当无影响证明。受管技能和 lock 未改；本批尚未版本升级、提交或发布，三宿主现场/Windows/在线漏洞库仍未验收。
+- 同步最新 CodeGraph 后继续追踪 `git_syntax` 发现：`inline_skip_gate` 和 `skip_gate_config_change` 仍用原始空白分词，与已共用的直接 Git/解释器前缀语义分叉。真实仓库 RED 证明已有持久 `skipGate=true` 时，`env FOO=1 git config codeguard.skipGate false && git commit` 被错误放行；带前缀的 `git -c` 单次豁免则被错误阻断且失去审计。二者现复用同一 `_segment_tokens`，目标测试转绿；此证据补充前述批内回归，不将早先 498 项计数当最终全量结果。
+- 最终本地完整回归：`/opt/anaconda3/bin/python3` 3.13.5 执行 **500 unittest、0 skipped**，真实 Hook **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。两项新 RED 场景及既有豁免/引号边界均转绿。本批已准备 v0.14.6 元数据；在 PR/CI/tag/Release/市场主线核对前，不能用 v0.14.5 的证据证明新改动已发布。

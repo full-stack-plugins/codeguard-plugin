@@ -84,6 +84,9 @@ flowchart TD
 源码误当 Shell 执行计划：它们若被保守静态扫描命中但无法证明行为，返回明确的 Git
 意图未验证，不能用外层仓库检查结果代替。仍只支持一层、静态可读的脚本，不推断任意
 控制流、动态脚本生成或解释器在运行时调用的 subprocess。
+`git_syntax` 的命令前缀归一化同时供直接 Git 命令、解释器入口与仓库级/内联豁免解析使用：裸 `env`、环境赋值、
+`command`、无参数 `sudo` 不再遮蔽后面的静态 Shell 正文或 skipGate 状态变化。带值 wrapper 选项仍属明确边界，
+不能把它们当成已完全求值的 Shell。
 
 参考：pre-commit 的 [Language Protocol 与通用执行](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/lang_base.py)、[Python 适配器](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/languages/python.py)。只借鉴边界设计，不复制安装环境逻辑或新增插件生态协议。
 

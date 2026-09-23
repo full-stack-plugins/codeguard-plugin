@@ -1,6 +1,7 @@
 """Git 命令的静态语法识别；不读取仓库、执行进程或依赖 Hook 协议。"""
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -110,6 +111,28 @@ def _flatten_substitutions(command: str) -> str:
     return "\n".join(parts)
 
 
+def _strip_command_prefix(tokens: list[str]) -> list[str]:
+    """为直接 Git 和一层解释器共用裸 wrapper/环境前缀语义。"""
+    i = 0
+    while i < len(tokens) and tokens[i] in _SHELL_LEADERS:
+        i += 1
+    while i < len(tokens):
+        if re.match(_ASSIGN_PATTERN, tokens[i]) or tokens[i] in _BARE_WRAPPERS:
+            i += 1
+            continue
+        break
+    return tokens[i:] if i < len(tokens) else tokens
+
+
+def _segment_tokens(segment: str) -> list[str]:
+    """复用分词与裸前缀归一化；畸形引号维持旧接口的保守切词。"""
+    try:
+        tokens = shlex.split(segment)
+    except ValueError:
+        tokens = segment.strip().split()
+    return _strip_command_prefix(tokens)
+
+
 def _analyze_segment(seg: str) -> tuple[list[str], Path | None]:
     """归一化一段 shell 命令：返回 ([prog, sub, …] 形状的 tokens, `git -C` 的仓路径)。
 
@@ -117,33 +140,16 @@ def _analyze_segment(seg: str) -> tuple[list[str], Path | None]:
     → git 全局选项。同时捕获 `-C <path>`——它是该 git 段的显式仓库边界。
     漏检实例（实测静默放行）：`VAR=1 git push` 段首是 `VAR=1`；`git -C path push`
     tokens[1] 是 `sudo`；`if git push; then` 段首是 `if`。剥完后若段首仍非 git
-    则返回原 tokens（由调用方判定为非 git 段）。
+    则返回剥除前缀后的 tokens，供解释器检测复用。
     能力边界（docstring 如实声明）：带值的 wrapper 参数（`sudo -u root …`）
     不做完整解析，只剥裸 wrapper token。
     """
-    import re as _re
-    try:
-        tokens = shlex.split(seg)
-    except ValueError:
-        # 旧间接命令识别可能传入引号不完整的片段，保留其保守命中行为。
-        tokens = seg.strip().split()
-    i, n = 0, len(tokens)
-    while i < n and tokens[i] in _SHELL_LEADERS:
-        i += 1
-    while True:
-        while i < n and _re.match(_ASSIGN_PATTERN, tokens[i]):
-            i += 1
-        if i < n and tokens[i] == "env":
-            i += 1
-            continue
-        break
-    while i < n and tokens[i] in _BARE_WRAPPERS:
-        i += 1
-    if i >= n:
+    tokens = _segment_tokens(seg)
+    if not tokens:
         return tokens, None
-    if tokens[i].strip("\"'") != "git":
-        return tokens[i:], None
-    i += 1
+    if tokens[0].strip("\"'") != "git":
+        return tokens, None
+    i, n = 1, len(tokens)
     c_path: str | None = None
     while i < n:
         tok = tokens[i].strip("\"'")
@@ -233,7 +239,7 @@ def inline_skip_gate(command: str) -> bool:
     """
     text = _flatten_substitutions(command)
     for seg, _separator in split_shell_segments(text):
-        tokens = [t.strip("\"'") for t in seg.strip().split()]
+        tokens = [t.strip("\"'") for t in _segment_tokens(seg)]
         parts = _git_seg_parts(tokens)
         if parts is None:
             continue
@@ -246,7 +252,7 @@ def inline_skip_gate(command: str) -> bool:
 
 def skip_gate_config_change(segment: str) -> bool | None:
     """解析单段仓库级豁免变更；True 为设置，False 为取消，None 为无关。"""
-    tokens = [token.strip("\"'") for token in segment.strip().split()]
+    tokens = [token.strip("\"'") for token in _segment_tokens(segment)]
     parts = _git_seg_parts(tokens)
     if parts is None:
         return None

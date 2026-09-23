@@ -20,6 +20,7 @@ from .git_syntax import (
     _git_c_path,
     _git_side_effect_sub,
     _segment_is_git_side_effect,
+    _strip_command_prefix,
     inline_skip_gate,
     skip_gate_config_change,
     split_shell_segments,
@@ -188,7 +189,7 @@ def _fallback_roots(cwd: Path) -> list[Path]:
 def _indirect_body(segment: str, invocation_dir: Path) -> tuple[str, bool] | None:
     """取得一段解释器实际收到的 -c 文本或脚本正文；不执行脚本。"""
     try:
-        tokens = shlex.split(segment)
+        tokens = _strip_command_prefix(shlex.split(segment))
     except ValueError:
         return None
     if not tokens:
@@ -260,7 +261,7 @@ def _guarded_mode(command: str, cwd: Path | None = None) -> str | None:
     """门禁命中时返回兜底门禁面：commit 或 push（同一仓两面并存时推送面
     携带 pending_commit 可覆盖两面）；未命中返回 None。
 
-    直接命令段先判定；未命中再走一层解释器间接（脚本/-c 内联）。
+    同时汇总直接命令段与一层解释器间接正文（脚本/-c 内联）。
     is_guarded 即本函数的存在性判断——面判定与命中判定共用同一套扫描，
     避免"命中了却选错面"的分叉。可直接解析的命令由 GitOperation 按仓
     分别选择门禁面，不能把这里的整链模式传播到其它仓。

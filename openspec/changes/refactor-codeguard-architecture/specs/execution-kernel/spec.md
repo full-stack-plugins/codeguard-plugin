@@ -214,6 +214,10 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 拟暂存分析 MUST 使用脚本的实际调用目录和同一份内层命令；外层直接 Git 操作与内层操作
 不得互相覆盖。若已识别间接 Git 副作用但不能可靠建立仓库或暂存计划，MUST 报告 Git
 意图 UNVERIFIED 并阻断，不得回退扫描无关子仓或以错误仓库的 PASS 放行。
+静态可解析的环境赋值、`env`、`command` 与无参数 `sudo` 等裸命令前缀 MUST 在 Shell
+解释器检测、直接 Git 检测及 `skipGate` 设置/取消/内联豁免中共享同一归一化语义，
+不能让同一个 `bash -c` 的提交因前缀而逃过门禁，也不能漏掉前缀后的豁免状态变更而
+错误继承持久豁免；带参数且无法静态解析的 wrapper 不在此保证范围内。
 
 #### Scenario: Two repositories have different staging commands
 - **WHEN** 一条命令链对 A 执行 add -A、对 B 只提交已暂存内容
@@ -246,6 +250,14 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 #### Scenario: Shell wrapper commit uses the invocation repository
 - **WHEN** 从 Git 仓执行 `bash -c 'git commit'` 或相对路径脚本，脚本内存在待提交内容
 - **THEN** 将内层 commit 绑定到脚本调用目录的 Git 仓，而非报无仓或扫描其子仓
+
+#### Scenario: A bare prefix does not hide a shell commit
+- **WHEN** 可读的 `bash -c` 或脚本前有环境赋值、`env FOO=1`、`command` 或无参数 `sudo` 前缀，内层提交包含敏感暂存内容
+- **THEN** 检测、仓库归属和拟暂存分析仍使用同一内层命令，按目标仓阻断；前缀本身不构成豁免
+
+#### Scenario: A bare prefix does not hide a bypass change
+- **WHEN** 仓库原有 `skipGate=true`，同链先执行 `env FOO=1 git config codeguard.skipGate false` 再提交敏感文件
+- **THEN** 后续提交不继承原持久豁免，仍运行门禁并阻断；带前缀的 `git -c` 单次豁免仍仅作用于其自身操作
 
 #### Scenario: Script arguments are not interpreter options
 - **WHEN** 一个无 Git 副作用的脚本接收名为 `-c` 的普通参数及包含 `git commit` 的文本

@@ -121,6 +121,7 @@ Root codeguard.json may set gate_scope to delta or repo and customize extension/
 The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Python checks honor the project's own ruff configuration (ruff.toml / .ruff.toml / [tool.ruff]); when none exists, codeguard injects a default rule set pinned to the CI baseline (ruff==0.16.8) so verdicts do not drift with whichever ruff version a machine happens to have. Full command inventory: [languages](docs/LANGUAGES.md).
 
 The explicit escape hatch git config codeguard.skipGate true bypasses the hook gate and is recorded in session summaries. Shared hook state lives under CODEGUARD_HOME (default ~/.codeguard).
+The Git gate statically inspects one readable shell-wrapper layer, including bare assignment, env, command and sudo prefixes; the same prefix rules apply to skipGate changes and one-shot bypasses. It does not execute or fully interpret shell scripts.
 
 ## External skills
 
