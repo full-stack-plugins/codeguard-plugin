@@ -2,6 +2,11 @@
 
 按版本段落提炼的主题摘要（生成于 2026-09-23，来源：git 历史 212 个提交与各 release 提交）。逐提交细节以 `git log` 与 GitHub Releases 为准；本文件按主题归纳，不逐条罗列。
 
+## v0.16.0 — Claude 安装面与 Go CVE 生态
+
+- Claude 安装面补件（新增 `.claude-plugin/marketplace.json`）；CVE 新增 go 生态；
+  pathsep 修复；`strict_mode` 摘除。
+
 ## v0.15.x — Git 归因收敛与诊断安全
 
 - **v0.15.4** 测试卫生与可见性：`tests/run_all.py`（809 行）拆分为

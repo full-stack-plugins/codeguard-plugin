@@ -6,7 +6,15 @@ from pathlib import Path
 
 from .config import ConfigurationError, get_overrides
 from .cve_policy import CVSS_BAND_FLOOR, EXIT_USAGE, aggregate_exit
-from .cve_scanners import run, scan_cargo, scan_maven, scan_node, scan_pip, scan_trivy
+from .cve_scanners import (
+    run,
+    scan_cargo,
+    scan_go,
+    scan_maven,
+    scan_node,
+    scan_pip,
+    scan_trivy,
+)
 from .discovery import detect_languages, find_project_root
 
 
@@ -34,6 +42,10 @@ def _scan_cargo_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
     return scan_cargo(root, severity)
 
 
+def _scan_go_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
+    return scan_go(root, severity)
+
+
 def _scan_trivy_ecosystem(root: Path, severity: str, allow_fix: bool) -> dict:
     return scan_trivy(root, severity)
 
@@ -45,6 +57,12 @@ ECOSYSTEM_SCANNERS = {
         "languages": ("java",),
         "markers": ("pom.xml",),
         "scan": _scan_maven_ecosystem,
+    },
+    "go": {
+        "aliases": ("golang", "gomod"),
+        "languages": ("go",),
+        "markers": ("go.mod", "go.sum"),
+        "scan": _scan_go_ecosystem,
     },
     "node": {
         "aliases": (),

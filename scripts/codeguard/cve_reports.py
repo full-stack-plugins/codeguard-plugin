@@ -141,7 +141,10 @@ def _trivy(report, threshold):
     return ReportEvidence(tuple(findings), len(findings), exceeded, unknown)
 
 
-_PARSERS = {"maven": _maven, "node": _node, "python": _pip, "rust": _cargo, "universal": _trivy}
+# "go" 与 "universal" 同为 trivy JSON 报告格式——解析器按格式复用，
+# 生态身份仍由 _result 的 eco 字段按规范映射报告。
+_PARSERS = {"maven": _maven, "node": _node, "python": _pip, "rust": _cargo,
+            "universal": _trivy, "go": _trivy}
 
 
 def parse_report(ecosystem: str, source: str, threshold: str | int) -> ReportEvidence:

@@ -118,7 +118,7 @@ Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables l
 
 ## Configuration and coverage
 
-Root codeguard.json may set gate_scope to delta or repo and customize extension/exclusion detection. User settings retain enabled_languages, auto_fix_on_save and lint_timeout_seconds. strict_mode is reserved and does not make PostToolUse block. See the [hook protocol](hooks/__protocol__.md).
+Root codeguard.json may set gate_scope to delta or repo and customize extension/exclusion detection. User settings retain enabled_languages, auto_fix_on_save and lint_timeout_seconds. See the [hook protocol](hooks/__protocol__.md).
 
 The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Python checks honor the project's own ruff configuration (ruff.toml / .ruff.toml / [tool.ruff]); when none exists, codeguard injects a default rule set pinned to the CI baseline (ruff==0.16.8) so verdicts do not drift with whichever ruff version a machine happens to have. Full command inventory: [languages](docs/LANGUAGES.md).
 
