@@ -234,3 +234,12 @@
 - 真实文件系统新增 5 项 RED：项目日志权限、项目日志文件链接、输出目录链接、不可用输出目录、门禁截断日志链接。统一由 `storage.write_private_text` 在同目录创建私有临时文件并原子替换，拒绝直接链接的日志目录；两类应用只决定路径与内容。日志不可用时不返回虚假的路径，检查状态保持原判；保留既有日志内容格式与可见路径。另加原子替换失败的故障注入，证明旧日志不被截断、临时文件清理、既有判定保留。目标 6/6 通过，POSIX 创建权限为 0600，链接目标保持原样。
 - 完整本地单测 **512/512、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过，受管技能及 lock 未改。CodeGraph `affected` 对本次文件返回空，但实际新增测试和原有调用链覆盖存在，不将该空结果当无影响证据。
 - 本批仅证明静态预置链接、POSIX 权限和原子替换语义；不承诺抵御并发替换父目录的完整文件系统竞态，也没有 Windows 实机、三宿主现场、在线 CVE 或大型 Maven/Gradle 验收。v0.14.7 的 CI/Release 不能证明此新代码；v0.14.8 发布证据须单独记录。
+
+- 第二十二批随后发布为 v0.14.8：源码 PR #54 合并到 `ef6ace131f5922a652f88bcf320a0edcd69e1c92`，市场 PR #12 合并到 `32d717d25498160617f326c4b0c192513d8c511a`；源码 PR 与合并后 main 的 `skills-check` 成功。远端注释 tag 解引用到源码合并提交，正式 GitHub Release 非 draft、非 prerelease。Codex/ZCode/Kimi 生成市场清单全量校验通过且版本均为 0.14.8；市场 PR 无 CI 检查，不称其 CI 已通过。本地两仓 main 已快进且干净。此发布不覆盖以下第二十三批工作树。
+
+## 第二十三批实际验证：Git 门禁故障隔离与已知结论保留
+
+- 当前 main 的临时 CodeGraph 索引同步后，沿 `gate.run_batch → gate_checks.check_language` 和 `git_guard_application.evaluate_git_command → repository_policy.check_commit_safety → git_snapshot.proposed_paths` 追出两处未隔离故障。前者的 `ThreadPoolExecutor.map` 会把一个 worker 异常抛出到整批门禁；后者的 `SnapshotError` 越过应用层进入 Hook 顶层 fail-open，连先前已确认的 lint 拦截都可能丢失。CodeGraph `affected` 对这两处返回空，不作为无测试影响的证据。
+- 三项故障注入先 RED：一种语言抛内部异常、另一语言真实执行违规命令时整批抛错；安全路径读取失败时，无论是否已有 lint 失败，应用均抛错；Hook 无法交付结构化未知上下文。现 `gate` 在单语言任务边界返回不可变 `GateOutcome` 的 UNVERIFIED 备注，不泄漏异常原文，继续保留其它语言的失败和原仓审计；`git_guard_application` 将预期的安全路径快照故障转为 JSON additionalContext，已有拦截仍 exit 2，未有已知失败则保持现行 fail-open exit 0。三项目标测试转绿，真实 Hook 协议入口的 JSON 也实测。
+- 沿 `mcp_tool_payload → auto_fix → run_fix` 审查发现，修复结果的公开投影原本只收敛 `execution_trace`，却把同一结果字典的原始 `command` 与 `stderr_tail` 复制进 MCP JSON。凭据注入测试先 RED；现按允许字段投影修复状态，将 formatter 诊断尾部写入私有 `out/.codeguard-fix.log`，仅在成功落盘后返回路径。真实失败 formatter 的进程输出、POSIX 0600 权限及输出目录链接不可用时不退回公开原文均已测试。CLI 的原始本地诊断未改变。
+- 本地完整单测 **517/517、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。临时 CodeGraph 索引已同步本批 3 个变更源码文件，当前 138 files / 2138 nodes / 4816 edges；源仓未初始化索引。受管技能及 lock 未改；当前发布的 v0.14.8 不含本批代码。三个宿主的已安装运行、Windows、在线 CVE、真实大型 Maven/Gradle 与进程池基础设施级故障仍未验收。

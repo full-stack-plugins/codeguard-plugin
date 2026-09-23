@@ -13,6 +13,7 @@ from .discovery import detect_languages
 from .fingerprint import check_identity, digest, repository_identity
 from .gate_checks import check_language
 from .hook_state import codeguard_home, record_gate_decision
+from .models import GateOutcome
 from .registry import LANG_COMMANDS
 from .spec_validation import validate as _openspec_validate
 from .toolchain import ToolchainProbe
@@ -138,10 +139,17 @@ def run_batch(project_root: Path, cfg: dict, languages: list, *, scope: str = "r
     probe = ToolchainProbe(project_root)
     worker = partial(check_language, project_root, cfg, scope=scope,
                      changed=changed, baseline_ref=baseline_ref, probe=probe)
+
+    def checked(lang: str) -> GateOutcome:
+        try:
+            return worker(lang)
+        except Exception as exc:  # noqa: BLE001 — 单语言故障不得抹去其它语言的已确认结论
+            return GateOutcome(notes=(f"{lang} UNVERIFIED：检查器内部异常（{type(exc).__name__}）；请重试并检查诊断",))
+
     with ThreadPoolExecutor(max_workers=min(4, max(1, len(languages)))) as pool:
-        results = list(pool.map(worker, languages))
+        results = list(pool.map(checked, languages))
     failures, skipped = [], []
-    for lang, outcome in zip(languages, results):
+    for lang, outcome in zip(languages, results, strict=True):
         if outcome.failure:
             failures.append(outcome.failure)
         skipped.extend(outcome.notes)

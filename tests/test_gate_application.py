@@ -102,3 +102,26 @@ class GateApplicationTests(unittest.TestCase):
             self.assertEqual(commands[entry["lang"]]["lint"], entry["cmd"])
             self.assertEqual(1, entry["rc"])
             self.assertEqual("FAIL", entry["status"])
+
+    def test_parallel_worker_exception_preserves_other_failure_and_audit(self):
+        from codeguard import gate as gate_application
+
+        original = gate_application.check_language
+        command = [sys.executable, "-c", "print('F821 javascript');raise SystemExit(1)"]
+
+        def check_or_crash(root, cfg, lang, **kwargs):
+            if lang == "python":
+                raise RuntimeError("SECRET_SENTINEL")
+            return original(root, cfg, lang, **kwargs)
+
+        with patch.dict(gate_application.LANG_COMMANDS, {"javascript": {"lint": command}}), \
+                patch.object(gate_application, "check_language", side_effect=check_or_crash), \
+                patch.dict(os.environ, {"CODEGUARD_HOME": str(self.home)}):
+            failures, notes = gate_application.run_batch(
+                self.repo, {}, ["python", "javascript"], scope="repo")
+
+        self.assertEqual(["javascript"], [failure[0] for failure in failures])
+        self.assertTrue(any("python UNVERIFIED" in note for note in notes), notes)
+        self.assertNotIn("SECRET_SENTINEL", "\n".join(notes))
+        entries = [json.loads(line) for line in (self.home / "gate-decisions.jsonl").read_text().splitlines()]
+        self.assertEqual(["javascript"], [entry["lang"] for entry in entries])

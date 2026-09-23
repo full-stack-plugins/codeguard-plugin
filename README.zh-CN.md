@@ -112,7 +112,7 @@ python3 scripts/run_check.py --mcp /path/to/project
 | list_languages | 注册表语言标识和名称 |
 | analyze_java_impact | 只读计划，接受 path 和可选 changed 数组 |
 
-日志默认在 <project>/out/.codeguard-last.log；CLI --quiet 关闭写日志。多命令检查失败时，日志保存每条已执行检查的完整输出。诊断日志以原子替换写入，POSIX 上仅当前用户可读写；输出目录是符号链接时不写日志，但检查结论不变。MCP 执行轨迹只返回阶段、序号、程序名、退出/故障及输出长度，不回显 argv、环境覆盖或检查器输出。本地日志可能含敏感文本，应排除出版本控制。MCP auto_fix 无法确定 Git 范围时不会写入。
+日志默认在 <project>/out/.codeguard-last.log；CLI --quiet 关闭写日志。多命令检查失败时，日志保存每条已执行检查的完整输出。诊断日志以原子替换写入，POSIX 上仅当前用户可读写；输出目录是符号链接时不写日志，但检查结论不变。MCP 执行轨迹只返回阶段、序号、程序名、退出/故障及输出长度，不回显 argv、环境覆盖或检查器输出。MCP auto_fix 的 JSON 结果也不回显 formatter 原始参数或 stderr；可用的修复诊断写到私有 <project>/out/.codeguard-fix.log 并返回路径。本地日志可能含敏感文本，应排除出版本控制。MCP auto_fix 无法确定 Git 范围时不会写入。
 
 ## 配置与覆盖
 

@@ -50,7 +50,7 @@ flowchart TD
 
 不可变执行结果记录 argv、cwd、退出码、stdout、stderr、启动/超时故障。执行器不把 rc=1 判断成代码违规、不跑安装、不隐式 shell。`lint_verdict` 和 CVE 报告解析负责各工具语义。保留旧 tuple 包装以兼容已有消费者，但真实执行逻辑仅一份。
 
-超时保留部分输出；使用 UTF-8 替换无法解码的字节，防止 decode error 把整个门禁变成未知异常。缺命令=127、超时=124、其他启动 OS 错误=126；与已有 UNVERIFIED 语义一致。非预期程序错误仍向上暴露，不能用 except Exception 将开发缺陷吞成正常结果。
+超时保留部分输出；使用 UTF-8 替换无法解码的字节，防止 decode error 把整个门禁变成未知异常。缺命令=127、超时=124、其他启动 OS 错误=126；与已有 UNVERIFIED 语义一致。执行器不将非预期程序错误吞成正常进程结果；并行门禁在每个语言任务的应用边界把未预期异常显式标为 UNVERIFIED，继续保留其它语言已确认的结论，且不把异常原文注入宿主。
 
 ### 3. 策略差异必须显式，不能强行拉平
 
@@ -67,6 +67,8 @@ flowchart TD
 `scripts/check_architecture.py` 仅解析第一方 scripts/hooks 的 AST，不执行被检查源码；检查所有静态导入（含函数内导入）、内核模块显式依赖白名单、相对导入与导入环。新增内核模块必须登记政策；不是 CodeGraph 的语义调用图替代，也不能保证运行时计算出来的动态加载关系。reporting 当前仍负责诊断日志落盘，所以只把 models/verdict 称为纯内核，不把整个包夸大为无 IO。CI 已配置独立检查步骤；真实远端运行留到发布验收。
 
 本轮审计发现 CLI/MCP 与 Git 门禁均直接写原始诊断日志：前者位于项目 `out`，后者使用可预测的临时文件名。保留各自的日志路径和呈现职责，但由 `storage` 的统一私有原子文本写入负责落盘；应用不得再用普通 `write_text` 跟随预置链接或留下默认可读权限。日志故障只影响日志证据的可用性，不得覆盖检查结论；这不是完整的对抗性文件系统沙箱。
+
+MCP 的 `auto_fix` 还必须在应用层单独投影公开结果：`run_fix` 保留执行所需的原始命令与 stderr，但 JSON 只允许修复状态、退出码及收敛后的执行元数据。formatter 的 stderr 尾部写入项目 `out/.codeguard-fix.log`，成功落盘才公开私有日志路径；日志不可写时不回退输出原文。此边界不修改 CLI 的本地诊断契约，也不把私有日志路径当成宿主已读取的证明。
 
 ### 5. 命令语法、仓库观察与路径政策分离
 
@@ -140,8 +142,10 @@ PostToolUse 在修复后重新捕获输入、复检后再决定是否可去重�
 
 ```mermaid
 flowchart TD
-    Hook[Hook 协议入口] --> Compat[gate_lib 兼容导出]
-    Compat --> Gate[gate 应用服务]
+    Hook[PreToolUse 协议入口] --> GitApp[git_guard_application]
+    Hook -. 旧 Python 导入 .-> Compat[gate_lib 兼容导出]
+    GitApp --> Gate[gate 应用服务]
+    GitApp --> Safety[repository_policy 路径安全]
     Gate --> Snapshot[准确 Git 快照 / 观察内容面]
     Gate --> Checks[gate_checks 独立语言检查]
     Checks --> Plan[共享计划与执行]
@@ -149,9 +153,10 @@ flowchart TD
     Checks --> Outcome[不可变 GateOutcome 与 GateDecision]
     Outcome --> Merge[调用线程保序汇总]
     Merge --> Audit[原 worktree + 会话归属审计]
-    Merge --> Report[reporting 反馈适配]
-    Compat --> Safety[repository_policy 路径安全与豁免]
+    GitApp --> Report[reporting 反馈适配]
 ```
+
+语言 worker 的故障隔离只在 `gate` 的任务边界：每个输入语言仍恰好产生一条独立结果；异常产生 UNVERIFIED 备注，不授予 PASS、豁免或软缓存，并且其余 worker 的失败及审计不丢失。Git 安全路径扫描的 `SnapshotError` 属可预期的观察失败，由 `git_guard_application` 转为宿主可见的未验证上下文；若此前已有真实 lint 违规，仍保持 exit 2。没有已确认拦截时沿用 Hook 既有的未验证放行，不把这项隔离误称为 fail-closed。
 
 这不仅改变文件位置：并发 worker 不再共享备注列表，也不依赖 ContextVar 隐式跨线程传播；审计在
 调用线程记录原 worktree、实际 execution_root 与 argv。基线工具或当前结果为未知时不进入豁免，

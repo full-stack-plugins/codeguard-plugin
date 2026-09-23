@@ -602,6 +602,53 @@ class GitGuardApplicationTests(unittest.TestCase):
         self.assertIn("rev-parse failed", result.stderr)
         fallback.assert_not_called()
 
+    def test_safety_snapshot_failure_is_visible_without_erasing_lint_block(self):
+        from codeguard import git_guard_application
+        from git_snapshot import SnapshotError
+
+        with tempfile.TemporaryDirectory(prefix="cg-safety-unknown-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            for failures, expected_code in (
+                ([], 0),
+                ([("python", "F821 confirmed", "fix", "hint")], 2),
+            ):
+                with self.subTest(expected_code=expected_code), \
+                        patch.object(git_guard_application, "run_gate", return_value=(failures, [])), \
+                        patch.object(git_guard_application, "check_commit_safety",
+                                     side_effect=SnapshotError("index unavailable")):
+                    result = git_guard_application.evaluate_git_command(
+                        "git commit -m fixture", cwd=repo, load_config=dict)
+                    self.assertEqual(expected_code, result.exit_code)
+                    self.assertIn("安全路径 UNVERIFIED", "\n".join(result.contexts))
+                    if failures:
+                        self.assertIn("F821 confirmed", result.stderr)
+
+    def test_safety_snapshot_failure_reaches_hook_as_unverified_json(self):
+        from codeguard import git_guard_application
+        from git_snapshot import SnapshotError
+
+        with tempfile.TemporaryDirectory(prefix="cg-safety-hook-") as tmp:
+            base = Path(tmp).resolve()
+            repo = self._initialized_repo(base, "repo")
+            output, errors = io.StringIO(), io.StringIO()
+            payload = {"tool_input": {"command": "git commit -m fixture"}}
+            with patch.object(pre_tool_git_guard, "read_payload", return_value=payload), \
+                    patch.object(pre_tool_git_guard, "ensure_user_path"), \
+                    patch.object(pre_tool_git_guard, "load_user_config", return_value={}), \
+                    patch.object(pre_tool_git_guard.os, "getcwd", return_value=str(repo)), \
+                    patch.object(git_guard_application, "run_gate", return_value=([], [])), \
+                    patch.object(git_guard_application, "check_commit_safety",
+                                 side_effect=SnapshotError("index unavailable")), \
+                    patch.dict(os.environ, {"CODEGUARD_HOME": str(base / "state")}), \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                code = pre_tool_git_guard.main()
+
+            self.assertEqual(0, code)
+            envelope = json.loads(output.getvalue())
+            self.assertEqual("PreToolUse", envelope["hookSpecificOutput"]["hookEventName"])
+            self.assertIn("安全路径 UNVERIFIED", envelope["hookSpecificOutput"]["additionalContext"])
+            self.assertEqual("", errors.getvalue())
+
     def test_real_hook_blocks_explicit_non_git_target(self):
         with tempfile.TemporaryDirectory(prefix="cg-hook-target-") as tmp:
             base = Path(tmp).resolve()

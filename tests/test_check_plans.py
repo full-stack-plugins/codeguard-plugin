@@ -109,16 +109,59 @@ class CheckPlanIntegrationTests(unittest.TestCase):
                   "stdout_chars": len(secret), "stderr_chars": 0,
                   "stdout_tail": secret, "stderr_tail": ""}]
         fix_result = {"language": "java", "fixed": True, "exit_code": 0,
-                      "stderr_tail": "", "execution_trace": trace}
+                      "command": ["formatter", f"--token={secret}"],
+                      "stderr_tail": f"formatter warning: {secret}", "execution_trace": trace}
         check_result = {"language": "java", "passed": True, "status": "PASS",
                         "reason": "", "exit_code": 0, "execution_trace": trace}
         with patch.object(check_application, "changed_files", return_value=["src/A.java"]), \
                 patch.object(check_application, "run_fix", return_value=[fix_result]), \
                 patch.object(check_application, "run_check", return_value=[check_result]):
-            payload = check_application.auto_fix(self.root, ["java"])
+            payload = check_application.mcp_tool_payload(
+                "auto_fix", {"path": str(self.root), "languages": ["java"]}, self.root)
         self.assertNotIn(secret, json.dumps(payload))
         self.assertEqual("formatter", payload["fix_results"][0]["execution_trace"][0]["program"])
         self.assertEqual("formatter", payload["check"][0]["execution_trace"][0]["program"])
+        log_path = Path(payload["fix_results"][0]["stderr_path"])
+        self.assertIn(secret, log_path.read_text(encoding="utf-8"))
+        if os.name == "posix":
+            self.assertEqual(0o600, log_path.stat().st_mode & 0o777)
+
+    def test_mcp_auto_fix_does_not_echo_stderr_when_private_log_is_unavailable(self):
+        self.put("src/A.java", "class A {}")
+        external = self.root / "external"
+        external.mkdir()
+        (self.root / "out").symlink_to(external, target_is_directory=True)
+        secret = "CG_TEST_SECRET_TOKEN_unavailable"
+        fix_result = {"language": "java", "fixed": False, "exit_code": 2,
+                      "stderr_tail": secret, "execution_trace": []}
+        check_result = {"language": "java", "passed": False, "status": "UNVERIFIED",
+                        "reason": "formatter failed", "exit_code": 2}
+        with patch.object(check_application, "changed_files", return_value=["src/A.java"]), \
+                patch.object(check_application, "run_fix", return_value=[fix_result]), \
+                patch.object(check_application, "run_check", return_value=[check_result]):
+            payload = check_application.mcp_tool_payload(
+                "auto_fix", {"path": str(self.root), "languages": ["java"]}, self.root)
+        self.assertNotIn(secret, json.dumps(payload))
+        self.assertNotIn("stderr_path", payload["fix_results"][0])
+        self.assertEqual([], list(external.iterdir()))
+
+    def test_mcp_auto_fix_real_formatter_stderr_is_private(self):
+        self.put("changed.py", "print('ready')\n")
+        secret = "CG_TEST_SECRET_TOKEN_real_formatter"
+        command = [sys.executable, "-c",
+                   f"import sys; print('{secret}', file=sys.stderr); raise SystemExit(2)"]
+        check_result = {"language": "python", "passed": False, "status": "UNVERIFIED",
+                        "reason": "formatter failed", "exit_code": 2}
+        with patch.dict(LANG_COMMANDS, {"python": {"format": command, "append_files": True}}), \
+                patch.object(check_application, "changed_files", return_value=["changed.py"]), \
+                patch.object(check_application, "run_check", return_value=[check_result]):
+            payload = check_application.mcp_tool_payload(
+                "auto_fix", {"path": str(self.root), "languages": ["python"]}, self.root)
+        self.assertNotIn(secret, json.dumps(payload))
+        result = payload["fix_results"][0]
+        self.assertEqual(2, result["exit_code"])
+        self.assertEqual(False, result["fixed"])
+        self.assertIn(secret, Path(result["stderr_path"]).read_text(encoding="utf-8"))
 
     def test_mixed_zsh_fix_rechecks_the_shell_plan_without_touching_other_files(self):
         self.put("a.sh", "GOOD")
