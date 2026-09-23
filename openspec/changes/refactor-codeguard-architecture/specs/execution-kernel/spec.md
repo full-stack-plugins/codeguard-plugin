@@ -94,7 +94,7 @@ CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原�
 
 ### Requirement: MCP auto-fix SHALL observe changed files within a bounded safe scope
 
-MCP `auto_fix` 在运行 formatter 之前 MUST 验证所有拟修复路径仍位于项目根内、不是符号链接或特殊文件，并以有总量预算的流式内容身份记录修复前状态，不得整份载入任意大小文件。路径逃逸、读取故障、并发替换或超预算 MUST 明确 UNVERIFIED 且不启动修复。修复后身份无法可靠采集时 MUST 保留实际修复与复检证据，但不得声称已确认 `fixed`。已确认的内容或权限变化仍按既有 `fixed` 字段呈现。
+MCP `auto_fix` 在运行 formatter 之前 MUST 验证所有拟修复路径仍位于项目根内、不是符号链接或特殊文件，并以有总量预算的流式内容身份记录修复前状态，不得整份载入任意大小文件。路径逃逸、读取故障、并发替换或超预算 MUST 明确 UNVERIFIED 且不启动修复。修复后身份无法可靠采集时 MUST 保留实际修复与复检证据，但不得声称已确认 `fixed`。`fixed` 只可归因于 formatter 已产生且复检后仍保留的目标文件变化；若复检本身改变这些文件，MUST 保留实际执行证据并将整体结果标为 UNVERIFIED，不可把检查器副作用当作已确认修复。已确认的内容或权限变化仍按既有 `fixed` 字段呈现。
 
 #### Scenario: Changed path escapes through a parent symlink
 - **WHEN** Git 改动路径经父目录符号链接指向仓外普通文件
@@ -103,6 +103,10 @@ MCP `auto_fix` 在运行 formatter 之前 MUST 验证所有拟修复路径仍位
 #### Scenario: Changed file exceeds the observation budget or changes during reading
 - **WHEN** 改动文件超出身份预算、读取失败或被并发替换
 - **THEN** 修复前故障不启动 formatter；修复后故障保留已执行结果但不宣称 `fixed`
+
+#### Scenario: Checker changes a repair target after formatter returns
+- **WHEN** formatter 返回后目标文件身份可采集，但随后的检查器又改动该文件
+- **THEN** `auto_fix` 保留修复与检查执行证据，整体标为 UNVERIFIED，`fixed` 不宣称已确认
 
 ### Requirement: Hook state SHALL preserve concurrent and session ownership
 

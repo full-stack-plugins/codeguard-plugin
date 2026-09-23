@@ -273,3 +273,11 @@
 
 - 同批跨入口 CodeGraph 审查沿 `mcp_tool_payload → auto_fix → run_fix/run_check` 发现，旧 `auto_fix` 在作用域校验前对 Git 改动路径 `read_bytes`：父目录符号链接可先读仓外文件，大文件无内存预算，读取故障直接越过 MCP 结果边界。新增三种故障注入先 RED（仓外读取、超预算缺 UNVERIFIED、修复后身份故障缺 UNVERIFIED），另覆盖循环链接。应用服务现复用 `fingerprint.file_content` 的流式身份与 64 MiB/10,000 文件预算，修复前不可靠则不运行 formatter；修复后不可靠仍保留修复/复检证据，但顶层 `fixed=false` 且明确 UNVERIFIED。架构白名单只增加应用到 fingerprint 基础设施的有向依赖，反向导入与环仍受检。
 - 补充后全量单测 **537/537、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。MCP `auto_fix` 的私有日志/公开投影及真实 formatter 回归仍通过；这不等于三宿主实际安装或恶意并发文件系统的完整沙箱证明。
+
+- 第二十六批随后发布为 v0.14.12：源码 PR #58 合并到 `fd0f771360c5ea27dbfc0ae5ab54ffdb5a0598ca`，市场 PR #16 合并到 `a648cdc704ab10d31dd2c3d8acb24b9b84af1ae1`；源码 PR 和合并后 main 的 `vendor-check` 成功。受保护注释 tag `v0.14.12` 解引用到源码 main 合并提交，正式 GitHub Release 非 draft、非 prerelease；市场 Codex/ZCode/Kimi 清单与中英文导航为 0.14.12。市场 PR 无 CI 检查，不称其 CI 已通过。源码本地 main 已快进且干净；市场原工作区保留已有未提交修改，远端 main 单独核对。本次发布不等于三宿主已安装运行，也不覆盖以下新候选。
+
+## 第二十七批本地验证：MCP 修复归因与复检副作用
+
+- 从 v0.14.12 的同树临时 CodeGraph 索引追踪 `mcp_tool_payload → auto_fix → run_fix/run_check → fingerprint.file_content`。旧实现仅在修复与复检都完成后取第二份身份；检查器自己改写文件时，顶层 `fixed` 会错误归因给 formatter。目标测试先 RED（缺 `UNVERIFIED`），改为修复前、formatter 后、复检后三次有界身份观察。
+- formatter 后或复检后身份不可验证，以及检查器在复检期间改动目标文件时，保留实际修复和检查执行证据，顶层 `fixed=false` 且 `UNVERIFIED`。正向覆盖 formatter 真正改变文件而只读复检；反向覆盖检查器单独改写、把 formatter 变化还原、第三次观察故障，并由真实检查器子进程复现副作用。目标 9 项通过。
+- `/opt/anaconda3/bin/python3` 3.13.5（MCP SDK 可用）完整执行 **542 unittest、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。Homebrew Python 3.14.3 执行同套测试有 4 项依赖条件跳过，不能替代完整证明。受管技能及 lock 未改；本批尚未 bump、提交、推送或发布，三宿主已安装运行、Windows、在线 CVE 与大型 Maven/Gradle 项目仍无本批证据。

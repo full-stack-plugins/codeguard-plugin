@@ -10,7 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from codeguard import check_application
+from codeguard import check_application, language_check
 
 
 class McpAutoFixIdentityTests(unittest.TestCase):
@@ -81,6 +81,100 @@ class McpAutoFixIdentityTests(unittest.TestCase):
         self.assertEqual("PASS", payload["check"][0]["status"])
         fix.assert_called_once()
         check.assert_called_once()
+
+    def test_checker_side_effect_does_not_count_as_formatter_fix(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+
+        def check_mutates(*_args, **_kwargs):
+            target.write_text("value = 2\n", encoding="utf-8")
+            return [{"language": "python", "passed": True, "status": "PASS", "exit_code": 0}]
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", return_value=[
+                  {"language": "python", "fixed": True, "exit_code": 0}]),
+              patch.object(check_application, "run_check", side_effect=check_mutates)):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertEqual("UNVERIFIED", payload["status"])
+        self.assertFalse(payload["fixed"])
+        self.assertEqual("PASS", payload["check"][0]["status"])
+
+    def test_formatter_change_survives_read_only_checker(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+
+        def formatter(*_args, **_kwargs):
+            target.write_text("value = 2\n", encoding="utf-8")
+            return [{"language": "python", "fixed": True, "exit_code": 0}]
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", side_effect=formatter),
+              patch.object(check_application, "run_check", return_value=[
+                  {"language": "python", "passed": True, "status": "PASS", "exit_code": 0}])):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertTrue(payload["fixed"])
+        self.assertNotIn("status", payload)
+
+    def test_real_checker_process_mutation_is_not_verified_as_repair(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        checker = self.root / "checker.py"
+        checker.write_text(
+            "from pathlib import Path\nPath('changed.py').write_text('value = 2\\n')\n",
+            encoding="utf-8",
+        )
+        command = {"lint": [sys.executable, str(checker)], "append_files": True}
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", return_value=[
+                  {"language": "python", "fixed": False, "exit_code": 0}]),
+              patch.dict(language_check.LANG_COMMANDS, {"python": command}),
+              patch.object(language_check, "project_uses_linter", return_value=True)):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertEqual("UNVERIFIED", payload["status"])
+        self.assertFalse(payload["fixed"])
+        self.assertEqual("PASS", payload["check"][0]["status"])
+        self.assertEqual("value = 2\n", target.read_text(encoding="utf-8"))
+
+    def test_checker_reverts_formatter_change_is_unverified(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+
+        def formatter(*_args, **_kwargs):
+            target.write_text("value = 2\n", encoding="utf-8")
+            return [{"language": "python", "fixed": True, "exit_code": 0}]
+
+        def check_reverts(*_args, **_kwargs):
+            target.write_text("value = 1\n", encoding="utf-8")
+            return [{"language": "python", "passed": True, "status": "PASS", "exit_code": 0}]
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", side_effect=formatter),
+              patch.object(check_application, "run_check", side_effect=check_reverts)):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertEqual("UNVERIFIED", payload["status"])
+        self.assertFalse(payload["fixed"])
+        self.assertEqual("value = 1\n", target.read_text(encoding="utf-8"))
+
+    def test_post_check_identity_failure_preserves_execution(self):
+        (self.root / "changed.py").write_text("value = 1\n", encoding="utf-8")
+        observed = iter([("before", 10), ("after-fix", 10), ValueError("file changed")])
+
+        def observe(_path, _budget):
+            value = next(observed)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "file_content", side_effect=observe),
+              patch.object(check_application, "run_fix", return_value=[
+                  {"language": "python", "fixed": True, "exit_code": 0}]),
+              patch.object(check_application, "run_check", return_value=[
+                  {"language": "python", "passed": True, "status": "PASS", "exit_code": 0}])):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertEqual("UNVERIFIED", payload["status"])
+        self.assertFalse(payload["fixed"])
+        self.assertEqual("PASS", payload["check"][0]["status"])
 
 
 if __name__ == "__main__":

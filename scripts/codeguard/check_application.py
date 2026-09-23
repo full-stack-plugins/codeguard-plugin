@@ -135,16 +135,28 @@ def auto_fix(root: Path, languages: list[str]) -> dict:
                 "reason": "改动文件路径或内容身份不可验证（链接、读取故障或超预算）；未执行自动修复",
                 "check": []}
     fix_results = run_fix(languages, root, files=files)
+    try:
+        after_fix = _repair_identity(root, files)
+    except (OSError, TypeError, ValueError):
+        after_fix = None
     results = run_check(languages, root, files=files, log_dir=root / "out")
     public_fixes = _public_fix_results(root, fix_results)
     checks = result_envelope(results)
-    try:
-        after = _repair_identity(root, files)
-    except (OSError, TypeError, ValueError):
+    if after_fix is None:
         return {"fixed": False, "status": "UNVERIFIED",
                 "reason": "修复后的文件身份不可验证，不能确认内容变化",
                 "fix_results": public_fixes, "check": checks}
-    return {"fixed": before != after, "fix_results": public_fixes, "check": checks}
+    try:
+        after_check = _repair_identity(root, files)
+    except (OSError, TypeError, ValueError):
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "复检后的文件身份不可验证，不能确认修复结果",
+                "fix_results": public_fixes, "check": checks}
+    if after_fix != after_check:
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "复检期间目标文件发生变化，检查结论无法绑定最终内容",
+                "fix_results": public_fixes, "check": checks}
+    return {"fixed": before != after_fix, "fix_results": public_fixes, "check": checks}
 
 
 def mcp_tool_payload(name: str, arguments: dict | None, project_root: Path):
