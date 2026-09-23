@@ -38,6 +38,8 @@ CLI 优先级：FAIL → 2；否则有 UNVERIFIED/PLANNED → 1；验证成功�
 
 ## Java 项目感知
 
+`scripts/` 下的旧导入门面（`verdict.py`、`user_config.py`、`run_per_language.py`）为 Deprecated 兼容 shim：新代码必须从 `codeguard` 包导入，计划在下一个 major 版本移除。
+
 ### 只读规划
 
 ```bash

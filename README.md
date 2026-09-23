@@ -38,6 +38,8 @@ CLI exit priority: FAIL → 2; otherwise UNVERIFIED/PLANNED → 1; verified succ
 
 ## Java project awareness
 
+The legacy import facades under `scripts/` (`verdict.py`, `user_config.py`, `run_per_language.py`) are Deprecated compatibility shims: new code must import from the `codeguard` package. They are scheduled for removal in the next major version.
+
 ### Read-only planning
 
 ```bash

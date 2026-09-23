@@ -28,6 +28,15 @@ class ArchitectureTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CHECKER), "--root", str(root or self.root)],
                               capture_output=True, text=True, timeout=10, check=False)
 
+    def test_top_level_scripts_carry_declared_roles(self):
+        """顶层脚本角色登记完整：compat-shim 带 Deprecated 通告，adapter 有用途声明。"""
+        proc = self.check(ROOT)
+        role_errors = [
+            line for line in proc.stdout.splitlines()
+            if any(tag in line for tag in ("SCRIPT_ROLES", "compat-shim", "ADAPTER_LAYERS", "unclassified top-level"))
+        ]
+        self.assertEqual([], role_errors, proc.stdout)
+
     def test_current_repository_obeys_declared_dependencies(self):
         result = self.check(ROOT)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)

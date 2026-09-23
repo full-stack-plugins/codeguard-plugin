@@ -8,6 +8,8 @@
   python3 tests/run_all.py unit     # 纯函数单测（glob/requiresConfig、{file} 兜底、多 cd 边界、综述≠细节）
   python3 tests/run_all.py cve      # CVE 生态标识、别名归一化与参数校验退出码
 
+与 `unittest discover tests/test_*.py` 的分工：纯函数/单元语义单测归 test_*.py；本套件只放宿主协议级模拟、结构审计与跨进程边界回归。CI 两轨都跑（coverage 版 unittest discover + 本套件），新增测试按此归属。
+
 钩子模拟的原理 = 完全复刻宿主行为：把 ZCode/Claude 会发给钩子的 JSON payload
 通过 stdin 喂给真实钩子脚本，断言退出码与输出协议（exit 0 JSON / exit 2 stderr）。
 

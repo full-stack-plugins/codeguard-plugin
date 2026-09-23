@@ -49,14 +49,23 @@ function resolvePluginsRoot() {
   }
   while (dir !== path.parse(dir).root) {
     if (fs.existsSync(path.join(dir, "plugins", "catalog.json"))) return path.join(dir, "plugins");
+    const candidates = [];
     try {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (entry.isDirectory() && /-plugins$/.test(entry.name)
             && fs.existsSync(path.join(dir, entry.name, "catalog.json"))) {
-          return path.join(dir, entry.name);
+          candidates.push(path.join(dir, entry.name));
         }
       }
     } catch { /* 不可读目录跳过 */ }
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      // 歧义目录（如工作区根同时含多个 *-plugins 市场仓）拒绝 first-match：
+      // 静默选错市场会把版本写进错误的 catalog。
+      throw new Error(
+        `发现多个插件市场仓候选，拒绝猜测，请设 PARTME_PLUGINS_ROOT 指定：\n  ${candidates.join("\n  ")}`,
+      );
+    }
     dir = path.dirname(dir);
   }
   throw new Error("找不到插件市场仓。可设 PARTME_PLUGINS_ROOT 指定。");
