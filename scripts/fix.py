@@ -63,7 +63,8 @@ def main() -> int:
         languages, project_root, dry_run=args.dry_run, files=target_files,
     )
     failed: list[str] = []
-    for r, lang in zip(results, languages, strict=False):
+    for r in results:
+        lang = r["language"]
         if r.get("skipped"):
             print(f"  {lang:12s} ⏭️  {r.get('note')}")
             continue
