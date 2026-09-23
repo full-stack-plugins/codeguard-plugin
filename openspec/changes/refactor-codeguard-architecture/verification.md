@@ -254,3 +254,11 @@
 - 继续沿 CodeGraph 的 `_flatten_substitutions → resolve_git_operations/staging_intent` 审查时发现安全反例：`$(git add .env)` 与反引号在外层 commit 前执行，但静态展开把内层文本附到末尾。真实 Hook 测试先 RED（敏感文件被错误放行）；现含命令替换的链保守并集，不启用文本顺序截止。两种带有效提交消息的形式均转绿，原始 index 不改写。单引号中的字面替换可能保守误拦，这一历史解析边界未宣称解决。
 - 本地完整单测 **521/521、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。受管技能及 lock 未改；已发布的 v0.14.9 不含本批工作树。当前只证明无脚本/命令替换的直接静态链顺序归属，跨一层脚本与命令替换仍保守合并；Windows、三宿主已安装运行、在线 CVE、大型 Maven/Gradle 与完整 Shell 控制流仍未验收。
 - 宿主只读复核：本机 ZCode `installed_plugins.json` 的 `codeguard@full-stack-plugins` 仍登记 `0.14.7`，不能拿 v0.14.9 的 Release 或市场 ref 当作该宿主的当前加载/触发证据。未修改任何宿主安装。
+
+- 第二十四批随后发布为 v0.14.10：源码 PR #56 合并到 `aa7a04aec9f5dbe220acfcc411a9fa10a3784367`，市场 PR #14 合并到 `a649eaf88673225d3dba54e1fb1a090d1a97daa3`；源码 PR 的 `vendor-check` 与合并后 main 的 `skills-check` 均成功。远端注释 tag `v0.14.10` 解引用到源码合并提交，正式 Release 非 draft、非 prerelease。市场 Codex/ZCode/Kimi 清单全量校验通过；市场 PR 无 CI 检查，不称其 CI 已通过。此发布不覆盖以下第二十五批隔离 worktree。
+
+## 第二十五批实际验证：Git blob 批量传输的对象身份
+
+- 最新 main 的隔离临时 CodeGraph 索引沿 `validation_tree → cat-file --batch-check/--batch → gate.run_gate` 追到准确快照的信任边界：旧实现只汇总大小，再以 `--batch` 头部长度切片，未逐项核对 ID、类型、数量、大小、尾部边界或 payload 哈希。独立故障注入证明错误对象 ID 的内容仍被接受；新增测试中 9 类协议错位/截断及门禁 UNVERIFIED 场景先 RED，真实二进制 blob 对照保持通过。
+- `git_snapshot` 的字节型 Git 入口统一执行错误归一化；批量大小响应和内容响应按 index/HEAD 的同一对象顺序验证。每段 blob 按 SHA-1 或 SHA-256 Git 对象格式重新计算哈希，因此同长度替换也不能通过伪造响应头被接受；有效包含换行/NUL 的内容仍原样重建。错误响应转 `SnapshotError`，准确门禁返回 `git UNVERIFIED`，真实 index 字节不变。进一步用应用层集成用例确认：同批已经暂存的 `.env` 仍被安全规则 exit 2 拦截，未知快照不会抹掉已知违规；既有未知项 fail-open/可见告警政策未改。
+- 隔离 worktree 本地完整单测 **526/526、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。当前只证明本地静态/故障注入契约与真实 SHA-1/SHA-256 仓库，不等于三宿主已安装现场、Windows、在线 CVE、大型 Maven/Gradle 或恶意 Git 进程沙箱验收。第二十五批尚未 bump、提交、推送或发布。

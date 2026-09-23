@@ -27,6 +27,7 @@ flowchart TD
 ```
 
 `execution` 只记录进程证据，不把非零退出自动认定为代码违规。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
+Git 准确快照的二进制读取独立于文本检查执行器：`cat-file` 两阶段响应逐项核对 ID、blob 类型、大小与边界，并按 SHA-1/SHA-256 blob 对象格式复算内容哈希；缺项、截断、尾部脏数据或同长度内容替换均不交付临时树，而是明确标记 Git UNVERIFIED。原始 index 不在观察过程中改写。该校验只证明读取到的对象与列出的对象一致，不是执行沙箱或完整 Git/Shell 模拟。
 `language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。`auto_fix` 的 `fix_results` 也只公开状态与安全元数据；formatter stderr 尾部写入私有 `.codeguard-fix.log` 后只公开路径，日志不可用时不退回公开原文。失败日志保留各已执行检查的完整输出，可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。
 Git 命令的仓库定位与拟暂存解析共用入口传入的 cwd；显式 `cd`/`git -C` 无法绑定 Git 工作树时，硬门禁给出目标未验证并阻断，不退回到调用者仓或无关子仓。未给出显式目标且调用目录非仓时仍保留 workspace 子仓兜底。静态命令解析不等于完整 Shell 执行模拟。
 workspace 兜底产生的每个子仓是合成目标，暂存观察也绑定该子仓根目录；不能继续以非 Git 的 workspace cwd 解析，从而把脏子仓的已知违规变成未知放行。
@@ -47,7 +48,7 @@ workspace 兜底产生的每个子仓是合成目标，暂存观察也绑定该�
 | `java_build.py`、`java_impact.py`、`java_planning.py` 等 | 构建读取、纯影响闭包、命令选择与环境观察 | 默认保留跳过测试的行为；复杂构建保守扩大检查范围 |
 | `cve_reports.py`、`cve_policy.py`、`cve_scanners.py`、`cve.py` | 漏洞报告、阈值、进程适配与复扫编排 | 无有效结构化报告就没有安全通过结论 |
 | `dockerfile_reports.py`、`dockerfile.py` | hadolint/Trivy 结构化证据与逐文件扫描 | `dockerfile_security.py` 只解析参数和呈现报告 |
-| `execution.py`、`git_staging.py`、`git_snapshot.py`、`storage.py` | 外部进程、Git 内容面、原子状态读改写 | Git blob 保持字节，不经过文本检查执行器 |
+| `execution.py`、`git_staging.py`、`git_snapshot.py`、`storage.py` | 外部进程、Git 内容面、原子状态读改写 | Git blob 保持字节，不经过文本检查执行器；准确快照必须核对批量对象协议与内容身份 |
 | `registry.py`、`registry_schema.py`、`discovery.py`、`config.py` | 已校验的语言表、发现与配置 | `languages.json` 是语言清单的事实源 |
 
 这些是源代码层的边界。`scripts/check_architecture.py` 对第一方静态导入和环做门禁；动态加载、进程副作用和宿主行为仍需测试。

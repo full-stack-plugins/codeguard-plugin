@@ -231,6 +231,24 @@ CLI 呈现 MUST 各有单一所有者。只有有效报告且执行状态可解�
 - **WHEN** npm 修复命令执行后复扫失败或返回干净报告
 - **THEN** 分别返回 UNVERIFIED 或 PASS，保留修复前报告和实际修复执行证据
 
+### Requirement: Accurate Git snapshots SHALL validate object transport
+
+Git 准确快照 MUST 对 index/HEAD 列出的每个对象，逐项核对 `cat-file --batch-check` 与
+`--batch` 响应的对象 ID、blob 类型、非负大小、顺序和完整字节边界。响应缺项、重复项、
+内容截断或多余尾部字节 MUST 报告快照 UNVERIFIED，不得把错误对象或部分内容交给语言检查器。
+实际 payload MUST 按仓库对象格式重新计算 blob 哈希并与 index/HEAD 对象 ID 一致；
+同长度内容被替换也不能通过仅核对响应头而被接受。
+大小预算 MUST 基于已验证的逐项大小；二进制内容中的换行与 NUL 必须原样保留。
+观察过程不得改写真实 Git index。此要求不改变既有 Hook 对未知结果的 fail-open/可见告警政策。
+
+#### Scenario: Git batch response disagrees with the requested objects
+- **WHEN** 批量读取的对象 ID、类型、大小、数量或顺序与已列出的 Git 对象不一致
+- **THEN** 准确快照不可交付，门禁报告 Git UNVERIFIED，而不是检查错位或部分内容
+
+#### Scenario: Batch payload has an invalid boundary or identity
+- **WHEN** 对象内容截断、缺少协议分隔符、尾随额外数据或同长度内容与对象哈希不符
+- **THEN** 不交付临时树，不改变真实 index；有效二进制 blob 仍可逐字节重建
+
 ### Requirement: Predicted staging SHALL preserve repository and pathspec scope
 
 拟暂存范围 MUST 绑定每个 git add 的实际仓库与工作目录，而非整条命令链的最终 cd 或全局

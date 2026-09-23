@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -12,10 +13,10 @@ class SnapshotError(RuntimeError):
     """无法准确取得拟提交内容，调用者必须报告未验证。"""
 
 
-def git(root: Path, *args: str) -> bytes:
+def git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
     try:
         proc = subprocess.run(["git", *args], cwd=root, capture_output=True,
-                              check=False, timeout=30)
+                              input=input_data, check=False, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SnapshotError(str(exc)) from exc
     if proc.returncode:
@@ -79,6 +80,62 @@ def proposed_paths(root: Path, mode="commit", *, lanes=None, extra=None,
     return sorted(selected)
 
 
+def _batch_header(line: bytes, oid: str, *, expected_size: int | None = None) -> int:
+    """验证 cat-file 单项响应，不能只相信响应声明的长度。"""
+    fields = line.split(b" ")
+    if len(fields) != 3 or fields[0] != oid.encode("ascii") or fields[1] != b"blob":
+        raise SnapshotError("Git 对象批量响应身份或类型与 index/HEAD 不一致")
+    try:
+        size = int(fields[2])
+    except ValueError as exc:
+        raise SnapshotError("Git 对象批量响应大小无效") from exc
+    if size < 0 or (expected_size is not None and size != expected_size):
+        raise SnapshotError("Git 对象批量响应大小与 index/HEAD 不一致")
+    return size
+
+
+def _batch_sizes(raw: bytes, entries: list[tuple[str, str, str]]) -> tuple[int, ...]:
+    """严格核对 batch-check 的数量、顺序与总量预算。"""
+    if entries and not raw.endswith(b"\n"):
+        raise SnapshotError("Git 对象大小响应不完整")
+    lines = raw[:-1].split(b"\n") if raw else []
+    if len(lines) != len(entries):
+        raise SnapshotError("Git 对象大小响应数量与 index/HEAD 不一致")
+    sizes = []
+    total = 0
+    for line, (_, oid, _) in zip(lines, entries, strict=True):
+        size = _batch_header(line, oid)
+        total += size
+        if total > 256 * 1024 * 1024:
+            raise SnapshotError("快照超过 256 MiB 上限，需要独立 CI 检查")
+        sizes.append(size)
+    return tuple(sizes)
+
+
+def _batch_blob(raw: bytes, offset: int, oid: str, expected_size: int) -> tuple[memoryview, int]:
+    """只交付身份、大小和完整分隔符均已验证的 blob 字节。"""
+    header_end = raw.find(b"\n", offset)
+    if header_end < 0:
+        raise SnapshotError("Git 对象内容响应缺少头部")
+    size = _batch_header(raw[offset:header_end], oid, expected_size=expected_size)
+    start = header_end + 1
+    end = start + size
+    if end >= len(raw) or raw[end] != 10:
+        raise SnapshotError("Git 对象内容响应截断或分隔符无效")
+    content = memoryview(raw)[start:end]
+    if len(oid) == 40:
+        digest = hashlib.sha1()
+    elif len(oid) == 64:
+        digest = hashlib.sha256()
+    else:
+        raise SnapshotError("Git 对象 ID 格式未验证")
+    digest.update(f"blob {size}\0".encode("ascii"))
+    digest.update(content)
+    if digest.hexdigest() != oid:
+        raise SnapshotError("Git 对象内容哈希与 index/HEAD 不一致")
+    return content, end + 1
+
+
 @contextlib.contextmanager
 def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pending_commit=False):
     """原始 Git blobs 构成快照；拒绝外链、submodule、冲突和超限内容。"""
@@ -97,27 +154,20 @@ def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pendin
     if len(entries) > 20000:
         raise SnapshotError("快照超过 20000 文件上限，需要独立 CI 检查")
     object_ids = "".join(oid + "\n" for _, oid, _ in entries).encode()
-    try:
-        sizes = subprocess.run(["git", "cat-file", "--batch-check"], input=object_ids,
-                               cwd=root, capture_output=True, check=True, timeout=30).stdout
-        if sum(int(line.split()[-1]) for line in sizes.splitlines()) > 256 * 1024 * 1024:
-            raise SnapshotError("快照超过 256 MiB 上限，需要独立 CI 检查")
-        blob = subprocess.run(["git", "cat-file", "--batch"], input=object_ids,
-                              cwd=root, capture_output=True, check=True, timeout=30).stdout
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
-        raise SnapshotError(f"读取 Git 内容失败: {exc}") from exc
+    sizes = _batch_sizes(git(root, "cat-file", "--batch-check", input_data=object_ids), entries)
+    blob = git(root, "cat-file", "--batch", input_data=object_ids)
     changed = proposed_paths(root, mode, lanes=lanes, extra=extra, pending_commit=pending_commit, include_deleted=True)
     with tempfile.TemporaryDirectory(prefix="codeguard-snapshot-") as directory:
         target = Path(directory)
         offset = 0
-        for mode_bits, _oid, name in entries:
-            end = blob.index(b"\n", offset)
-            size = int(blob[offset:end].split()[-1])
+        for (mode_bits, oid, name), size in zip(entries, sizes, strict=True):
+            content, offset = _batch_blob(blob, offset, oid, size)
             dest = safe_path(target, name)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(blob[end + 1:end + 1 + size])
+            dest.write_bytes(content)
             dest.chmod(0o755 if mode_bits == "100755" else 0o644)
-            offset = end + size + 2
+        if offset != len(blob):
+            raise SnapshotError("Git 对象内容响应存在多余尾部字节")
         if not head:
             for name in overlays(root, lanes, extra):
                 source, dest = safe_path(root, name), safe_path(target, name)
