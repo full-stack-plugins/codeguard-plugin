@@ -178,3 +178,11 @@
 - 新增 RED：UserPromptSubmit 与 PostToolUse 在 stdout 刷新失败时，旧入口仍登记完成；Git 已知拦截的输出写入失败向外抛异常，若由入口顶层 fail-open 捕获则可能放行；刷新失败还会缓存未交付拦截。现在所有确认都在刷新后；已知拦截输出故障保留 exit 2、不缓存，含无 tool_use_id 路径和缓存重放。对普通软反馈仍保持原 fail-open 协议。
 - 定向测试 **26/26**，完整单测 **465/465、0 skipped**，真实 Hook 回归 **142/0/0**；ruff、架构依赖/循环、本 change strict、语言 schema **57 项/11 规则**、vendor 离线和在线以及 diff whitespace 通过。vendor lock 仍为 v0.1.2 → `2c0c8071f96de48dc53e11de2499c083c100e44c`，受管技能与 lock 未修改。
 - 本批只证明本地输出时序与故障注入；stdout 刷新不等于宿主最终消费，可能在重试时重复反馈。三宿主已安装运行、Windows、联网漏洞库和全部语言工具链仍需独立验收；本批在此记录时尚未 bump/提交/发布。
+
+## 第十七批实际验证：显式 Git 目标与调用目录
+
+- v0.14.2 已经插件 PR #48、市场 PR #5 合并到双仓 `main`；插件 PR/main 的 `skills-check` 通过，不可变 tag/Release 指向合并提交 `2cdf816d3a5924155480dd24a535d61ebab47e01`，市场 Codex/ZCode/Kimi ref 与双语导航为 0.14.2。该远端证据只覆盖第十六批及此前源码，本批仍需独立发布。
+- 临时 CodeGraph 快照同步后追踪 `evaluate_git_command → resolve_project_roots → repository_root` 与 `staging_intent`。发现显式 `cd` 到非 Git 目录后执行 commit/push 会回退调用者仓；显式 `git -C` 无效目标会落到 workspace 兜底；应用传入 cwd 仅用于仓库定位，拟暂存解析却读取进程全局 cwd。分别用真实临时 Git 仓和独立调用目录复现：前两类错误放行/泛化诊断，第三类遗漏新增 Python 文件。
+- 当前 `GitTargetError` 将显式目标不可绑定与无显式目标的 workspace 兜底区分；前者在应用边界返回 exit 2 和具体路径，不再检查错误仓。Git 根观察的 `SnapshotError` 同样不交给顶层 fail-open。拟暂存解析接受可选显式 cwd，并由应用传入同一调用目录；旧无参导入/调用仍可使用进程 cwd。真实 PreToolUse 子进程证明无效目标阻断，`git -C` 有效目标仍覆盖非 Git cd。
+- TDD RED 包含错误放行、错误兜底、遗漏 pathspec 与根观察异常；GREEN 后完整单测 **470/470、0 skipped**，真实 Hook 回归 **143/0/0**。ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过；受管技能与 lock 未改。
+- 这不是 Shell 求值器：条件链、动态拼接、命令替换、复杂引用和链内环境变化仍是明确边界。三宿主现场、Windows、联网漏洞库与全部语言工具链未因此获得验收。本批在此记录时尚未 bump/提交/发布。

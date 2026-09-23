@@ -72,7 +72,11 @@ flowchart TD
 
 `path_policy` 是扫描排除表、产物识别与拟入库路径规则的单一来源；`scope` 和 `gate_lib` 只兼容导出/调用。策略接收已经确定的路径，不读取 Git，更不会执行建议中的移除操作。Git 快照采集仍在 git_snapshot，反馈格式仍在 reporting。
 
-这不是完整 Shell 解释器：分隔符/引用/动态拼接和复杂相对 cd 仍有既有边界。本批保留非 Git cd 后回退调用方 cwd 的历史策略，但删去“等价于 Shell 语义”的错误说明；不凭模块拆分宣称修好了这些定位边界。后续门禁应用拆分与命令上下文完善须分别用真实 Git 场景验证。
+这不是完整 Shell 解释器：分隔符/引用/动态拼接和复杂相对 cd 仍有既有边界。显式 `cd` 或
+`git -C` 指向非 Git 目标时，解析器现在返回独立的目标故障，硬门禁阻断而不回退调用者仓；
+无显式目标且 cwd 非仓时继续保留 workspace 一层子仓兜底。仓库定位和拟暂存解析共用入口
+传入的 cwd，不再分别读取进程全局工作目录。Git 根查询故障也保留阻断结论；这些只覆盖
+支持的静态命令形态，不能宣称模拟完整 Shell 控制流。
 
 参考：pre-commit 的 [Language Protocol 与通用执行](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/lang_base.py)、[Python 适配器](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/languages/python.py)。只借鉴边界设计，不复制安装环境逻辑或新增插件生态协议。
 

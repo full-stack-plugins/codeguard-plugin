@@ -8,6 +8,7 @@ from pathlib import Path
 from git_snapshot import SnapshotError
 
 from .gate import run_gate
+from .git_context import GitTargetError, resolve_project_roots, staging_intent
 from .git_context import (
     _fallback_roots as fallback_roots,
 )
@@ -16,10 +17,6 @@ from .git_context import (
 )
 from .git_context import (
     _guarded_mode as guarded_mode,
-)
-from .git_context import (
-    resolve_project_roots,
-    staging_intent,
 )
 from .git_syntax import _collect_subs as collect_subs
 from .git_syntax import chain_skip_gate, inline_skip_gate
@@ -48,7 +45,13 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
         return GitGuardResult()
 
     cfg = load_config()
-    roots = resolve_project_roots(command, cwd=cwd)
+    try:
+        roots = resolve_project_roots(command, cwd=cwd)
+    except (GitTargetError, SnapshotError) as exc:
+        return GitGuardResult(
+            2,
+            stderr=f"[codeguard] Git 目标 UNVERIFIED：{exc}。请确认命令实际工作目录后重新提交。",
+        )
     fallback_note: str | None = None
     if not roots:
         fallback = fallback_roots(cwd)
@@ -93,7 +96,7 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
     reports: list[str] = []
     for project_root in roots:
         try:
-            lanes, extra = staging_intent(command, project_root=project_root)
+            lanes, extra = staging_intent(command, project_root=project_root, cwd=cwd)
         except SnapshotError as exc:
             contexts.append(
                 f"codeguard: git UNVERIFIED：{project_root} 无法准确预测暂存面：{exc}；"

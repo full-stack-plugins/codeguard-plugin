@@ -307,8 +307,16 @@ def test_unit():
     ok("安全报告同构：首行综述不重复", sfirst not in "\n".join(srep.splitlines()[1:]))
 
     # 多 cd 边界解析
-    roots = guard.resolve_project_roots(f"cd /tmp && x && cd {PLUGIN} && git commit -m t && cd /tmp && git push")
+    roots = guard.resolve_project_roots(f"cd /tmp && x && cd {PLUGIN} && git commit -m t && cd {PLUGIN} && git push")
     ok("边界=git 段前最近的 cd", PLUGIN in roots and Path("/tmp") not in roots)
+    from codeguard.git_context import GitTargetError
+    try:
+        guard.resolve_project_roots(f"cd {PLUGIN} && git commit -m t && cd /tmp && git push")
+    except GitTargetError:
+        invalid_target_blocked = True
+    else:
+        invalid_target_blocked = False
+    ok("显式非仓目标不回退调用者仓", invalid_target_blocked)
     ok("无 git 段返回空", guard.resolve_project_roots("ls -la && echo done") == [])
     ok("is_guarded 词法匹配不误伤 echo", not guard.is_guarded('echo "git push 是危险命令"'))
     ok("is_guarded 命中真实 git push", guard.is_guarded("cd r && git push origin main"))
