@@ -223,3 +223,14 @@
 - 真实 MCP stdio RED 复现：`codeguard.json` 权威命令中的哨兵 token 经原始 argv 和检查器输出进入新增轨迹，扩大了公开面。`check_application` 现将 `check_code_style` 与 `auto_fix` 的新增轨迹压成阶段/序号/程序名/退出与故障/输出长度，不回显 argv、环境覆盖或输出文本；原始证据仍由内部执行结果和本地失败日志保留。后者可能含敏感内容，文档明确要求排除版本控制，不宣称日志已脱敏。
 - 新目标测试经真实 `mcp_tool_payload` 路径转绿；进一步通过官方 MCP SDK 的 stdio 客户端从 `check_code_style` 收到两条实际命令状态与完整失败日志路径，token 未出现在 JSON 响应。加入 `auto_fix` 轨迹收敛测试后完整本地单测 **503/503、0 skipped**，Hook 回归 **143/0/0**，Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线/在线、本 change strict 与 diff whitespace 通过。受管技能与 lock 未改；这仍是本地证据，当前发布的 v0.14.6 不含本批修改，三宿主安装现场、真实 Maven/Gradle、在线漏洞库及 Windows 未验收。
 - 宿主安装登记只读抽查：本机 ZCode 的 `installed_plugins.json` 将 `codeguard@full-stack-plugins` 指向 `v0.12.1` 与其缓存目录；它不能证明 v0.14.6 或本批在 ZCode 的加载/触发。当前抽查的 Codex/Kimi 缓存路径未提供当前版证据，但不能据路径缺失推断所有宿主环境均未安装。宿主安装和真实加载需在后续有权限的独立验收中验证，不由源码测试、市场 ref 或旧缓存替代。
+
+- 第二十一批随后发布为 v0.14.7：源码 PR #53 合并到 `1543a93ae893040633ced2818b6dd7fb30752c40`，市场 PR #10 合并到 `e5816b097006f65db24a7ac2c5d00080faae9ee1`；源码 PR 与合并后 main 的 `skills-check` 均通过。远端注释 tag 解引用到源码合并提交，正式 GitHub Release 非 draft、非 prerelease；市场 Codex/ZCode/Kimi 生成清单校验及导航版本为 0.14.7。市场 PR 没有报告 CI 检查，不声称市场 CI 通过。此发布只覆盖第二十一批及此前代码，不覆盖以下新工作树。
+
+## 第二十二批实际验证：诊断日志私有原子落盘
+
+- 继续做 CLI 能力矩阵黑盒审计：真实 Git 仓同时修改 `.zsh` 和 `.sh`，假 shfmt 确实被调用并退出 2；原 `fix.py` 按 `zip(results, languages)` 只打印第一条 zsh 跳过，错误返回 0。新测试 RED 后改为按每条结果的语言呈现和聚合，目标测试连同 `detect`/`init` 入口及日志测试 9/9 GREEN。
+
+- 临时 CodeGraph 索引同步到最新源码（源仓未初始化索引），沿 `language_check.run_check → 项目 out 日志` 与 `reporting._truncate_detail → 临时门禁日志` 两条链定位到普通 `Path.write_text`。两处均写原始检查器输出；文档虽提示可能含敏感文本，但项目日志在默认 022 umask 下为 0644。预置日志路径符号链接会覆盖目标文件，项目 `out` 目录链接会把日志写到外部；`out` 是普通文件时，`mkdir` 异常会掩盖已有检查结论。
+- 真实文件系统新增 5 项 RED：项目日志权限、项目日志文件链接、输出目录链接、不可用输出目录、门禁截断日志链接。统一由 `storage.write_private_text` 在同目录创建私有临时文件并原子替换，拒绝直接链接的日志目录；两类应用只决定路径与内容。日志不可用时不返回虚假的路径，检查状态保持原判；保留既有日志内容格式与可见路径。另加原子替换失败的故障注入，证明旧日志不被截断、临时文件清理、既有判定保留。目标 6/6 通过，POSIX 创建权限为 0600，链接目标保持原样。
+- 完整本地单测 **512/512、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过，受管技能及 lock 未改。CodeGraph `affected` 对本次文件返回空，但实际新增测试和原有调用链覆盖存在，不将该空结果当无影响证据。
+- 本批仅证明静态预置链接、POSIX 权限和原子替换语义；不承诺抵御并发替换父目录的完整文件系统竞态，也没有 Windows 实机、三宿主现场、在线 CVE 或大型 Maven/Gradle 验收。v0.14.7 的 CI/Release 不能证明此新代码；v0.14.8 发布证据须单独记录。

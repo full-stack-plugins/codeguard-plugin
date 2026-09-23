@@ -26,9 +26,9 @@ CORE_DEPENDENCIES = {
     "codeguard.verdict": {"__future__", "re", "posixpath", "collections", "collections.abc",
                           "pathlib", "codeguard.models"},
     "codeguard.execution": {"__future__", "os", "subprocess", "collections", "pathlib", "codeguard.models"},
-    # 报告当前仍拥有诊断日志落盘；不将其误称为无 IO 的纯模型。
+    # 报告仍决定日志路径与呈现；私有原子落盘交给 storage，不称纯模型。
     "codeguard.reporting": {"__future__", "re", "json", "pathlib", "hashlib", "tempfile",
-                           "codeguard.models", "codeguard.verdict"},
+                           "codeguard.models", "codeguard.verdict", "codeguard.storage"},
     # scope 是已有文件物化适配器：注入配置/排除目录，尚未迁入内核包。
     "codeguard.planning": {"__future__", "collections", "pathlib", "scope", "codeguard.models"},
     "codeguard.git_syntax": {"__future__", "pathlib", "re", "shlex"},
@@ -54,7 +54,8 @@ CORE_DEPENDENCIES = {
     "codeguard.toolchain": {"__future__", "pathlib", "threading", "codeguard.execution"},
     "codeguard.language_check": {"__future__", "pathlib", "codeguard.config", "codeguard.discovery",
                                   "codeguard.execution", "codeguard.models", "codeguard.planning",
-                                  "codeguard.registry", "codeguard.verdict", "codeguard.java_analysis"},
+                                  "codeguard.registry", "codeguard.storage", "codeguard.verdict",
+                                  "codeguard.java_analysis"},
     "codeguard.check_application": {"__future__", "pathlib", "scope", "codeguard.config",
                                     "codeguard.discovery", "codeguard.java_analysis",
                                     "codeguard.language_check", "codeguard.registry"},

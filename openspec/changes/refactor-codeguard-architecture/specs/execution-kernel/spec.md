@@ -59,9 +59,29 @@
 - **WHEN** 权威命令的 argv 含凭据文本，且检查器输出也包含该文本
 - **THEN** 真实子进程仍收到原始 argv，MCP 的 `check_code_style` 和 `auto_fix` 执行轨迹不回显凭据；日志仍按既有本地路径保存原始诊断
 
+### Requirement: Diagnostic logs SHALL be private and atomic
+
+CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原始敏感输出。写入 MUST 使用同一基础设施边界，创建的文件在支持 POSIX 权限的平台上 MUST 仅允许当前用户读写；替换 MUST 原子可见，不能跟随预置的日志文件符号链接覆盖其它文件。默认 `out` 日志目录若本身是符号链接，MUST 不向链接目标写入。日志写入失败 MUST 不掩盖已经得出的检查状态，且不得返回并不存在的日志路径。既有日志路径与内容格式保持不变；这不承诺抵御并发替换父目录的完整文件系统竞态。
+
+#### Scenario: A pre-existing diagnostic log is a symlink
+- **WHEN** 项目或临时目录里预置的日志文件指向另一文件，检查器随后产生失败诊断
+- **THEN** 链接目标内容保持不变，实际日志以仅当前用户可读的完整内容替换日志路径
+
+#### Scenario: The project output directory is a symlink or unavailable
+- **WHEN** 默认 `out` 是指向其它目录的符号链接或不可写入的路径
+- **THEN** 检查的 FAIL/UNVERIFIED 结论保持不变，不写入链接目标，也不返回虚假的 `log_path`
+
 #### Scenario: Repair retains the original scope
 - **WHEN** delta 或 save 检查失败并成功运行 formatter
 - **THEN** 复检执行原物化命令，仅包含原检查范围；被跳过的文件不导致漏掉其它文件的复检
+
+### Requirement: CLI fix SHALL account for every repair outcome
+
+同一语言可同时产生跳过子范围与实际 formatter 结果。CLI MUST 遍历应用返回的每条结果，而不是按语言数截断；任何实际 formatter 失败或不可验证结果 MUST 不得被同语言的 SKIPPED 提示掩盖为成功。既有逐条提示与 dry-run 行为保持可见。
+
+#### Scenario: Mixed shell and zsh changes with a failing formatter
+- **WHEN** Git 改动同时包含 `.zsh` 与 `.sh`，前者安全跳过 formatter，后者 formatter 实际运行并失败
+- **THEN** CLI 同时显示跳过说明与 formatter 失败，退出非零；不得只处理第一条 SKIPPED 结果
 
 #### Scenario: No executable commands
 - **WHEN** 计划没有任何可执行命令

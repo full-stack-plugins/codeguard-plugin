@@ -71,6 +71,16 @@ def _replace(path: Path, content: str) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
+def write_private_text(path: Path, content: str) -> None:
+    """以私有权限原子替换诊断日志，不向已存在的目录链接写入。"""
+    if path.parent.is_symlink():
+        raise OSError(f"diagnostic directory is a symlink: {path.parent}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink():
+        raise OSError(f"diagnostic directory is a symlink: {path.parent}")
+    _replace(path, content)
+
+
 def update_json(path: Path, change: Callable[[dict], T]) -> T:
     """在锁内读取、变更、替换；回调异常不写入任何部分结果。"""
     with locked(path):

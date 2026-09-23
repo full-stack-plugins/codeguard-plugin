@@ -5,6 +5,8 @@ import json
 import re
 from pathlib import Path
 
+from .storage import write_private_text
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -72,7 +74,7 @@ def _truncate_detail(full: str, project_root: Path, lang: str) -> str:
     if len(lines) > 8 or len(full) > 600:
         try:
             path = _log_path(project_root, lang)
-            path.write_text(full, encoding="utf-8")
+            write_private_text(path, full)
             detail += f"\n…（截断，共 {len(lines)} 行；完整输出: {path}）"
         except OSError:
             detail += f"\n…（截断，共 {len(lines)} 行）"

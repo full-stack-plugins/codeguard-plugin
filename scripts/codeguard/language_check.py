@@ -19,6 +19,7 @@ from .execution import execute, execute_plan
 from .models import CheckPlan, Command, PlanExecution
 from .planning import scoped_plan
 from .registry import LANG_COMMANDS
+from .storage import write_private_text
 
 __all__ = ["run_check", "run_fix"]
 
@@ -137,7 +138,6 @@ def run_check(languages: list[str], project_root: Path,
             if combined:
                 log_entries.append((lang, rc, combined))
     if log_dir is not None and log_entries:
-        log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / ".codeguard-last.log"
         chunks = []
         for lang, rc, content in log_entries:
@@ -146,7 +146,7 @@ def run_check(languages: list[str], project_root: Path,
                 block += "\n"
             chunks.append(block)
         try:
-            log_path.write_text("\n".join(chunks), encoding="utf-8")
+            write_private_text(log_path, "\n".join(chunks))
         except OSError:
             log_path = None
         if log_path is not None:
