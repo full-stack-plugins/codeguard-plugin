@@ -2,9 +2,7 @@
 
 ## Purpose
 定义 CodeGuard 与宿主的事件、输出和退出码契约：区分观察性反馈与 Git 硬门禁，保留 fail-open 的同时明确未验证状态，并将检查绑定到拟提交或推送的内容。
-
 ## Requirements
-
 ### Requirement: Hook-host contract SHALL live in hooks/__protocol__.md
 
 The canonical description of how codeguard-plugin hooks communicate with Codex CLI, ZCode, and Kimi Code (exit codes, JSON output formats, fail-open convention, three-host compatibility) SHALL live in `hooks/__protocol__.md`. No hook script or docstring SHALL contradict it; any change to exit codes or JSON schema SHALL update the document in the same commit.
@@ -53,12 +51,12 @@ PreToolUse 硬拦截（exit 2）的 stderr 报告 MUST 包含一条整调用声�
 
 ### Requirement: The guard SHALL treat one-level interpreter indirection as guarded
 
-`is_guarded()` MUST 覆盖直接命令与一层解释器间接：解释器（bash/sh/zsh/python/node）执行的脚本文件文本、或 `-c` 内联代码，按与直接命令相同的分隔符切段规则扫描到 `git commit|push` 段首命令词时 MUST 判为拦截。切段扫描前 MUST 先展开 `$(...)` 与反引号内层文本（shell 语义下它们会被真实执行；`ro=$(git push …)` 曾静默放行），段首归一化 MUST 覆盖 shell 控制引导词（`if`/`then`/`else`/`elif`/`while`/`until`/`do`/`!`——`if git push; then`、`for x; do git push; done` 曾静默放行）。`resolve_project_roots()` MUST 用同一套归一化判定收集仓库边界（含 `git -C <path>` 显式仓边界）——判定不同源时会出现"命中拦截但 roots=[] → 静默放行"的击穿（0.8.2 实测）。更深的动态构造（如 subprocess 参数拼接）MUST 在文档中声明为能力边界而非承诺。
+`is_guarded()` MUST 覆盖直接命令与一层解释器间接。**Shell 解释器（bash/sh/zsh）**：脚本文件文本或 `-c` 内联代码按与直接命令相同的分隔符切段规则扫描到 `git commit|git push` 段首命令词时 MUST 判为拦截；切段扫描前 MUST 先展开 `$(...)` 与反引号内层文本（shell 语义下它们会被真实执行；`ro=$(git push …)` 曾静默放行），段首归一化 MUST 覆盖 shell 控制引导词（`if`/`then`/`else`/`elif`/`while`/`until`/`do`/`!`——`if git push; then`、`for x; do git push; done` 曾静默放行）。**非 Shell 解释器（python/node 等）**：正文 MUST NOT 按 shell 切段归因——模板字符串/帮助文本里的 git 命令字面量样例不是调用（bump-plugin.mjs:164-165 帮助文本实测误报、发版工具被不可绕过地锁死）；归因 MUST 只认 subprocess/exec 调用形态（`execFileSync("git", …)`、`subprocess.run(["git", …])`、`os.system("…")` 等调用点的 git 参数位），命中调用形态时 MUST 判为拦截并在 resolve 阶段按「不可建模」UNVERIFIED 阻断。`resolve_project_roots()` MUST 用同一套归一化判定收集仓库边界（含 `git -C <path>` 显式仓边界）——判定不同源时会出现"命中拦截但 roots=[] → 静默放行"的击穿（0.8.2 实测）。更深的动态构造（如 subprocess 参数拼接）MUST 在文档中声明为能力边界而非承诺。
 
 #### Scenario: A wrapper script performs the commit
 
 - **WHEN** 调用形如 `bash runner.sh` 且脚本体内含 `git commit` 或 `git push`
-- **THEN** 钥入判定命中，硬门禁按正常流程跑 linter 并可能 exit 2
+- **THEN** 判定命中，硬门禁按正常流程跑 linter 并可能 exit 2
 
 #### Scenario: Command substitution or shell control structure hides the git call
 
@@ -69,6 +67,16 @@ PreToolUse 硬拦截（exit 2）的 stderr 报告 MUST 包含一条整调用声�
 
 - **WHEN** 调用为 `echo "git push 是危险命令"` 或脚本内容仅为 `echo hi`
 - **THEN** 判定不命中，钩子静默放行
+
+#### Scenario: Help text samples in a non-shell script are not guarded
+
+- **WHEN** `node scripts/tool.mjs` 的正文含模板字符串帮助文本 `cd <root> && git add -A && git commit -m "x" && git push`
+- **THEN** 判定不命中（字面量样例不是调用），钩子放行
+
+#### Scenario: A non-shell script really invokes git via subprocess
+
+- **WHEN** `python3 work.py` 的正文含 `subprocess.run(["git", "push"])` 或 `node run.mjs` 的正文含 `execFileSync("git", ["git commit" …])` 形态的调用
+- **THEN** 判定命中，且 resolve 阶段按「间接 Git 操作不能可靠建模」UNVERIFIED 阻断（不静默放行）
 
 ### Requirement: Soft and hard gates SHALL share the skipGate escape and neither may fall back to scanning outside a git repository
 
@@ -107,3 +115,66 @@ PreToolUse 放行工具故障或无法物化快照时 MUST 使用 JSON additiona
 #### Scenario: A tool cannot run at the Git gate
 - **WHEN** 工具缺失或配置导致无法获得检查结论
 - **THEN** 保留 exit 0 的兼容放行，并明确未验证而不是 PASS
+
+### Requirement: Heredoc bodies SHALL be attributed by owner semantics
+
+命令文本中 heredoc 正文的 git 归因 MUST 按归属语义区分：数据程序 + 引号定界符的正文是全字面量
+（文档样例/模板字符串），MUST NOT 视为 shell 语法切段出 git 副作用；数据程序 + 无引号的正文会做
+命令替换展开，`$(...)` 与反引号跨度的内层文本 MUST 保留扫描（其会被外层真实执行）；Shell 解释器
+（bash/sh/zsh）接收的正文是内层 shell 代码，MUST 按既有切段规则建模；python/node 等非 Shell 解释器
+接收的正文不是 shell 语法，MUST NOT 按切段归因。遮蔽处理 MUST 先于命令替换展开执行，
+否则引号定界正文的字面 `$(...)` 会被误判为可执行替换。
+
+#### Scenario: Sample text in a python heredoc is not guarded
+
+- **WHEN** `python3 - <<'PY'` 的正文含三引号字符串 `'''cd a && git add && git commit && git push'''`（文档样例）
+- **THEN** 判定不命中，钩子放行（此前整调用被拦且写入步骤不执行）
+
+#### Scenario: Command substitution in an unquoted data heredoc is guarded
+
+- **WHEN** `cat <<EOF` 的正文含 `$(git push origin b)` 或反引号包裹的 `git commit`
+- **THEN** 展开后命中拦截（外层会真实执行，既有实测向量保持）
+
+#### Scenario: Literal substitution text in a quoted data heredoc is not guarded
+
+- **WHEN** `cat <<'EOF'` 的正文含字面 `$(git push origin b)`
+- **THEN** 判定不命中（引号定界正文全字面量，不发生替换）
+
+#### Scenario: Shell interpreter heredoc keeps modeled semantics
+
+- **WHEN** `bash <<'SH'` 的正文含 `git commit -m t`
+- **THEN** 判定命中且按一层间接建模（行为与既有切段语义一致）
+
+### Requirement: Save-face auto-fix SHALL stay scoped to the edited file
+
+PostToolUse 保存面的自动修复 MUST 只作用于被编辑的单文件：带 scan token 的 format 命令 MUST
+收束到该文件；`{file}` 形态 MUST 替换为该文件；裸命令形态只追加该文件参数。formatter 仍改动
+到其它文件时，反馈 MUST 显式列出被改动的文件并要求重新读取，MUST NOT 静默携带副作用。该行为
+MUST 有回归测试锁定（收束/替换/追加三态 + 越界告警）。
+
+#### Scenario: Repo-wide format command collapses to the edited file
+
+- **WHEN** format 命令含全仓 scan token（如 `ruff check . --fix` 形态）且保存 `src/a.py`
+- **THEN** 实际执行的命令只针对 `src/a.py`，项目内其它文件不被改动
+
+#### Scenario: Formatter touches files beyond the edited one
+
+- **WHEN** formatter 实际改动了被编辑文件之外的文件
+- **THEN** 反馈显式列出这些文件并声明内存版本已过期需重新读取
+
+### Requirement: Skip-gate bypass values SHALL be parsed strictly
+
+环境变量 `CODEGUARD_SKIP_GATE` 的豁免判定 MUST 只认 `1`/`true`/`yes`（大小写不敏感，与
+`git config codeguard.skipGate` 的值词表一致）；`0`/`false`/空串等 MUST NOT 豁免——存在性判断
+会让设 `=0` 意图保持门禁的用户**静默关闭门禁**。指令文案 MUST 与实际判定语义一致
+（说明宿主命令内联赋值不会传入钩子进程，并给出准确的值词表）。
+
+#### Scenario: Zero and false values do not bypass
+
+- **WHEN** 环境变量值为 `0` 或 `false` 且命令含 git commit/git push
+- **THEN** 门禁照常评估，不豁免
+
+#### Scenario: Accepted values bypass consistently
+
+- **WHEN** 环境变量值为 `1`、`true` 或 `yes`（任意大小写）
+- **THEN** 豁免生效并记入审计，与 git config 豁免的值词表一致
