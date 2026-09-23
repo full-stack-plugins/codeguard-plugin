@@ -1,4 +1,4 @@
-"""静态架构门禁：内核依赖白名单与第一方 Python 导入环。
+"""静态架构门禁：内核依赖白名单、顶层脚本角色与第一方 Python 导入环。
 
 只解析 AST，不导入被检查代码。函数内、条件分支中的静态 import 同样检查；
 运行时拼接的动态加载不在静态保证范围内，本工具不是安全沙箱或 CodeGraph 替代。
@@ -11,6 +11,34 @@ import ast
 from pathlib import Path
 
 # 明确的层依赖；stdlib 也受约束，纯模型不能悄悄导入 subprocess/宿主。
+# 顶层 scripts/*.py 的显式角色登记：新脚本必须归类，不许"就是多了一个脚本"。
+# entry=命令入口 / compat-shim=旧导入面兼容外观（docstring 必须含 Deprecated）/
+# adapter=物化适配层 / support=共享工具层。内核包 codeguard.* 走 CORE_DEPENDENCIES，
+# 本表只管包外顶层脚本；两者共同构成可检查的分层边界。
+SCRIPT_ROLES = {
+    "check_architecture.py": "entry",
+    "cve_check.py": "entry",
+    "detect_lang.py": "entry",
+    "dockerfile_security.py": "entry",
+    "fix.py": "entry",
+    "gen_language_docs.py": "entry",
+    "java_project.py": "entry",
+    "run_check.py": "entry",
+    "validate_languages_json.py": "entry",
+    "verdict.py": "compat-shim",
+    "user_config.py": "compat-shim",
+    "run_per_language.py": "compat-shim",
+    "scope.py": "adapter",
+    "git_snapshot.py": "adapter",
+    "paths.py": "support",
+}
+
+# 适配层白名单：包外实现模块的用途声明（谁在依赖它由 CORE_DEPENDENCIES 约束）。
+ADAPTER_LAYERS = {
+    "scope.py": "linter 命令作用域物化 + git 改动集（delta 门禁共享层）",
+    "git_snapshot.py": "只读 index/HEAD 物化一次性检查目录",
+}
+
 CORE_DEPENDENCIES = {
     "codeguard.cve_policy": {"__future__", "dataclasses"},
     "codeguard.cve_reports": {"__future__", "json", "math", "codeguard.cve_policy"},
@@ -191,7 +219,40 @@ def check(root: Path) -> list[str]:
                 graph[name].add(local)
             if allowed is not None and target not in allowed and target.split(".")[0] not in allowed:
                 errors.append(f"{relative}:{line}: forbidden dependency: {name} -> {target}")
+    errors.extend(_script_roles(root, modules))
     return errors + _cycles(graph)
+
+
+def _script_roles(root: Path, modules: dict) -> list[str]:
+    """顶层 scripts/*.py 必须显式归类；compat-shim 必须带 Deprecated 通告；
+    adapter 必须在 ADAPTER_LAYERS 声明用途。"""
+    errors: list[str] = []
+    top_level = {
+        path.name
+        for path in (root / "scripts").glob("*.py")
+    }
+    for name in sorted(top_level - set(SCRIPT_ROLES)):
+        errors.append(f"scripts/{name}:1: unclassified top-level script (add to SCRIPT_ROLES)")
+    # 完备性校验只对真实插件仓布局生效：架构用例会在合成临时树上跑本检查，
+    # 临时树不需要携带全部顶层脚本，不应误报 missing。
+    is_full_repo = (root / "scripts" / "check_architecture.py").is_file()
+    if is_full_repo:
+        for name in sorted(set(SCRIPT_ROLES) - top_level):
+            errors.append(f"scripts/{name}:1: declared in SCRIPT_ROLES but missing on disk")
+    for name, role in sorted(SCRIPT_ROLES.items()):
+        path = root / "scripts" / name
+        if not path.is_file():
+            continue
+        if is_full_repo and role == "compat-shim":
+            head = path.read_text(encoding="utf-8")[:400]
+            if "Deprecated" not in head:
+                errors.append(f"scripts/{name}:1: compat-shim must carry a Deprecated notice in its docstring")
+        if role == "adapter" and is_full_repo and name not in ADAPTER_LAYERS:
+            errors.append(f"scripts/{name}:1: adapter must declare its purpose in ADAPTER_LAYERS")
+    if is_full_repo:
+        for name in sorted(set(ADAPTER_LAYERS) - top_level):
+            errors.append(f"scripts/{name}:1: declared in ADAPTER_LAYERS but missing on disk")
+    return errors
 
 
 def main() -> int:

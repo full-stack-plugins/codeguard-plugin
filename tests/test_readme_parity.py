@@ -79,6 +79,25 @@ class ReadmeParityTest(unittest.TestCase):
             if path:
                 self.assertTrue((ROOT / path).exists(), f"broken README link: {target}")
 
+    def test_registry_counts_match_both_readmes(self) -> None:
+        """注册表计数与 README 双语同步锁定：languages.json 数量变化必须在同一提交里更新两份 README。"""
+        import json as _json
+        import re as _re
+
+        langs = _json.loads(
+            (ROOT / "scripts" / "languages.json").read_text(encoding="utf-8")
+        )["languages"]
+        stable = sum(1 for lang in langs if lang.get("status") == "stable")
+        planned = sum(1 for lang in langs if lang.get("status") == "planned")
+        en = EN.read_text(encoding="utf-8")
+        zh = ZH.read_text(encoding="utf-8")
+        en_m = _re.search(r"(\d+) Stable adapters and (\d+) Planned", en)
+        zh_m = _re.search(r"(\d+) 个 Stable 适配器和 (\d+) 个 Planned", zh)
+        self.assertIsNotNone(en_m, "README.md 缺少注册表计数句")
+        self.assertIsNotNone(zh_m, "README.zh-CN.md 缺少注册表计数句")
+        self.assertEqual((stable, planned), (int(en_m.group(1)), int(en_m.group(2))))
+        self.assertEqual((stable, planned), (int(zh_m.group(1)), int(zh_m.group(2))))
+
     def test_version_strings_match(self) -> None:
         en_v, zh_v = _versions(self.en), _versions(self.zh)
         self.assertEqual(en_v, zh_v,

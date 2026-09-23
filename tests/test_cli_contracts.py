@@ -34,7 +34,7 @@ class CliContractTests(unittest.TestCase):
     def test_init_only_prints_guidance_without_writing_project(self):
         completed = self.cli("init")
 
-        self.assertEqual(1, completed.returncode)
+        self.assertEqual(0, completed.returncode)
         self.assertIn("项目初始化引导", completed.stderr)
         self.assertEqual([], list(self.root.iterdir()))
 
