@@ -5,21 +5,32 @@ import contextlib
 import hashlib
 import os
 import re
-import subprocess
+import shutil
+import stat
 import tempfile
 from pathlib import Path, PurePosixPath
+
+from codeguard.execution import execute_bytes
+
+_LISTING_MAX_BYTES = 16 * 1024 * 1024
+_MAX_BLOB_BYTES = 256 * 1024 * 1024
+_MAX_OVERLAY_FILE_BYTES = 32 * 1024 * 1024
+_MAX_OVERLAY_BYTES = 256 * 1024 * 1024
+_MAX_OVERLAY_FILES = 20000
+_COPY_CHUNK_BYTES = 64 * 1024
 
 
 class SnapshotError(RuntimeError):
     """无法准确取得拟提交内容，调用者必须报告未验证。"""
 
 
-def git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
-    try:
-        proc = subprocess.run(["git", *args], cwd=root, capture_output=True,
-                              input=input_data, check=False, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SnapshotError(str(exc)) from exc
+def git(root: Path, *args: str, input_data: bytes | None = None,
+        max_output_bytes: int = _LISTING_MAX_BYTES) -> bytes:
+    proc = execute_bytes(["git", *args], root, 30, input_data=input_data,
+                         stdin_null=True, max_output_bytes=max_output_bytes)
+    if proc.failure:
+        raise SnapshotError(f"Git 执行未验证 ({proc.failure}): " +
+                            proc.stderr.decode(errors="replace")[-500:])
     if proc.returncode:
         raise SnapshotError(proc.stderr.decode(errors="replace")[:500])
     return proc.stdout
@@ -78,13 +89,15 @@ def overlays(root: Path, lanes=None, extra=None) -> set[str]:
 
 
 def proposed_paths(root: Path, mode="commit", *, lanes=None, extra=None,
-                   pending_commit=False, include_deleted=False) -> list[str]:
+                   pending_commit=False, include_deleted=False,
+                   overlay_paths: set[str] | None = None) -> list[str]:
     """拟入库的新/修改路径，保留敏感文件与产物，删除文件不算新入库。"""
     selected = push_paths(root, include_deleted) if mode == "push" else set()
     if mode != "push" or pending_commit:
         selected |= names(root, "diff", "--cached", "--name-only", "--no-renames",
                           "--diff-filter=ACMRD" if include_deleted else "--diff-filter=ACMR", "-z")
-        for name in overlays(root, lanes, extra):
+        candidate_paths = overlays(root, lanes, extra) if overlay_paths is None else overlay_paths
+        for name in candidate_paths:
             path = safe_path(root, name)
             if include_deleted or path.exists() or path.is_symlink():
                 selected.add(name)
@@ -119,7 +132,7 @@ def _batch_sizes(raw: bytes, entries: list[tuple[str, str, str]]) -> tuple[int, 
     for line, (_, oid, _) in zip(lines, entries, strict=True):
         size = _batch_header(line, oid)
         total += size
-        if total > 256 * 1024 * 1024:
+        if total > _MAX_BLOB_BYTES:
             raise SnapshotError("快照超过 256 MiB 上限，需要独立 CI 检查")
         sizes.append(size)
     return tuple(sizes)
@@ -192,15 +205,54 @@ def _snapshot_entries(root: Path, head: bool) -> list[tuple[str, str, str]]:
     return entries
 
 
+def _copy_overlay(source: Path, dest: Path, remaining_bytes: int) -> int:
+    """以源文件描述符和有界块复制预测内容；资源不足不交付半成品。"""
+    cap = min(_MAX_OVERLAY_FILE_BYTES, remaining_bytes)
+    if cap < 0:
+        raise SnapshotError("工作树覆盖层超过总量上限")
+    try:
+        descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                             getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as reader:
+            before = os.fstat(reader.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise SnapshotError(f"工作树覆盖层包含特殊文件: {source}")
+            if before.st_size > cap:
+                raise SnapshotError(f"工作树覆盖层超过单文件或总量上限: {source}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            # 仅在一次性临时树内清理被普通文件替换的旧 Git 目录。
+            if dest.is_dir() and not dest.is_symlink():
+                shutil.rmtree(dest)
+            copied = 0
+            with dest.open("wb") as writer:
+                while chunk := reader.read(min(_COPY_CHUNK_BYTES, cap - copied + 1)):
+                    copied += len(chunk)
+                    if copied > cap:
+                        raise SnapshotError(f"工作树覆盖层读取时超过上限: {source}")
+                    writer.write(chunk)
+            after = os.fstat(reader.fileno())
+            if copied != before.st_size or after.st_size != before.st_size or \
+                    after.st_mtime_ns != before.st_mtime_ns:
+                raise SnapshotError(f"工作树覆盖层读取期间发生变化: {source}")
+            dest.chmod(before.st_mode & 0o777)
+            return copied
+    except OSError as exc:
+        raise SnapshotError(f"工作树覆盖层无法读取: {source}: {exc}") from exc
+
+
 @contextlib.contextmanager
 def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pending_commit=False):
     """原始 Git blobs 构成快照；拒绝外链、submodule、冲突和超限内容。"""
     head = mode == "push" and not pending_commit
     entries = _snapshot_entries(root, head)
     object_ids = "".join(oid + "\n" for _, oid, _ in entries).encode()
-    sizes = _batch_sizes(git(root, "cat-file", "--batch-check", input_data=object_ids), entries)
-    blob = git(root, "cat-file", "--batch", input_data=object_ids)
-    changed = proposed_paths(root, mode, lanes=lanes, extra=extra, pending_commit=pending_commit, include_deleted=True)
+    sizes = _batch_sizes(git(root, "cat-file", "--batch-check", input_data=object_ids,
+                             max_output_bytes=max(1024, 128 * len(entries))), entries)
+    blob = git(root, "cat-file", "--batch", input_data=object_ids,
+               max_output_bytes=max(1024, sum(sizes) + 128 * len(entries)))
+    selected_overlays = overlays(root, lanes, extra) if not head else set()
+    changed = proposed_paths(root, mode, lanes=lanes, extra=extra, pending_commit=pending_commit,
+                             include_deleted=True, overlay_paths=selected_overlays)
     with tempfile.TemporaryDirectory(prefix="codeguard-snapshot-") as directory:
         target = Path(directory)
         offset = 0
@@ -213,16 +265,18 @@ def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pendin
         if offset != len(blob):
             raise SnapshotError("Git 对象内容响应存在多余尾部字节")
         if not head:
-            for name in overlays(root, lanes, extra):
+            if len(selected_overlays) > _MAX_OVERLAY_FILES:
+                raise SnapshotError("工作树覆盖层超过文件数量上限")
+            copied_total = 0
+            # 父路径先处理：文件转目录时须先移除旧 blob，才能写入新子项。
+            for name in sorted(selected_overlays, key=lambda value: (value.count("/"), value)):
                 source, dest = safe_path(root, name), safe_path(target, name)
                 if source.is_symlink() or not source.resolve().is_relative_to(root.resolve()):
                     raise SnapshotError(f"不跟随仓外路径/符号链接: {name}")
                 if source.is_file():
-                    if source.stat().st_size > 32 * 1024 * 1024:
-                        raise SnapshotError(f"工作树文件过大: {name}")
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(source.read_bytes())
-                    dest.chmod(source.stat().st_mode & 0o777)
+                    copied_total += _copy_overlay(source, dest, _MAX_OVERLAY_BYTES - copied_total)
+                elif source.exists() and not source.is_dir():
+                    raise SnapshotError(f"工作树覆盖层包含特殊文件: {name}")
                 elif dest.is_file():
                     dest.unlink()
         yield target, changed

@@ -68,20 +68,35 @@ def result_envelope(results: list[dict]) -> list[dict]:
     return envelope
 
 
-def _public_fix_results(root: Path, results: list[dict]) -> list[dict]:
-    """仅公开修复状态；原始 formatter 诊断进入私有日志。"""
+def _formatter_attempts(results: list[dict]) -> list[int]:
+    """辨认实际执行的 formatter，跳过计划/豁免/范围拒绝结果。"""
+    return [index for index, item in enumerate(results)
+            if ("exit_code" in item or item.get("fixed") is True)
+            and not item.get("skipped") and not item.get("dry_run")
+            and item.get("status") not in ("PLANNED", "SKIPPED", "UNVERIFIED")]
+
+
+def _public_fix_results(root: Path, results: list[dict],
+                        *, confirmed_change: bool | None = None) -> list[dict]:
+    """命令成功与已证实修复分列；原始 formatter 诊断进入私有日志。"""
     public = []
     diagnostics = []
-    for number, item in enumerate(results, start=1):
+    attempts = _formatter_attempts(results)
+    attributable = attempts[0] if len(attempts) == 1 and results[attempts[0]].get("fixed") else None
+    for index, item in enumerate(results):
         safe = {key: item[key] for key in (
-            "language", "fixed", "status", "exit_code", "note", "reason", "error", "skipped", "dry_run",
+            "language", "status", "exit_code", "note", "reason", "error", "skipped", "dry_run",
         ) if key in item}
+        if "fixed" in item:
+            safe["formatter_succeeded"] = bool(item["fixed"])
+            safe["change_verified"] = confirmed_change is not None and index == attributable
+            safe["fixed"] = bool(safe["change_verified"] and confirmed_change)
         if "execution_trace" in item:
             safe["execution_trace"] = _public_trace(item["execution_trace"])
         tail = item.get("stderr_tail")
         if isinstance(tail, str) and tail:
             safe["stderr_chars"] = len(tail)
-            diagnostics.append((len(public), f"===== {item.get('language', '')} fix #{number} =====\n{tail}"))
+            diagnostics.append((len(public), f"===== {item.get('language', '')} fix #{index + 1} =====\n{tail}"))
         public.append(safe)
     if diagnostics:
         path = root / "out" / ".codeguard-fix.log"
@@ -135,16 +150,34 @@ def auto_fix(root: Path, languages: list[str]) -> dict:
                 "reason": "改动文件路径或内容身份不可验证（链接、读取故障或超预算）；未执行自动修复",
                 "check": []}
     fix_results = run_fix(languages, root, files=files)
-    results = run_check(languages, root, files=files, log_dir=root / "out")
-    public_fixes = _public_fix_results(root, fix_results)
-    checks = result_envelope(results)
     try:
-        after = _repair_identity(root, files)
+        after_fix = _repair_identity(root, files)
     except (OSError, TypeError, ValueError):
+        after_fix = None
+    results = run_check(languages, root, files=files, log_dir=root / "out")
+    checks = result_envelope(results)
+    if after_fix is None:
         return {"fixed": False, "status": "UNVERIFIED",
                 "reason": "修复后的文件身份不可验证，不能确认内容变化",
-                "fix_results": public_fixes, "check": checks}
-    return {"fixed": before != after, "fix_results": public_fixes, "check": checks}
+                "fix_results": _public_fix_results(root, fix_results), "check": checks}
+    try:
+        after_check = _repair_identity(root, files)
+    except (OSError, TypeError, ValueError):
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "复检后的文件身份不可验证，不能确认修复结果",
+                "fix_results": _public_fix_results(root, fix_results), "check": checks}
+    if after_fix != after_check:
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "复检期间目标文件发生变化，检查结论无法绑定最终内容",
+                "fix_results": _public_fix_results(root, fix_results), "check": checks}
+    changed = before != after_fix
+    attempts = _formatter_attempts(fix_results)
+    if changed and (not attempts or not all(fix_results[index].get("fixed") for index in attempts)):
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "formatter 未全部成功，目标文件虽变化但不能确认为修复完成",
+                "fix_results": _public_fix_results(root, fix_results), "check": checks}
+    return {"fixed": changed,
+            "fix_results": _public_fix_results(root, fix_results, confirmed_change=changed), "check": checks}
 
 
 def mcp_tool_payload(name: str, arguments: dict | None, project_root: Path):

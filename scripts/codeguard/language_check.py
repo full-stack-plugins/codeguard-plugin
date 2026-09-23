@@ -115,7 +115,7 @@ def run_check(languages: list[str], project_root: Path,
         outcome = execution.terminal
         rc, out, err = outcome.as_tuple()
         lint_cmd = list(outcome.argv)
-        status, reason = lint_verdict(rc, lint_cmd, out + err)
+        status, reason = lint_verdict(rc, lint_cmd, out + err, failure=outcome.failure)
         if status == FAIL and fix:
             repairs = run_fix([lang], project_root, timeout=timeout + 60, files=files)
             for repair in repairs:
@@ -127,7 +127,7 @@ def run_check(languages: list[str], project_root: Path,
                 outcome = execution.terminal
                 rc, out, err = outcome.as_tuple()
                 lint_cmd = list(outcome.argv)
-                status, reason = lint_verdict(rc, lint_cmd, out + err)
+                status, reason = lint_verdict(rc, lint_cmd, out + err, failure=outcome.failure)
         results.append(result(lang, status, reason, exit_code=rc,
                               unverified=reason if status == UNVERIFIED else "",
                               command=lint_cmd, java_plan=java_plan,
@@ -163,6 +163,8 @@ def run_fix(languages: list[str], project_root: Path,
 
     `files` 非空 = 仅修复这些文件（fix.py 缺省 delta 模式）；某语言在改动
     里没有文件 → 该语言整行跳过（skipped 标记），绝不动仓里其它存量文件。
+    兼容字段 `fixed` 表示 formatter 命令成功退出，未观察内容变化；调用方
+    不得仅凭它对用户宣称文件已经修复，MCP 顶层另行比较内容身份。
     """
     if files is not None and any(
             (project_root / f).is_symlink() or not (project_root / f).resolve().is_relative_to(project_root.resolve())

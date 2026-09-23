@@ -25,7 +25,8 @@ CORE_DEPENDENCIES = {
     "codeguard.models": {"__future__", "dataclasses", "pathlib", "typing"},
     "codeguard.verdict": {"__future__", "re", "posixpath", "collections", "collections.abc",
                           "pathlib", "codeguard.models"},
-    "codeguard.execution": {"__future__", "os", "subprocess", "collections", "pathlib", "codeguard.models"},
+    "codeguard.execution": {"__future__", "os", "signal", "subprocess", "tempfile", "contextlib", "threading", "time",
+                            "collections", "pathlib", "codeguard.models"},
     # 报告仍决定日志路径与呈现；私有原子落盘交给 storage，不称纯模型。
     "codeguard.reporting": {"__future__", "re", "json", "pathlib", "hashlib", "tempfile",
                            "codeguard.models", "codeguard.verdict", "codeguard.storage"},

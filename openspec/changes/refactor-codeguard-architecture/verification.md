@@ -273,3 +273,35 @@
 
 - 同批跨入口 CodeGraph 审查沿 `mcp_tool_payload → auto_fix → run_fix/run_check` 发现，旧 `auto_fix` 在作用域校验前对 Git 改动路径 `read_bytes`：父目录符号链接可先读仓外文件，大文件无内存预算，读取故障直接越过 MCP 结果边界。新增三种故障注入先 RED（仓外读取、超预算缺 UNVERIFIED、修复后身份故障缺 UNVERIFIED），另覆盖循环链接。应用服务现复用 `fingerprint.file_content` 的流式身份与 64 MiB/10,000 文件预算，修复前不可靠则不运行 formatter；修复后不可靠仍保留修复/复检证据，但顶层 `fixed=false` 且明确 UNVERIFIED。架构白名单只增加应用到 fingerprint 基础设施的有向依赖，反向导入与环仍受检。
 - 补充后全量单测 **537/537、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。MCP `auto_fix` 的私有日志/公开投影及真实 formatter 回归仍通过；这不等于三宿主实际安装或恶意并发文件系统的完整沙箱证明。
+
+- 第二十六批随后发布为 v0.14.12：源码 PR #58 合并到 `fd0f771360c5ea27dbfc0ae5ab54ffdb5a0598ca`，市场 PR #16 合并到 `a648cdc704ab10d31dd2c3d8acb24b9b84af1ae1`；源码 PR 和合并后 main 的 `vendor-check` 成功。受保护注释 tag `v0.14.12` 解引用到源码 main 合并提交，正式 GitHub Release 非 draft、非 prerelease；市场 Codex/ZCode/Kimi 清单与中英文导航为 0.14.12。市场 PR 无 CI 检查，不称其 CI 已通过。源码本地 main 已快进且干净；市场原工作区保留已有未提交修改，远端 main 单独核对。本次发布不等于三宿主已安装运行，也不覆盖以下新候选。
+
+## 第二十七批本地验证：MCP 修复归因与复检副作用
+
+- 从 v0.14.12 的同树临时 CodeGraph 索引追踪 `mcp_tool_payload → auto_fix → run_fix/run_check → fingerprint.file_content`。旧实现仅在修复与复检都完成后取第二份身份；检查器自己改写文件时，顶层 `fixed` 会错误归因给 formatter。目标测试先 RED（缺 `UNVERIFIED`），改为修复前、formatter 后、复检后三次有界身份观察。
+- formatter 后或复检后身份不可验证，以及检查器在复检期间改动目标文件时，保留实际修复和检查执行证据，顶层 `fixed=false` 且 `UNVERIFIED`。正向覆盖 formatter 真正改变文件而只读复检；反向覆盖检查器单独改写、把 formatter 变化还原、第三次观察故障，并由真实检查器子进程复现副作用。目标 9 项通过。
+- `/opt/anaconda3/bin/python3` 3.13.5（MCP SDK 可用）完整执行 **542 unittest、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。Homebrew Python 3.14.3 执行同套测试有 4 项依赖条件跳过，不能替代完整证明。受管技能及 lock 未改；本项已在隔离 worktree 本地提交为 `73873d5`，未 bump、推送或发布，三宿主已安装运行、Windows、在线 CVE 与大型 Maven/Gradle 项目仍无本批证据。
+- 继续沿 `fix.py → language_check.run_fix → run_check(fix=True)` 审计：`run_fix.fixed` 历史上等于 formatter 退出码 0，供兼容调用方决定是否复检，却被 CLI 直接打印成 `✅ fixed`。真实临时 Git 仓的已规范 Python 改动文件经 Ruff 无改动返回 0，新增黑盒测试先 RED（CLI 虚称 fixed），现 CLI 仅报告 formatter 执行成功且文件变化未验证，旧字段与自动复检策略保持不变。MCP 顶层 `fixed` 仍使用独立身份比较；内层兼容字段的语义迁移需另行审计。最终本地完整单测 **543/543、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。本项已在隔离 worktree 本地提交为 `e1406de`，未 bump、推送或发布。
+- 再沿同一 CodeGraph 路径审查 `run_fix → auto_fix → _public_fix_results`：内部 `fixed=rc==0` 被直接拷进 MCP 逐项结果，导致 no-op formatter、多个 formatter 或失败后部分改写的公开修复结论不可信。新增三个身份/归因测试先 RED；公开结果保留 `formatter_succeeded` 命令事实，并且仅唯一成功执行且复检后身份稳定时才声明逐项 `fixed`。多 formatter 不猜归属；失败且内容变化则整体 UNVERIFIED。完整单测 **546/546、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线与在线、OpenSpec strict、diff whitespace 通过。内部兼容字段与复检策略未变；此处仍仅是隔离 worktree 的本地证据，未证明三宿主安装运行或版本发布。
+
+- 第二十七批随后发布为 v0.14.13：源码 PR #60 合并到 `f683bc7b9888da97277eadce853774adf5fcaa15`，市场 PR #17 合并到 `947fc7d65b9a7f31360c1eeb96a02e62d1e8b196`。源码 PR 的 `vendor-check` 和合并后 main 的 `skills-check` 均成功；市场 PR 无 CI 检查，不称其 CI 已通过。受保护注释 tag `v0.14.13` 解引用到源码 main 合并提交，正式 GitHub Release 非 draft、非 prerelease，Codex/ZCode/Kimi 市场元数据及中英文导航均为 0.14.13。此发布不等于三宿主已安装运行、Windows、联网 CVE 或大型 Maven/Gradle 的现场验收；task 5.6 全目标审计、规格同步与归档仍未完成。
+
+## 第二十八批本地验证：外部进程输出资源边界
+
+- 在最新 v0.14.13 main 的隔离工作树建立临时 CodeGraph 索引（141 文件、2,226 节点、5,017 边）；`execute` 影响分析覆盖 77 个符号，沿语言检查、Git 门禁、CVE、Dockerfile 与 Hook 路径追出公共执行器的无界 `capture_output=True`。应用层虽截断报告，仍在收集阶段承担无限输出的内存风险。目标真实子进程用例先因缺少捕获预算参数 RED。
+- 统一执行器现并发读取 stdout/stderr，默认共享 16 MiB 捕获预算；超限停止进程，保留预算内两流诊断，返回 `output_limit`/125 并由语言判定显式转 UNVERIFIED。退出码 125 由工具自己返回时不伪造执行器故障。POSIX 独立进程组有助于停止子孙进程；Windows 子孙进程回收尚未实机证明。已有 argv 字面值、工作目录、非法 UTF-8、超时部分诊断、非零双流和旧 tuple 协议继续通过。
+- 首轮全量发现旧 SkipGate 重试用例 mock `subprocess.run`，执行器改用 `Popen` 后该 mock 不再触及业务边界；改为在 `repository_policy.execute` 注入相同的首次超时/两次超时证据，两项断言仍核验重试和审计。最终隔离工作树本地完整单测 **549/549、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。
+- 该护栏只约束文本检查执行器；Git 二进制快照使用独立 `git_snapshot.git()`，其 `cat-file` 传输、覆盖层累计磁盘预算与恶意 Git 输出仍需另行审计。本批未 bump、推送或发布；三宿主现场、Windows、在线 CVE 与大型 Maven/Gradle 项目没有获得新证据。
+
+- 第二十八批随后发布为 v0.14.14：源码 PR #62 合并到 `479d87815be8478d409e598ab473412dc6997383`，市场 PR #18 合并到 `9bea1d06a07d1c111c93f597b5cc0da7e89720ae`。源码 PR 的 `vendor-check` 与合并后 main 的 `skills-check` 均成功；市场 PR 无 CI 检查，不称其 CI 已通过。受保护注释 tag `v0.14.14` 解引用到源码 main 合并提交，正式 Release 非 draft、非 prerelease，Codex/ZCode/Kimi 市场元数据和中英文导航均为 0.14.14。本次发布不证明三宿主已安装运行、Windows、在线 CVE、大型 Maven/Gradle 或 Git 二进制快照的资源上限；task 5.6 全目标审计、规格同步与归档保持未完成。
+
+## 第二十九批本地验证：Git 二进制输出有界捕获
+
+- 从 v0.14.14 main 的隔离工作树重新建立临时 CodeGraph 索引（141 文件、2,240 节点、5,047 边），沿 `git_snapshot.git → _snapshot_entries/validation_tree → gate` 确认：Git `capture_output=True` 在解析 20,000 文件/256 MiB blob 预算之前无界收集输出。此前的预算只能拒绝已装入内存的过量结果，无法保护执行进程。
+- 同一执行器现在提供原始字节结果，不解码 Git NUL 列表或 blob；Git 路径响应限 16 MiB，batch-check 按对象数限额，blob 响应在已验证大小总量后按内容与头部限额捕获。两流共享预算，超限终止并抛 `SnapshotError`，不交付截断的成功前缀。真实进程验证了 NUL/非法 UTF-8 原样保留、stdin 字节传递、双流洪泛早停；真实 Git 仓以 8 字节预算触发拒绝且 index 字节不变，既有 SHA-1/SHA-256、截断/错位/同长度替换和门禁可见性测试继续通过。
+- 首轮目标测试暴露 macOS 上已结束进程的 `killpg` 权限竞态；清理逻辑现只在进程或读取线程仍存活时尝试终止，并在权限故障下保守回退。首轮目标 27/27、全量 552/552；以下覆盖层审计沿同一尚未发布的工作树继续，不把该中间计数称为最终结果。
+- CodeGraph 沿 `validation_tree → overlays → read_bytes/write_bytes` 发现：旧实现虽限单文件 32 MiB，却未限覆盖层累计字节或文件数，且整文件载入内存；特殊 FIFO 可被静默当作删除，文件↔目录转换依赖 set 迭代顺序。五项真实 Git 目标场景先 RED（含总量、数量、FIFO 和双向转换），修复后以 64 KiB 块流式复制，最多 20,000 项/单文件 32 MiB/累计 256 MiB；源描述符前后核验大小与 mtime，异常不交付临时树。旧目录只在自动清理的一次性快照中被普通文件替换，原仓及 index 未改。
+- 随后在直接调用覆盖层复制器的隔离子进程中复现 FIFO 打开阻塞（超时 2 秒 RED）；在支持的平台上使用非阻塞打开，并以 `fstat` 拒绝特殊文件后，目标用例 0.06 秒通过。最终本地完整单测 **558/558、0 skipped**，真实 Hook **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。此处尚未记入新版本发布证据；Windows 子进程树、异常大的真实仓库性能、敌对并发文件系统、在线 CVE 与三宿主现场仍待独立验收。
+- 同日只读分层审计：插件远端 `main` 仍为 `95b793f`（v0.14.14 后文档合并），市场远端 `main` 新增其它插件 `processon-design 0.2.8` 的提交 `db08d83`，其 `catalog.json` 内 Codeguard 仍为 0.14.14；本机 ZCode 的 `installed_plugins.json` 将 Codeguard 指向 0.14.7 且对应缓存目录存在。Codex/Kimi 的本次默认缓存路径搜索未取得当前版本证据，不据此断言未安装。故源、市场和已安装宿主仍是不同证明层，本批未改宿主配置或触发更新。原始插件检出位于另一条带未提交改动的分支，隔离工作树没有覆盖它。
+- 再沿 `validation_tree → proposed_paths/overlays → gate` 审计发现，同一快照会先为 `changed` 列举一次覆盖层，物化时再列举一次；若结果不同，就可能报告已检查第一组文件、实际只复制第二组。真实 Git 仓中对两次路径列举注入不同结果先 RED（`first.txt` 在 changed 中但不在快照），现一次列举并将同一集合传给路径计算和物化，原 `proposed_paths` 外部调用仍自行观察。该修复不等于 Git index 与工作树之间的原子事务；内容读取期间仍以已有大小/mtime/预算校验拒绝可见变化。
+- 最终本地完整单测 **559/559、0 skipped**，真实 Hook **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。仍是隔离工作树未发布代码，不能用 v0.14.14 的远端 CI、Release 或旧宿主安装证明它已经交付。

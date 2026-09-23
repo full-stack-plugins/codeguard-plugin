@@ -27,9 +27,10 @@ flowchart TD
 ```
 
 检查作用域默认忽略项目根下任一以 `.` 开头的目录与文件（PostToolUse 保存面、delta 门禁面、语言发现面与全量扫描的 ruff/`find` 型通道；项目根本身位于点前缀父目录下不构成命中）；入库安全检查与 linter 配置发现不受此影响——密钥模式照拦，点前缀配置文件照常判定接入。
-`execution` 只记录进程证据，不把非零退出自动认定为代码违规。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
-Git 准确快照的二进制读取独立于文本检查执行器：先严格解析 index/HEAD 对象列表的 NUL 帧、模式、ID、类型/阶段和唯一文件名，并与独立路径列举核对；`cat-file` 两阶段响应再逐项核对 ID、blob 类型、大小与边界，按 SHA-1/SHA-256 blob 对象格式复算内容哈希。缺项、截断、尾部脏数据或同长度内容替换均不交付临时树，而是明确标记 Git UNVERIFIED。原始 index 不在观察过程中改写。该校验不是恶意 Git 进程沙箱或完整 Git/Shell 模拟。
-`language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。MCP `auto_fix` 先以 `fingerprint.file_content` 对仓内改动文件采集有总量预算的流式身份，仓外路径、符号链接或读取故障不启动 formatter；复检后无法再次采集身份时保留实际执行证据但不宣称已确认 `fixed`。`fix_results` 只公开状态与安全元数据；formatter stderr 尾部写入私有 `.codeguard-fix.log` 后只公开路径，日志不可用时不退回公开原文。失败日志保留各已执行检查的完整输出，可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。
+`execution` 只记录进程证据，不把非零退出自动认定为代码违规；stdout/stderr 合计按默认 16 MiB 捕获预算并发读取，超限终止执行、保留预算内诊断且返回 `output_limit`/UNVERIFIED，不把片段当成完整日志。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
+Git 准确快照复用统一执行器的原始字节模式：路径列表默认最多捕获 16 MiB，`cat-file --batch-check` 按对象数分配响应预算；通过大小响应确认对象总量不超过 256 MiB 后，`--batch` 才按总 blob 大小和逐项头部预算读取。stdout/stderr 合计超限时及时终止 Git，抛出 `SnapshotError`，不交付截断内容。预测暂存的工作树覆盖层只列举一次，并以同一集合决定 `changed` 和物化内容；最多 20,000 项、单文件 32 MiB、实际复制总量 256 MiB，以 64 KiB 块流式读取。打开时使用非阻塞与不跟随末级链接的可用平台标志，避免类型检查后变成 FIFO 时卡住。特殊文件、读取期间变化和超限不交付临时树，文件↔目录转换按父路径先处理。随后严格解析 index/HEAD 对象列表的 NUL 帧、模式、ID、类型/阶段和唯一文件名，并与独立路径列举核对；`cat-file` 两阶段响应再逐项核对 ID、blob 类型、大小与边界，按 SHA-1/SHA-256 blob 对象格式复算内容哈希。缺项、截断、尾部脏数据或同长度内容替换均不交付临时树，而是明确标记 Git UNVERIFIED。原始 index 不在观察过程中改写。该校验不是恶意 Git 进程沙箱或完整 Git/Shell 模拟。
+`language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。MCP `auto_fix` 以 `fingerprint.file_content` 对仓内改动文件在修复前、formatter 后、复检后分别采集有总量预算的流式身份，仓外路径、符号链接或读取故障不启动 formatter；顶层 `fixed` 只归因于 formatter 且复检后仍保留的变化。公开 `fix_results` 将命令成功 `formatter_succeeded` 与逐项修复确认 `fixed` 分离；只有唯一成功执行的 formatter 且内容变化可验证时才把全局变化归给该项，多 formatter 执行不猜测归属。后续身份不可采集、formatter 失败后仍有内容变化或检查器改写目标文件时，保留实际执行证据、整体标为 UNVERIFIED，不把未知副作用声称为已确认修复。`fix_results` 只公开状态与安全元数据；formatter stderr 尾部写入私有 `.codeguard-fix.log` 后只公开路径，日志不可用时不退回公开原文。失败日志保留各已执行检查在捕获预算内的输出；输出超限时日志只含片段，不能称为完整诊断，且可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。
+`run_fix` 的历史 `fixed` 字段仍表示 formatter 命令以 0 退出，供旧调用方决定是否复检；它本身不是内容变化证明。CLI `fix` 因而只报告 formatter 执行成功与文件变化未验证，不再把退出码 0 呈现为已确认修复。
 Git 命令的仓库定位与拟暂存解析共用入口传入的 cwd；显式 `cd`/`git -C` 无法绑定 Git 工作树时，硬门禁给出目标未验证并阻断，不退回到调用者仓或无关子仓。未给出显式目标且调用目录非仓时仍保留 workspace 子仓兜底。静态命令解析不等于完整 Shell 执行模拟。
 workspace 兜底产生的每个子仓是合成目标，暂存观察也绑定该子仓根目录；不能继续以非 Git 的 workspace cwd 解析，从而把脏子仓的已知违规变成未知放行。
 一条命令链中的 Git 副作用先绑定为仓库与操作的有序对，再按仓库聚合检查面：纯 push 不读取该仓未提交的 index，同仓 commit→push 则保留已有 HEAD 与拟提交内容的并集。仓库级、内联及链式 `skipGate` 均按目标仓与操作顺序生效；已存在的仓库配置也可被同链先行 `git config --unset` 取消。链式设置跨 `||`、`;` 或换行时无法证明生效，门禁要求拆分命令；写入其它文件的 config 设置也不构成本仓豁免。语法、仓库归属、间接脚本与拟暂存分析共用引号/转义感知切分；参数文本中的控制符不能合成豁免。解析能力仍限于受支持的静态 Shell 形态。
@@ -49,7 +50,7 @@ workspace 兜底产生的每个子仓是合成目标，暂存观察也绑定该�
 | `java_build.py`、`java_impact.py`、`java_planning.py` 等 | 构建读取、纯影响闭包、命令选择与环境观察 | 默认保留跳过测试的行为；复杂构建保守扩大检查范围 |
 | `cve_reports.py`、`cve_policy.py`、`cve_scanners.py`、`cve.py` | 漏洞报告、阈值、进程适配与复扫编排 | 无有效结构化报告就没有安全通过结论 |
 | `dockerfile_reports.py`、`dockerfile.py` | hadolint/Trivy 结构化证据与逐文件扫描 | `dockerfile_security.py` 只解析参数和呈现报告 |
-| `execution.py`、`git_staging.py`、`git_snapshot.py`、`storage.py` | 外部进程、Git 内容面、原子状态读改写 | Git blob 保持字节，不经过文本检查执行器；准确快照必须核对批量对象协议与内容身份 |
+| `execution.py`、`git_staging.py`、`git_snapshot.py`、`storage.py` | 外部进程、Git 内容面、原子状态读改写 | Git blob 走有界原始字节通道、不经文本解码；准确快照必须核对批量对象协议与内容身份 |
 | `registry.py`、`registry_schema.py`、`discovery.py`、`config.py` | 已校验的语言表、发现与配置 | `languages.json` 是语言清单的事实源 |
 
 这些是源代码层的边界。`scripts/check_architecture.py` 对第一方静态导入和环做门禁；动态加载、进程副作用和宿主行为仍需测试。

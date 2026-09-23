@@ -46,11 +46,23 @@ class ProcessResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
-    failure: Literal["timeout", "not_found", "os_error"] | None = None
+    failure: Literal["timeout", "not_found", "os_error", "output_limit"] | None = None
 
     def as_tuple(self) -> tuple[int, str, str]:
         """兼容旧脚本的 (rc, stdout, stderr) 返回约定。"""
         return self.returncode, self.stdout, self.stderr
+
+
+@dataclass(frozen=True)
+class BinaryProcessResult:
+    """未解码的有界进程证据，供 Git 等二进制协议使用。"""
+
+    argv: tuple[str, ...]
+    cwd: Path
+    returncode: int
+    stdout: bytes = b""
+    stderr: bytes = b""
+    failure: Literal["timeout", "not_found", "os_error", "output_limit"] | None = None
 
 
 @dataclass(frozen=True)

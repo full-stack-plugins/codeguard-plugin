@@ -110,8 +110,13 @@ def finding_signatures(output: str) -> set[str]:
     return sigs
 
 
-def lint_verdict(rc: int, command: list[str], output: str = "") -> tuple[str, str]:
+def lint_verdict(rc: int, command: list[str], output: str = "", *,
+                 failure: str | None = None) -> tuple[str, str]:
     """按工具契约归一结论；只允许明确的成功返回 PASS。"""
+    if failure == "output_limit":
+        return UNVERIFIED, "检查器输出超过捕获上限，结果不完整"
+    if failure in ("timeout", "not_found", "os_error") and rc == 0:
+        return UNVERIFIED, "工具链执行异常，结果不完整"
     if rc == 0:
         return PASS, "检查执行成功"
     # ShellCheck 不支持 zsh/dash 之外的方言（SC1071 是 error 级固有限制）：
