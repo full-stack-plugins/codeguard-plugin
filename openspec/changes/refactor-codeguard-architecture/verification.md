@@ -285,3 +285,10 @@
 - 再沿同一 CodeGraph 路径审查 `run_fix → auto_fix → _public_fix_results`：内部 `fixed=rc==0` 被直接拷进 MCP 逐项结果，导致 no-op formatter、多个 formatter 或失败后部分改写的公开修复结论不可信。新增三个身份/归因测试先 RED；公开结果保留 `formatter_succeeded` 命令事实，并且仅唯一成功执行且复检后身份稳定时才声明逐项 `fixed`。多 formatter 不猜归属；失败且内容变化则整体 UNVERIFIED。完整单测 **546/546、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线与在线、OpenSpec strict、diff whitespace 通过。内部兼容字段与复检策略未变；此处仍仅是隔离 worktree 的本地证据，未证明三宿主安装运行或版本发布。
 
 - 第二十七批随后发布为 v0.14.13：源码 PR #60 合并到 `f683bc7b9888da97277eadce853774adf5fcaa15`，市场 PR #17 合并到 `947fc7d65b9a7f31360c1eeb96a02e62d1e8b196`。源码 PR 的 `vendor-check` 和合并后 main 的 `skills-check` 均成功；市场 PR 无 CI 检查，不称其 CI 已通过。受保护注释 tag `v0.14.13` 解引用到源码 main 合并提交，正式 GitHub Release 非 draft、非 prerelease，Codex/ZCode/Kimi 市场元数据及中英文导航均为 0.14.13。此发布不等于三宿主已安装运行、Windows、联网 CVE 或大型 Maven/Gradle 的现场验收；task 5.6 全目标审计、规格同步与归档仍未完成。
+
+## 第二十八批本地验证：外部进程输出资源边界
+
+- 在最新 v0.14.13 main 的隔离工作树建立临时 CodeGraph 索引（141 文件、2,226 节点、5,017 边）；`execute` 影响分析覆盖 77 个符号，沿语言检查、Git 门禁、CVE、Dockerfile 与 Hook 路径追出公共执行器的无界 `capture_output=True`。应用层虽截断报告，仍在收集阶段承担无限输出的内存风险。目标真实子进程用例先因缺少捕获预算参数 RED。
+- 统一执行器现并发读取 stdout/stderr，默认共享 16 MiB 捕获预算；超限停止进程，保留预算内两流诊断，返回 `output_limit`/125 并由语言判定显式转 UNVERIFIED。退出码 125 由工具自己返回时不伪造执行器故障。POSIX 独立进程组有助于停止子孙进程；Windows 子孙进程回收尚未实机证明。已有 argv 字面值、工作目录、非法 UTF-8、超时部分诊断、非零双流和旧 tuple 协议继续通过。
+- 首轮全量发现旧 SkipGate 重试用例 mock `subprocess.run`，执行器改用 `Popen` 后该 mock 不再触及业务边界；改为在 `repository_policy.execute` 注入相同的首次超时/两次超时证据，两项断言仍核验重试和审计。最终隔离工作树本地完整单测 **549/549、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。
+- 该护栏只约束文本检查执行器；Git 二进制快照使用独立 `git_snapshot.git()`，其 `cat-file` 传输、覆盖层累计磁盘预算与恶意 Git 输出仍需另行审计。本批未 bump、推送或发布；三宿主现场、Windows、在线 CVE 与大型 Maven/Gradle 项目没有获得新证据。

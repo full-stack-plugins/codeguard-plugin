@@ -9,8 +9,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -20,6 +22,7 @@ import cve_check
 import dockerfile_security
 import post_tool_lint
 import run_per_language
+from codeguard.execution import execute
 from verdict import UNVERIFIED, lint_verdict
 
 
@@ -65,6 +68,46 @@ class ExecutionBoundaryTests(unittest.TestCase):
                 self.assertIn("stderr before timeout", err)
                 self.assertIn("timeout", err)
                 self.assertEqual(UNVERIFIED, lint_verdict(rc, argv, out + err)[0])
+
+    def test_excessive_output_is_bounded_and_unverified(self):
+        argv = [sys.executable, "-u", "-c", (
+            "import sys,time; print('stdout before flood',flush=True); "
+            "print('stderr before flood',file=sys.stderr,flush=True); "
+            "time.sleep(0.1); sys.stdout.write('x'*200000); sys.stdout.flush(); time.sleep(30)"
+        )]
+        started = time.monotonic()
+        outcome = execute(argv, self.root, 5, max_output_bytes=1024)
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual("output_limit", outcome.failure)
+        self.assertEqual(125, outcome.returncode)
+        self.assertIn("stdout before flood", outcome.stdout)
+        self.assertIn("stderr before flood", outcome.stderr)
+        self.assertLessEqual(len(outcome.stdout.encode()) +
+                             len(outcome.stderr.split("output limit exceeded")[0].encode()), 1024)
+        self.assertEqual((UNVERIFIED, "检查器输出超过捕获上限，结果不完整"),
+                         lint_verdict(outcome.returncode, argv,
+                                      outcome.stdout + outcome.stderr, failure=outcome.failure))
+
+    def test_language_check_keeps_output_limit_as_unverified(self):
+        from codeguard import execution, language_check
+
+        argv = [sys.executable, "-c", "import sys; sys.stdout.write('x'*200000)"]
+        with (patch.object(language_check, "LANG_COMMANDS", {"tiny": {"gate": argv, "lint": argv}}),
+              patch.object(language_check, "project_uses_linter", return_value=True),
+              patch.object(execution, "DEFAULT_MAX_OUTPUT_BYTES", 1024)):
+            rows = language_check.run_check(["tiny"], self.root)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("UNVERIFIED", rows[0]["status"])
+        self.assertEqual("检查器输出超过捕获上限，结果不完整", rows[0]["reason"])
+        self.assertEqual("output_limit", rows[0]["execution_trace"][0]["failure"])
+
+    def test_checker_exit_125_is_not_an_output_limit_without_executor_evidence(self):
+        argv = [sys.executable, "-c", "raise SystemExit(125)"]
+        outcome = execute(argv, self.root, 5, max_output_bytes=1024)
+        self.assertEqual(125, outcome.returncode)
+        self.assertIsNone(outcome.failure)
+        self.assertEqual("UNVERIFIED", lint_verdict(outcome.returncode, argv,
+                                                    outcome.stdout + outcome.stderr)[0])
 
     @unittest.skipIf(os.name == "nt", "POSIX executable permission contract")
     def test_non_executable_is_unverified_not_an_uncaught_error(self):

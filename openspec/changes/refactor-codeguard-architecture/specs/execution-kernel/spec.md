@@ -8,7 +8,7 @@
 
 ### Requirement: Tool execution SHALL preserve process evidence
 
-执行结果 MUST 保留实际 argv、工作目录、原始退出码、标准输出和标准错误。参数 MUST 以 argv 传递，不隐式增加 shell；工具是否发现代码违规由工具判定策略解释，不能由进程执行器推断。
+执行结果 MUST 保留实际 argv、工作目录、原始退出码、标准输出和标准错误；若外部工具输出超过明确的捕获预算，则 MUST 终止该执行并保留预算内已捕获的诊断，以独立故障标识报告 UNVERIFIED，不得伪造完整输出或 PASS。参数 MUST 以 argv 传递，不隐式增加 shell；工具是否发现代码违规由工具判定策略解释，不能由进程执行器推断。
 
 #### Scenario: A checker exits nonzero
 - **WHEN** 同一检查器经 CLI、保存 hook、Git 门禁或 CVE 执行并以非零退出
@@ -17,6 +17,10 @@
 #### Scenario: An argument contains shell syntax
 - **WHEN** argv 参数包含空格、分号或命令替换字符
 - **THEN** 它作为单个字面参数到达工具，不作为额外 shell 命令执行
+
+#### Scenario: A checker exceeds the output budget
+- **WHEN** 外部检查器向 stdout/stderr 持续写入超过进程执行预算的内容
+- **THEN** 执行器有界地保留两个流的已有诊断，终止该检查，返回明确的输出超限故障与非成功退出；下游不得把截断的成功前缀判为 PASS 或宣称已有完整诊断日志
 
 ### Requirement: Execution failures SHALL remain observable
 
@@ -45,7 +49,7 @@
 ### Requirement: Check plans SHALL retain execution context
 
 检查计划 MUST 显式区分 repo、delta 与 save，保存物化后的命令、工作目录和逐命令环境覆盖。执行 MUST 按序进行，首个非零结果终止普通检查批次，保留已执行证据；未执行的命令不得计为成功。空计划不得生成 PASS。Java 原生计划给出的环境覆盖 MUST 在子进程中生效，不改变宿主环境。修复后的检查 MUST 复用原计划，不重新扩大范围。Git 门禁的逐文件基线豁免是独立策略，不由通用执行器决定。
-语言检查与修复的应用结果 MUST 保留实际运行的每条命令身份、目录、退出码、故障标识和有界输出摘要；MCP 适配不得只保留终止命令，但其公开执行轨迹 MUST 只包含阶段、序号、程序名、退出码、故障标识和输出长度，不得新增暴露原始 argv、命令环境覆盖或任意检查器输出。失败日志 MUST 保留同一检查批次中此前已执行命令的完整输出，不能只记录最后一条。证据不得把尚未运行的计划命令写成已执行。
+语言检查与修复的应用结果 MUST 保留实际运行的每条命令身份、目录、退出码、故障标识和有界输出摘要；MCP 适配不得只保留终止命令，但其公开执行轨迹 MUST 只包含阶段、序号、程序名、退出码、故障标识和输出长度，不得新增暴露原始 argv、命令环境覆盖或任意检查器输出。失败日志 MUST 保留同一检查批次中此前已执行命令在捕获预算内的全部输出，不能只记录最后一条；输出超限必须明确标识未验证，不得宣称日志完整。证据不得把尚未运行的计划命令写成已执行。
 MCP `auto_fix` 的 `fix_results` 公开面 MUST 同样只保留状态、退出码、安全元数据和可用诊断路径，不得因复制内部修复字典而回显 formatter 原始 argv 或 stderr。内部兼容 `fixed` 只表示 formatter 命令成功退出；公开结果 MUST 将此事实单独标为 `formatter_succeeded`，公开的逐项 `fixed` 只有在内容变化可唯一归因于这一条成功执行、且复检后身份稳定时才为真。多条 formatter 执行、读取故障或已知失败后有内容变化时，不得把全局差异猜给某条成功命令。实际修复诊断仍应在可写时以私有原子日志保存；日志写入失败不得改变修复和复检结论，也不得回退为公开原文。
 
 #### Scenario: Java commands use the selected JDK
