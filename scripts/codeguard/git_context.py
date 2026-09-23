@@ -14,6 +14,7 @@ from .git_staging import (
     staging_intent,  # noqa: F401 — 原导入面兼容
 )
 from .git_syntax import (
+    _analyze_segment,
     _collect_subs,
     _flatten_substitutions,
     _git_c_path,
@@ -26,6 +27,7 @@ from .git_syntax import (
 
 _SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".py", ".mjs", ".js", ".ts")
 _INTERPRETERS = ("bash", "sh", "zsh", "python", "python3", "node")
+_SHELL_INTERPRETERS = ("bash", "sh", "zsh")
 
 
 class GitIntentError(ValueError):
@@ -44,6 +46,8 @@ class GitOperation:
     mode: str
     bypass: str | None = None
     config_state: bool | None = None
+    source_command: str | None = None
+    source_cwd: Path | None = None
 
 
 def _is_git_repo(p: Path) -> bool:
@@ -51,7 +55,8 @@ def _is_git_repo(p: Path) -> bool:
     return execute(["git", "-C", str(p), "rev-parse", "--git-dir"], Path.cwd(), 10).returncode == 0
 
 
-def resolve_git_operations(command: str, cwd: Path | None = None) -> list[GitOperation]:
+def resolve_git_operations(command: str, cwd: Path | None = None, *,
+                           _depth: int = 0) -> list[GitOperation]:
     """顺序扫描命令链，将每个 git commit/push 绑定到自己的仓库。
 
     链式发布（cd plugins && git commit && cd minimax && git push）操作
@@ -68,6 +73,7 @@ def resolve_git_operations(command: str, cwd: Path | None = None) -> list[GitOpe
     operations: list[GitOperation] = []
     chain_skip_states: dict[Path, bool] = {}
     uncertain_roots: set[Path] = set()
+    unresolved_indirect_add = False
     last_cd: Path | None = None
     explicit_cd = False
     caller_dir = (cwd or Path.cwd()).resolve()
@@ -83,7 +89,38 @@ def resolve_git_operations(command: str, cwd: Path | None = None) -> list[GitOpe
             explicit_cd = True
             last_cd = target if target.is_dir() and _is_git_repo(target) else None
             continue
+        indirect = _indirect_body(seg, current_dir)
+        if indirect is not None:
+            body, is_shell = indirect
+            body_segments = split_shell_segments(_flatten_substitutions(body))
+            if any(skip_gate_config_change(part) is not None
+                   for part, _separator in body_segments):
+                raise GitIntentError("间接脚本修改 skipGate，无法证明后续配置状态；请拆分命令")
+            body_effects = _collect_subs(body)
+            if not body_effects and any(_analyze_segment(part)[0][:2] == ["git", "add"]
+                                        for part, _separator in body_segments):
+                unresolved_indirect_add = True
+            if body_effects:
+                if unresolved_indirect_add and "commit" in body_effects:
+                    raise GitIntentError("间接脚本暂存与后续提交跨越解释器边界；请拆分命令")
+                if not is_shell or _depth:
+                    raise GitIntentError("间接 Git 操作不能可靠建模；请单独执行并验证")
+                inner = resolve_git_operations(body, cwd=current_dir, _depth=1)
+                if not inner:
+                    raise GitIntentError("间接 Git 操作无法绑定仓库；请单独执行并验证")
+                for operation in inner:
+                    if operation.root in uncertain_roots:
+                        raise GitIntentError("间接 Git 操作跨越不确定的 skipGate 控制流")
+                    inherited = chain_skip_states.get(operation.root)
+                    state = operation.config_state if operation.config_state is not None else inherited
+                    bypass = operation.bypass or ("chain-skipGate" if state else None)
+                    operations.append(GitOperation(
+                        operation.root, operation.mode, bypass, state, body, current_dir,
+                    ))
+            continue
         mode = _git_side_effect_sub(seg)
+        if mode == "commit" and unresolved_indirect_add:
+            raise GitIntentError("间接脚本暂存与后续提交跨越解释器边界；请拆分命令")
         skip_change = skip_gate_config_change(seg) if mode is None else None
         if mode is None and skip_change is None:
             continue
@@ -148,36 +185,54 @@ def _fallback_roots(cwd: Path) -> list[Path]:
     return found
 
 
-def _indirect_bodies(command: str):
-    """只读取得一层解释器脚本/内联文本，共享大小上限与读取失败边界。"""
-    for seg, _separator in split_shell_segments(command):
-        try:
-            tokens = shlex.split(seg)
-        except ValueError:
-            tokens = seg.strip().split()
-        if not tokens:
-            continue
-        prog = tokens[0].rsplit("/", 1)[-1]
-        if prog not in _INTERPRETERS:
-            continue
-        rest = tokens[1:]
-        if "-c" in rest:
-            yield " ".join(rest[rest.index("-c") + 1:])
-            continue
-        for tok in rest:
-            if tok.startswith("-"):
-                continue
-            target = Path(tok)
-            if not target.is_file() or target.suffix not in _SCRIPT_SUFFIXES:
-                break
-            try:
-                if target.stat().st_size > 1_000_000:
-                    break
-                body = target.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                break
-            yield body
+def _indirect_body(segment: str, invocation_dir: Path) -> tuple[str, bool] | None:
+    """取得一段解释器实际收到的 -c 文本或脚本正文；不执行脚本。"""
+    try:
+        tokens = shlex.split(segment)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    program = tokens[0].rsplit("/", 1)[-1]
+    if program not in _INTERPRETERS:
+        return None
+    rest = tokens[1:]
+    is_shell = program in _SHELL_INTERPRETERS
+    script: str | None = None
+    for index, option in enumerate(rest):
+        if option == "--":
+            script = rest[index + 1] if index + 1 < len(rest) else None
             break
+        if option == "-c" or (is_shell and option.startswith("-") and not option.startswith("--")
+                              and option[1:].isalpha() and "c" in option[1:]):
+            return (rest[index + 1], is_shell) if index + 1 < len(rest) else None
+        if option.startswith("-"):
+            continue
+        script = option
+        break
+    if script is not None:
+        target = (invocation_dir / script).resolve()
+        if not target.is_file() or target.suffix not in _SCRIPT_SUFFIXES:
+            return None
+        try:
+            if target.stat().st_size <= 1_000_000:
+                return target.read_text(encoding="utf-8", errors="ignore"), is_shell
+        except OSError:
+            return None
+    return None
+
+
+def _indirect_bodies(command: str, cwd: Path | None = None):
+    """按外层 cd 顺序取得一层解释器正文，供兼容检测接口复用。"""
+    current_dir = (cwd or Path.cwd()).resolve()
+    for segment, _separator in split_shell_segments(command):
+        match = re.match(r"cd\s+(\"[^\"]+\"|'[^']+'|\S+)", segment)
+        if match:
+            current_dir = (current_dir / match.group(1).strip("\"'")).resolve()
+            continue
+        indirect = _indirect_body(segment, current_dir)
+        if indirect is not None:
+            yield indirect[0]
 
 
 def _command_indirect(command: str) -> bool:
@@ -201,7 +256,7 @@ def _repo_root_of(p: Path) -> Path | None:
 
 
 
-def _guarded_mode(command: str) -> str | None:
+def _guarded_mode(command: str, cwd: Path | None = None) -> str | None:
     """门禁命中时返回兜底门禁面：commit 或 push（同一仓两面并存时推送面
     携带 pending_commit 可覆盖两面）；未命中返回 None。
 
@@ -211,11 +266,8 @@ def _guarded_mode(command: str) -> str | None:
     分别选择门禁面，不能把这里的整链模式传播到其它仓。
     """
     subs = _collect_subs(command)
-    if not subs:
-        for body in _indirect_bodies(command):
-            subs = _collect_subs(body)
-            if subs:
-                break
+    for body in _indirect_bodies(command, cwd):
+        subs.extend(_collect_subs(body))
     if not subs:
         return None
     return "push" if "push" in subs else "commit"

@@ -210,6 +210,10 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 或换行后的配置状态无法静态证明时，MUST 阻断并提示拆分命令，不得猜测已生效。
 命令切分 MUST 区分真实 Shell 分隔符和被引用/转义的字面文本；提交消息、echo 参数
 或文件路径中的 `;`、`&&` 不得生成虚假的 Git 操作或豁免设置。
+对一层可静态读取的 `bash`/`sh`/`zsh` 内联命令（含 `-lc` 等组合短选项）或脚本，Git 副作用的识别、仓库归属与
+拟暂存分析 MUST 使用脚本的实际调用目录和同一份内层命令；外层直接 Git 操作与内层操作
+不得互相覆盖。若已识别间接 Git 副作用但不能可靠建立仓库或暂存计划，MUST 报告 Git
+意图 UNVERIFIED 并阻断，不得回退扫描无关子仓或以错误仓库的 PASS 放行。
 
 #### Scenario: Two repositories have different staging commands
 - **WHEN** 一条命令链对 A 执行 add -A、对 B 只提交已暂存内容
@@ -238,6 +242,26 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 #### Scenario: Quoted control characters are data
 - **WHEN** `echo` 的引号参数或 commit 消息包含 `; git config codeguard.skipGate true`
 - **THEN** 不产生虚假的 config 设置，随后未豁免的提交仍须检查并阻断违规内容
+
+#### Scenario: Shell wrapper commit uses the invocation repository
+- **WHEN** 从 Git 仓执行 `bash -c 'git commit'` 或相对路径脚本，脚本内存在待提交内容
+- **THEN** 将内层 commit 绑定到脚本调用目录的 Git 仓，而非报无仓或扫描其子仓
+
+#### Scenario: Script arguments are not interpreter options
+- **WHEN** 一个无 Git 副作用的脚本接收名为 `-c` 的普通参数及包含 `git commit` 的文本
+- **THEN** 解析器不得把脚本参数当成解释器 `-c` 代码并虚构 Git 副作用
+
+#### Scenario: Inner shell staging remains visible
+- **WHEN** 可静态读取的 shell 命令内先 `git add` 敏感文件再提交，或先切换到另一仓再提交
+- **THEN** 拟暂存分析包含内层 add 并归属实际目标仓；同链外层 Git 操作仍分别检查
+
+#### Scenario: Staging crosses an interpreter boundary
+- **WHEN** 独立的 shell 包装器只执行 `git add`，之后外层或另一个包装器才提交
+- **THEN** 无法证明完整拟暂存计划时报告 Git 意图 UNVERIFIED 并阻断；若 add 仅发生于纯 push 之后且无后续提交，不扩张该 push 的检查面
+
+#### Scenario: Unmodelled indirect Git operation cannot borrow another repository
+- **WHEN** 非 Shell 解释器脚本静态命中 Git 副作用，但无法可靠推断其执行目录与暂存动作
+- **THEN** 返回 Git 意图 UNVERIFIED，不以调用者的其它仓库或兜底子仓的结果替代
 
 #### Scenario: An explicit Git target is not a repository
 - **WHEN** 命令从 Git 仓调用，但在 `cd` 到非 Git 目录后运行 `git push`，或使用无效的 `git -C` 目标

@@ -41,7 +41,7 @@ class GitGuardResult:
 def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], dict],
                          bypass_env: bool = False) -> GitGuardResult:
     """评估一条工具命令；不修改 index，不直接输出宿主协议。"""
-    mode = guarded_mode(command) if command else None
+    mode = guarded_mode(command, cwd=cwd) if command else None
     if mode is None:
         return GitGuardResult()
     if bypass_env:
@@ -111,12 +111,26 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
         root_mode = "push" if any(operation.mode == "push" for operation in active) else "commit"
         pending_commit = any(operation.mode == "commit" for operation in root_operations)
         try:
-            lanes, extra = staging_intent(command, project_root=project_root, cwd=cwd)
+            sources = [(command, cwd)]
+            sources.extend((operation.source_command, operation.source_cwd)
+                           for operation in root_operations if operation.source_command)
+            lanes_found: set[str] = set()
+            extras_found: set[str] = set()
+            for source_command, source_cwd in dict.fromkeys(sources):
+                source_lanes, source_extra = staging_intent(
+                    source_command, project_root=project_root, cwd=source_cwd,
+                )
+                lanes_found.update(source_lanes)
+                extras_found.update(source_extra)
+            lanes, extra = tuple(lane for lane in ("staged", "unstaged", "untracked")
+                                 if lane in lanes_found), sorted(extras_found)
         except SnapshotError as exc:
-            contexts.append(
-                f"codeguard: git UNVERIFIED：{project_root} 无法准确预测暂存面：{exc}；"
-                "请完成明确的暂存操作后单独提交，并复核检查结果。"
-            )
+            message = (f"{project_root} 无法准确预测暂存面：{exc}；"
+                       "请完成明确的暂存操作后单独提交，并复核检查结果。")
+            if any(operation.source_command for operation in root_operations):
+                reports.append(f"[codeguard] Git 意图 UNVERIFIED：{message}")
+            else:
+                contexts.append(f"codeguard: git UNVERIFIED：{message}")
             continue
         root_extra = list(extra)
         failures, skipped = run_gate(

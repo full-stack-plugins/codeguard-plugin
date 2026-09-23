@@ -78,6 +78,13 @@ flowchart TD
 传入的 cwd，不再分别读取进程全局工作目录。Git 根查询故障也保留阻断结论；这些只覆盖
 支持的静态命令形态，不能宣称模拟完整 Shell 控制流。
 
+后续收敛一层 Shell 间接执行：从外层命令链提取解释器调用及其调用目录，静态读取
+`bash`/`sh`/`zsh` 的 `-c` 文本或脚本正文。内层 Git 操作携带来源命令与调用目录，
+供仓库归属、豁免和拟暂存分析复用；外层与内层操作按目标仓聚合。不把 Python/Node
+源码误当 Shell 执行计划：它们若被保守静态扫描命中但无法证明行为，返回明确的 Git
+意图未验证，不能用外层仓库检查结果代替。仍只支持一层、静态可读的脚本，不推断任意
+控制流、动态脚本生成或解释器在运行时调用的 subprocess。
+
 参考：pre-commit 的 [Language Protocol 与通用执行](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/lang_base.py)、[Python 适配器](https://github.com/pre-commit/pre-commit/blob/main/pre_commit/languages/python.py)。只借鉴边界设计，不复制安装环境逻辑或新增插件生态协议。
 
 ### 6. 状态基础设施与已完成事件分开
