@@ -46,7 +46,7 @@
 
 检查计划 MUST 显式区分 repo、delta 与 save，保存物化后的命令、工作目录和逐命令环境覆盖。执行 MUST 按序进行，首个非零结果终止普通检查批次，保留已执行证据；未执行的命令不得计为成功。空计划不得生成 PASS。Java 原生计划给出的环境覆盖 MUST 在子进程中生效，不改变宿主环境。修复后的检查 MUST 复用原计划，不重新扩大范围。Git 门禁的逐文件基线豁免是独立策略，不由通用执行器决定。
 语言检查与修复的应用结果 MUST 保留实际运行的每条命令身份、目录、退出码、故障标识和有界输出摘要；MCP 适配不得只保留终止命令，但其公开执行轨迹 MUST 只包含阶段、序号、程序名、退出码、故障标识和输出长度，不得新增暴露原始 argv、命令环境覆盖或任意检查器输出。失败日志 MUST 保留同一检查批次中此前已执行命令的完整输出，不能只记录最后一条。证据不得把尚未运行的计划命令写成已执行。
-MCP `auto_fix` 的 `fix_results` 公开面 MUST 同样只保留状态、退出码、安全元数据和可用诊断路径，不得因复制内部修复字典而回显 formatter 原始 argv 或 stderr。实际修复诊断仍应在可写时以私有原子日志保存；日志写入失败不得改变修复和复检结论，也不得回退为公开原文。
+MCP `auto_fix` 的 `fix_results` 公开面 MUST 同样只保留状态、退出码、安全元数据和可用诊断路径，不得因复制内部修复字典而回显 formatter 原始 argv 或 stderr。内部兼容 `fixed` 只表示 formatter 命令成功退出；公开结果 MUST 将此事实单独标为 `formatter_succeeded`，公开的逐项 `fixed` 只有在内容变化可唯一归因于这一条成功执行、且复检后身份稳定时才为真。多条 formatter 执行、读取故障或已知失败后有内容变化时，不得把全局差异猜给某条成功命令。实际修复诊断仍应在可写时以私有原子日志保存；日志写入失败不得改变修复和复检结论，也不得回退为公开原文。
 
 #### Scenario: Java commands use the selected JDK
 - **WHEN** Java 项目计划选择 JAVA_HOME，且声明多条权威检查命令
@@ -63,6 +63,18 @@ MCP `auto_fix` 的 `fix_results` 公开面 MUST 同样只保留状态、退出�
 #### Scenario: Formatter stderr contains a credential
 - **WHEN** `auto_fix` 的 formatter 命令及 stderr 包含凭据文本
 - **THEN** MCP 整个修复结果不包含该文本或原始命令参数；可用时返回仅当前用户可读的诊断日志路径，日志不可用时仍不泄漏原文
+
+#### Scenario: A no-op formatter exits successfully
+- **WHEN** formatter 退出码为 0，但修复前、修复后和复检后的目标内容身份相同
+- **THEN** `formatter_succeeded=true`，公开 `fix_results[].fixed=false`，并表明内容变化已验证
+
+#### Scenario: Multiple formatters run but a global change cannot be attributed
+- **WHEN** 两条 formatter 都执行，最终只有全局文件身份变化，无法可靠分配给其中一条
+- **THEN** 顶层仍可报告已观察到的变化，但逐项 `fixed` 不猜测归属，逐项明确未验证
+
+#### Scenario: A failed formatter partially changes a file
+- **WHEN** 唯一 formatter 退出非零但已改写目标文件
+- **THEN** 保留失败及复检证据，整体 UNVERIFIED 且不声称已确认修复
 
 ### Requirement: Diagnostic logs SHALL be private and atomic
 

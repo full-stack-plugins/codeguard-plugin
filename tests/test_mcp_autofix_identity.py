@@ -77,7 +77,9 @@ class McpAutoFixIdentityTests(unittest.TestCase):
             payload = check_application.auto_fix(self.root, ["python"])
         self.assertEqual("UNVERIFIED", payload["status"])
         self.assertFalse(payload["fixed"])
-        self.assertEqual(True, payload["fix_results"][0]["fixed"])
+        self.assertFalse(payload["fix_results"][0]["fixed"])
+        self.assertTrue(payload["fix_results"][0]["formatter_succeeded"])
+        self.assertFalse(payload["fix_results"][0]["change_verified"])
         self.assertEqual("PASS", payload["check"][0]["status"])
         fix.assert_called_once()
         check.assert_called_once()
@@ -114,6 +116,60 @@ class McpAutoFixIdentityTests(unittest.TestCase):
             payload = check_application.auto_fix(self.root, ["python"])
         self.assertTrue(payload["fixed"])
         self.assertNotIn("status", payload)
+        self.assertTrue(payload["fix_results"][0]["fixed"])
+        self.assertTrue(payload["fix_results"][0]["formatter_succeeded"])
+        self.assertTrue(payload["fix_results"][0]["change_verified"])
+
+    def test_noop_formatter_success_is_not_publicly_fixed(self):
+        (self.root / "changed.py").write_text("value = 1\n", encoding="utf-8")
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", return_value=[
+                  {"language": "python", "fixed": True, "exit_code": 0}]),
+              patch.object(check_application, "run_check", return_value=[
+                  {"language": "python", "passed": True, "status": "PASS", "exit_code": 0}])):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertFalse(payload["fixed"])
+        self.assertTrue(payload["fix_results"][0]["formatter_succeeded"])
+        self.assertFalse(payload["fix_results"][0]["fixed"])
+        self.assertTrue(payload["fix_results"][0]["change_verified"])
+
+    def test_multiple_formatters_do_not_guess_per_language_change(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        (self.root / "changed.sh").write_text("echo ok\n", encoding="utf-8")
+
+        def formatter(*_args, **_kwargs):
+            target.write_text("value = 2\n", encoding="utf-8")
+            return [{"language": lang, "fixed": True, "exit_code": 0}
+                    for lang in ("python", "shell")]
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py", "changed.sh"]),
+              patch.object(check_application, "run_fix", side_effect=formatter),
+              patch.object(check_application, "run_check", return_value=[
+                  {"language": "python", "passed": True, "status": "PASS", "exit_code": 0}])):
+            payload = check_application.auto_fix(self.root, ["python", "shell"])
+        self.assertTrue(payload["fixed"])
+        self.assertEqual([False, False], [item["fixed"] for item in payload["fix_results"]])
+        self.assertEqual([True, True], [item["formatter_succeeded"] for item in payload["fix_results"]])
+        self.assertEqual([False, False], [item["change_verified"] for item in payload["fix_results"]])
+
+    def test_failed_formatter_partial_mutation_is_unverified(self):
+        target = self.root / "changed.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+
+        def formatter(*_args, **_kwargs):
+            target.write_text("value = 2\n", encoding="utf-8")
+            return [{"language": "python", "fixed": False, "exit_code": 2}]
+
+        with (patch.object(check_application, "changed_files", return_value=["changed.py"]),
+              patch.object(check_application, "run_fix", side_effect=formatter),
+              patch.object(check_application, "run_check", return_value=[
+                  {"language": "python", "passed": True, "status": "PASS", "exit_code": 0}])):
+            payload = check_application.auto_fix(self.root, ["python"])
+        self.assertEqual("UNVERIFIED", payload["status"])
+        self.assertFalse(payload["fixed"])
+        self.assertFalse(payload["fix_results"][0]["formatter_succeeded"])
+        self.assertFalse(payload["fix_results"][0]["fixed"])
 
     def test_real_checker_process_mutation_is_not_verified_as_repair(self):
         target = self.root / "changed.py"
