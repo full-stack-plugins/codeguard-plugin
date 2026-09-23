@@ -17,7 +17,8 @@ def load_user_config() -> dict:
     cfg_path = Path.home() / ".zcode" / "settings.local.yaml"
     defaults = {
         "enabled_languages": [],
-        "strict_mode": True,
+        # strict_mode 已移除：从未有消费点（PostToolUse 恒 exit 0 是协议 §1 设计，
+        # 阻塞语义与之矛盾），文档行同步摘除——保留解析等于给用户假旋钮。
         "auto_fix_on_save": True,
         # 默认 300s：Maven 冷缓存 install -DskipTests 普遍超 2 分钟（旧 120s
         # 实测把超时误报为阻断）。AI 可在 ~/.zcode/settings.local.yaml 覆盖。
@@ -34,7 +35,7 @@ def load_user_config() -> dict:
     if not m:
         return cfg
     block = m.group(1)
-    for key in ("strict_mode", "auto_fix_on_save"):
+    for key in ("auto_fix_on_save",):
         mm = re.search(rf"{key}:\s*(true|false)", block)
         if mm:
             cfg[key] = mm.group(1) == "true"

@@ -96,7 +96,12 @@ const today = new Intl.DateTimeFormat("en-CA", {
 const repoDir = path.join(workspace, plugin.localDirectory);
 
 const edits = [{ file: catalogPath, description: `${pluginId}: ${oldVersion} -> ${newVersion}` }];
-const plainManifestRels = [".zcode-plugin/plugin.json", "kimi.plugin.json"];
+const plainManifestRels = [
+  ".zcode-plugin/plugin.json",
+  "kimi.plugin.json",
+  // Claude 宿主市场清单（plugins[0].version 单点，bumpPlain 首个 version 匹配即覆盖）
+  ".claude-plugin/marketplace.json",
+];
 if (fs.existsSync(path.join(repoDir, "plugin.json"))) plainManifestRels.push("plugin.json");
 
 for (const rel of plainManifestRels) {
