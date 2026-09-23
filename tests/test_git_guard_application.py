@@ -65,6 +65,39 @@ class GitGuardApplicationTests(unittest.TestCase):
             self.assertEqual(2, result.exit_code)
             self.assertIn(".env", result.stderr)
 
+    def test_bare_prefixes_do_not_hide_shell_commit(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-prefixed-shell-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            for prefix in ("FOO=1", "env FOO=1", "command", "sudo",
+                           "sudo env FOO=1"):
+                with self.subTest(prefix=prefix), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                    result = git_guard_application.evaluate_git_command(
+                        f"{prefix} bash -c 'git commit -m x'", cwd=repo, load_config=dict)
+                    self.assertEqual(2, result.exit_code)
+                    self.assertIn(".env", result.stderr)
+                    gate.assert_called_once()
+
+    def test_prefixed_shell_staging_is_predicted_without_mutating_index(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-prefixed-add-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            before = (repo / ".git/index").read_bytes()
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "env FOO=1 bash -c 'git add .env && git commit -m x'",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            self.assertEqual(before, (repo / ".git/index").read_bytes())
+
     def test_script_argument_named_dash_c_is_not_interpreter_code(self):
         from codeguard import git_guard_application
 
@@ -121,13 +154,15 @@ class GitGuardApplicationTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(target), "add", ".env"],
                            check=True, capture_output=True)
             (target / "release.sh").write_text("git commit -m x\n", encoding="utf-8")
-            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
-                result = git_guard_application.evaluate_git_command(
-                    f"cd {target} && bash release.sh", cwd=caller, load_config=dict)
-            self.assertEqual(2, result.exit_code)
-            self.assertIn(".env", result.stderr)
-            gate.assert_called_once()
-            self.assertEqual(target, gate.call_args.args[0])
+            for interpreter in ("bash", "env FOO=1 bash"):
+                with self.subTest(interpreter=interpreter), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                    result = git_guard_application.evaluate_git_command(
+                        f"cd {target} && {interpreter} release.sh", cwd=caller, load_config=dict)
+                    self.assertEqual(2, result.exit_code)
+                    self.assertIn(".env", result.stderr)
+                    gate.assert_called_once()
+                    self.assertEqual(target, gate.call_args.args[0])
 
     def test_outer_commit_does_not_hide_inner_shell_commit(self):
         from codeguard import git_guard_application
@@ -258,6 +293,22 @@ class GitGuardApplicationTests(unittest.TestCase):
             self.assertIn(".env", result.stderr)
             self.assertEqual(before, (repo / ".git/index").read_bytes())
 
+    def test_real_hook_blocks_prefixed_shell_commit(self):
+        with tempfile.TemporaryDirectory(prefix="cg-hook-prefixed-") as tmp:
+            base = Path(tmp).resolve()
+            repo = self._initialized_repo(base, "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            payload = {"tool_name": "Bash", "tool_use_id": "prefixed-sensitive",
+                       "tool_input": {"command": "env FOO=1 bash -c 'git commit -m x'"}}
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                input=json.dumps(payload), cwd=repo, capture_output=True, text=True,
+                env={**os.environ, "CODEGUARD_HOME": str(base / "state")}, timeout=15, check=False)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            self.assertIn(".env", result.stderr)
+
     @staticmethod
     def _initialized_repo(base: Path, name: str) -> Path:
         repo = base / name
@@ -329,6 +380,44 @@ class GitGuardApplicationTests(unittest.TestCase):
                     cwd=repo, load_config=dict)
             self.assertEqual(2, result.exit_code)
             self.assertIn(".env", result.stderr)
+
+    def test_prefixed_unset_cancels_existing_repository_bypass(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-prefixed-unset-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            subprocess.run(["git", "-C", str(repo), "config", "codeguard.skipGate", "true"],
+                           check=True, capture_output=True)
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "env FOO=1 git config codeguard.skipGate false && git commit -m x",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            gate.assert_called_once()
+
+    def test_prefixed_inline_bypass_stays_audited_and_scoped(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-prefixed-inline-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            for prefix in ("env FOO=1", "command"):
+                with self.subTest(prefix=prefix), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate, \
+                        patch.object(git_guard_application, "record_skip_event") as record:
+                    result = git_guard_application.evaluate_git_command(
+                        f"{prefix} git -c codeguard.skipGate=true commit -m x",
+                        cwd=repo, load_config=dict)
+                    self.assertEqual(0, result.exit_code, result.stderr)
+                    self.assertTrue(any("内联豁免" in item for item in result.contexts))
+                    gate.assert_not_called()
+                    record.assert_called_once_with("inline-skipGate", repo)
 
     def test_inline_bypass_only_covers_its_own_operation(self):
         from codeguard import git_guard_application
