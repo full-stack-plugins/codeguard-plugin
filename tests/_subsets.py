@@ -598,7 +598,7 @@ def test_cve():
     ok("trivy 归一到 universal", cve.canonical_ecosystem("trivy") == "universal")
     ok("规范标识自身可解析", cve.canonical_ecosystem("python") == "python")
     ok("大小写不敏感", cve.canonical_ecosystem("JAVA") == "maven")
-    ok("未声明标识返回 None", cve.canonical_ecosystem("go") is None)
+    ok("未声明标识返回 None", cve.canonical_ecosystem("deno") is None)
     ok("可接受值含别名", "java" in cve.ecosystem_choices() and "trivy" in cve.ecosystem_choices())
 
     # 1.2：前置条件从权威映射派生，独立死表已移除
@@ -611,7 +611,7 @@ def test_cve():
        all(v in cve.ECOSYSTEM_SCANNERS for v in cve.language_ecosystem_map().values()))
 
     # 5.2：未知生态在扫描前拒绝，退出码 3，且不混用其他结论文案
-    r = run_cve(["--ecosystem", "go", str(tmp)], tmp)
+    r = run_cve(["--ecosystem", "deno", str(tmp)], tmp)
     out = r.stdout + r.stderr
     ok("未知生态退出码=3", r.returncode == 3, f"rc={r.returncode}")
     ok("退出码与「存在漏洞」「无法验证」不重叠", r.returncode not in (1, 2))
@@ -687,12 +687,12 @@ def test_cve():
     ok("漏洞(2) 优先于无法验证(1)", rc_mixed == 2, f"rc={rc_mixed}")
 
     # ── C1-5.4/5.5：无原生扫描器的语言自动落兜底；trivy 缺失=无法验证而非漏洞 ──
+    # （0.16.0 起 go 已有原生生态 → 兜底样例改用 php；go 派发语义由 test_cve_boundaries 覆盖）
     d = Path(tempfile.mkdtemp())
-    (d / "go.mod").write_text("module x\n\ngo 1.21\n")
-    (d / "main.go").write_text("package main\n")
+    (d / "index.php").write_text("<?php echo 1;\n")
     r = run_cve([str(d)], d)
     out = r.stdout + r.stderr
-    ok("go 项目自动走 universal 兜底", "ecosystems: ['universal']" in r.stdout, r.stdout.strip()[:120])
+    ok("php 目录（无原生扫描器）走 universal 兜底", "ecosystems: ['universal']" in r.stdout, r.stdout.strip()[:120])
     ok("trivy 缺失 → 无法验证(1) 而非漏洞(2)", r.returncode == 1, f"rc={r.returncode}")
     ok("兜底路径不误报「有漏洞」", "有漏洞" not in out)
 

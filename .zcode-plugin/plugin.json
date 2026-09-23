@@ -5,7 +5,7 @@
     "en": "代码规范守卫",
     "zh-CN": "代码规范检查"
   },
-  "version": "0.15.5",
+  "version": "0.16.0",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "description_i18n": {
     "en": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",

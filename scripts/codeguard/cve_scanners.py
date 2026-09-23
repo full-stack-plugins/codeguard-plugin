@@ -78,6 +78,21 @@ def scan_cargo(root: Path, threshold: str = "LOW") -> dict:
                    "按报告升级 Cargo.toml 中的受影响 crate（cargo update 可试）")
 
 
+def scan_go(root: Path, threshold: str) -> dict:
+    """go 生态扫描：trivy 原生解析 gomod/go.sum，报告格式与 universal 同族。
+
+    保留 UNKNOWN 进入过滤（同 scan_trivy 注释）：若先滤掉缺严重度的发现，
+    解析器会把它们当不存在——假 PASS。标识为 "go"（规范映射单独成条），
+    解析复用 trivy 格式解析器——格式是格式，身份是身份。
+    """
+    selected = severities_at_and_above(threshold) + ["UNKNOWN"]
+    argv = ["trivy", "fs", "--scanners", "vuln", "--format", "json", "--exit-code", "2",
+            "--severity", ",".join(selected), "."]
+    outcome = run(argv, cwd=root, timeout=1800)
+    return _result("go", "trivy", root, argv, outcome, parse_report("go", outcome[1], threshold),
+                   "确认 trivy 与漏洞库可用；按报告升级 go.mod 受影响依赖（go get 对应模块）", (0, 2))
+
+
 def scan_trivy(root: Path, threshold: str) -> dict:
     # 若先过滤 UNKNOWN，解析器看不到缺严重度的发现，会产生假 PASS。
     selected = severities_at_and_above(threshold) + ["UNKNOWN"]
