@@ -22,7 +22,7 @@ import cve_check
 import dockerfile_security
 import post_tool_lint
 import run_per_language
-from codeguard.execution import execute
+from codeguard.execution import execute, execute_bytes
 from verdict import UNVERIFIED, lint_verdict
 
 
@@ -87,6 +87,31 @@ class ExecutionBoundaryTests(unittest.TestCase):
         self.assertEqual((UNVERIFIED, "检查器输出超过捕获上限，结果不完整"),
                          lint_verdict(outcome.returncode, argv,
                                       outcome.stdout + outcome.stderr, failure=outcome.failure))
+
+    def test_binary_capture_preserves_nul_and_bounds_both_streams(self):
+        argv = [sys.executable, "-u", "-c", (
+            "import os,time; os.write(1,b'\\x00blob\\xff'); "
+            "os.write(2,b'context\\x00'); time.sleep(0.1); "
+            "os.write(1,b'x'*200000); time.sleep(30)"
+        )]
+        started = time.monotonic()
+        outcome = execute_bytes(argv, self.root, 5, input_data=b"ignored\x00",
+                                max_output_bytes=1024)
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual("output_limit", outcome.failure)
+        self.assertEqual(125, outcome.returncode)
+        self.assertIn(b"\x00blob\xff", outcome.stdout)
+        self.assertIn(b"context\x00", outcome.stderr)
+        self.assertLessEqual(len(outcome.stdout) + len(outcome.stderr.split(b"output limit exceeded")[0]),
+                             1025)
+
+    def test_binary_capture_passes_exact_stdin_bytes(self):
+        argv = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"]
+        payload = b"oid\x00\xff\n"
+        outcome = execute_bytes(argv, self.root, 5, input_data=payload, max_output_bytes=1024)
+        self.assertEqual(0, outcome.returncode)
+        self.assertIsNone(outcome.failure)
+        self.assertEqual(payload, outcome.stdout)
 
     def test_language_check_keeps_output_limit_as_unverified(self):
         from codeguard import execution, language_check

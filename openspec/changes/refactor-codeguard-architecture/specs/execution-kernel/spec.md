@@ -9,6 +9,9 @@
 ### Requirement: Tool execution SHALL preserve process evidence
 
 执行结果 MUST 保留实际 argv、工作目录、原始退出码、标准输出和标准错误；若外部工具输出超过明确的捕获预算，则 MUST 终止该执行并保留预算内已捕获的诊断，以独立故障标识报告 UNVERIFIED，不得伪造完整输出或 PASS。参数 MUST 以 argv 传递，不隐式增加 shell；工具是否发现代码违规由工具判定策略解释，不能由进程执行器推断。
+Git 快照使用同一有界进程边界的原始字节模式，MUST 保留 NUL 与 blob 字节且不在协议校验前解码；路径列举、大小响应及对象内容 MUST 各有明确捕获预算。任何超限或执行故障 MUST 阻止交付快照并成为 SnapshotError，不能以截断数据继续门禁。对象总量预算必须在读取 batch 内容之前由大小响应确定。
+工作树预测暂存覆盖层 MUST 以有界缓冲复制普通文件，并同时限制文件数量、单文件与累计字节数；检查期间文件超出预算、变成特殊文件或读取失败 MUST 拒绝交付临时树，不能把不完整覆盖层当准确 Git 快照。删除及文件与目录之间双向转换的预测语义必须保留，不能因覆盖路径迭代顺序不同而改变快照。
+同一次准确快照中，拟提交路径与实际物化的覆盖层 MUST 使用同一份已列举的路径集合；不得分别查询两次 Git 工作树后把不同时点的路径清单拼成一个已验证结论。
 
 #### Scenario: A checker exits nonzero
 - **WHEN** 同一检查器经 CLI、保存 hook、Git 门禁或 CVE 执行并以非零退出
@@ -21,6 +24,22 @@
 #### Scenario: A checker exceeds the output budget
 - **WHEN** 外部检查器向 stdout/stderr 持续写入超过进程执行预算的内容
 - **THEN** 执行器有界地保留两个流的已有诊断，终止该检查，返回明确的输出超限故障与非成功退出；下游不得把截断的成功前缀判为 PASS 或宣称已有完整诊断日志
+
+#### Scenario: Git emits more data than the snapshot budget
+- **WHEN** Git 路径列举、batch-check 或 batch 内容超过相应捕获预算，即使进程继续输出
+- **THEN** 执行器及时终止进程；快照入口报告未验证且不交付部分内容、不得据此前的成功前缀放行
+
+#### Scenario: Many predicted worktree files exceed the aggregate overlay budget
+- **WHEN** 每个文件均小于单文件上限，但所有拟暂存工作树文件的实际读取字节总数超过覆盖层预算
+- **THEN** 快照不交付部分临时树，门禁报告未验证，原工作树与 Git index 保持不变
+
+#### Scenario: Overlay listing changes between observations
+- **WHEN** Git 工作树路径列举在两次调用之间返回不同集合
+- **THEN** 单次快照只使用一次列举结果来计算 changed 与构建临时树；不能把第一份 changed 与第二份物化内容配对
+
+#### Scenario: A predicted path is a special file
+- **WHEN** 拟暂存路径在快照复制时变成 FIFO、socket 或其它非普通文件
+- **THEN** 快照拒绝该内容，即使类型检查与打开之间发生替换也不阻塞读取特殊文件，且不把它当作成功删除
 
 ### Requirement: Execution failures SHALL remain observable
 

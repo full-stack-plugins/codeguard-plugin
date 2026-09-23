@@ -54,6 +54,18 @@ class ProcessResult:
 
 
 @dataclass(frozen=True)
+class BinaryProcessResult:
+    """未解码的有界进程证据，供 Git 等二进制协议使用。"""
+
+    argv: tuple[str, ...]
+    cwd: Path
+    returncode: int
+    stdout: bytes = b""
+    stderr: bytes = b""
+    failure: Literal["timeout", "not_found", "os_error", "output_limit"] | None = None
+
+
+@dataclass(frozen=True)
 class PlanExecution:
     """已实际执行的有序证据，不包含尚未运行的计划项。"""
 
