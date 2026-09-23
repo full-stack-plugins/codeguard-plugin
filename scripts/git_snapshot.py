@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -24,8 +25,20 @@ def git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
     return proc.stdout
 
 
+def _nul_records(raw: bytes) -> list[bytes]:
+    """Git -z 响应必须按完整记录结束，不能丢弃半条或空记录。"""
+    if not raw:
+        return []
+    if not raw.endswith(b"\0"):
+        raise SnapshotError("Git 路径列表缺少终止 NUL")
+    records = raw[:-1].split(b"\0")
+    if any(not record for record in records):
+        raise SnapshotError("Git 路径列表包含空记录")
+    return records
+
+
 def names(root: Path, *args: str) -> set[str]:
-    return {os.fsdecode(p) for p in git(root, *args).split(b"\0") if p}
+    return {os.fsdecode(record) for record in _nul_records(git(root, *args))}
 
 
 def safe_path(root: Path, name: str) -> Path:
@@ -136,23 +149,54 @@ def _batch_blob(raw: bytes, offset: int, oid: str, expected_size: int) -> tuple[
     return content, end + 1
 
 
+def _snapshot_entries(root: Path, head: bool) -> list[tuple[str, str, str]]:
+    """严格解析对象列表，并以独立的路径列举发现完整记录边界上的漏项。"""
+    listing = ("ls-tree", "-r", "-z", "HEAD") if head else ("ls-files", "--stage", "-z")
+    records = _nul_records(git(root, *listing))
+    if len(records) > 20000:
+        raise SnapshotError("快照超过 20000 文件上限，需要独立 CI 检查")
+    object_format = git(root, "rev-parse", "--show-object-format").strip()
+    oid_size = {b"sha1": 40, b"sha256": 64}.get(object_format)
+    if oid_size is None:
+        raise SnapshotError("Git 对象格式未验证")
+    entries = []
+    seen = set()
+    for record in records:
+        metadata, separator, filename = record.partition(b"\t")
+        if not separator or not filename or filename in seen:
+            raise SnapshotError("Git 对象列表路径缺失或重复")
+        seen.add(filename)
+        fields = metadata.split(b" ")
+        if len(fields) != 3:
+            raise SnapshotError("Git 对象列表元数据无效")
+        mode_bits, second, third = fields
+        if mode_bits not in (b"100644", b"100755"):
+            raise SnapshotError("符号链接、子模块或未解决冲突需要独立检查")
+        if head:
+            if second != b"blob":
+                raise SnapshotError("Git 树对象不是 blob")
+            oid = third
+        else:
+            if third != b"0":
+                raise SnapshotError("Git index 存在未解决冲突")
+            oid = second
+        if not re.fullmatch(rb"[0-9a-f]{%d}" % oid_size, oid):
+            raise SnapshotError("Git 对象列表 ID 与仓库格式不一致")
+        name = os.fsdecode(filename)
+        safe_path(root, name)
+        entries.append((mode_bits.decode("ascii"), oid.decode("ascii"), name))
+    expected = (names(root, "ls-tree", "-r", "--name-only", "-z", "HEAD") if head
+                else names(root, "ls-files", "--cached", "-z"))
+    if {name for _, _, name in entries} != expected:
+        raise SnapshotError("Git 对象列表与独立路径列举不一致")
+    return entries
+
+
 @contextlib.contextmanager
 def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pending_commit=False):
     """原始 Git blobs 构成快照；拒绝外链、submodule、冲突和超限内容。"""
     head = mode == "push" and not pending_commit
-    raw = git(root, "ls-tree", "-r", "-z", "HEAD") if head else git(root, "ls-files", "--stage", "-z")
-    entries = []
-    for line in raw.split(b"\0"):
-        if not line:
-            continue
-        meta, filename = line.split(b"\t", 1)
-        mode_bits, middle, last = meta.decode().split()
-        oid = last if head else middle
-        if mode_bits not in ("100644", "100755") or (not head and last != "0"):
-            raise SnapshotError("符号链接、子模块或未解决冲突需要独立检查")
-        entries.append((mode_bits, oid, os.fsdecode(filename)))
-    if len(entries) > 20000:
-        raise SnapshotError("快照超过 20000 文件上限，需要独立 CI 检查")
+    entries = _snapshot_entries(root, head)
     object_ids = "".join(oid + "\n" for _, oid, _ in entries).encode()
     sizes = _batch_sizes(git(root, "cat-file", "--batch-check", input_data=object_ids), entries)
     blob = git(root, "cat-file", "--batch", input_data=object_ids)

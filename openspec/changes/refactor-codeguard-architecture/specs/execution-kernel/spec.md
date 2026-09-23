@@ -233,6 +233,10 @@ CLI 呈现 MUST 各有单一所有者。只有有效报告且执行状态可解�
 
 ### Requirement: Accurate Git snapshots SHALL validate object transport
 
+index/HEAD 对象列表 MUST 是完整的 NUL 分隔记录：每项有合法模式、对象格式对应的 ID、
+阶段/类型与非空路径，重复路径或不完整末项不得静默跳过。准确快照 MUST 用独立的
+Git 路径列举核对对象列表的路径集合；单次列表在记录边界被截断时也不能交付部分树。
+这些协议故障 MUST 归一化为快照 UNVERIFIED，而不是入口异常或空树 PASS。
 Git 准确快照 MUST 对 index/HEAD 列出的每个对象，逐项核对 `cat-file --batch-check` 与
 `--batch` 响应的对象 ID、blob 类型、非负大小、顺序和完整字节边界。响应缺项、重复项、
 内容截断或多余尾部字节 MUST 报告快照 UNVERIFIED，不得把错误对象或部分内容交给语言检查器。
@@ -244,6 +248,10 @@ Git 准确快照 MUST 对 index/HEAD 列出的每个对象，逐项核对 `cat-f
 #### Scenario: Git batch response disagrees with the requested objects
 - **WHEN** 批量读取的对象 ID、类型、大小、数量或顺序与已列出的 Git 对象不一致
 - **THEN** 准确快照不可交付，门禁报告 Git UNVERIFIED，而不是检查错位或部分内容
+
+#### Scenario: Git object listing is malformed or incomplete
+- **WHEN** `ls-files --stage` 或 `ls-tree -r` 缺少终止 NUL、含畸形/重复记录，或虽在完整记录边界结束却漏掉另一列举可见的路径
+- **THEN** 准确快照不可交付，门禁报告 Git UNVERIFIED；真实 index 不变
 
 #### Scenario: Batch payload has an invalid boundary or identity
 - **WHEN** 对象内容截断、缺少协议分隔符、尾随额外数据或同长度内容与对象哈希不符
