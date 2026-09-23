@@ -80,6 +80,14 @@ def check_paths(paths: list[str]) -> list[tuple[str, str, str]]:
             # （实测误伤，且打断依赖它的 skills-check CI）。
             if seg == "vendor" and idx != 0:
                 continue
+            # 点前缀目录默认忽略（2026-09-23）：.agents/.codex-plugin/.zcode/
+            # .github/.claude/ 等是宿主插件清单与第一方配置，必须可入库——
+            # 裸段匹配曾把插件仓的 marketplace.json/plugin.json 判成"不应入库"
+            # （实测阻断发版）。扫描面本就不扫这些目录（FULL_SCAN_EXCLUDES），
+            # 这里只放开"入库面"的目录拦截；密钥类**文件**模式不受影响
+            # （.env、*.pem 等仍按 GUARD_EXCLUDE_FILES 拦截）。
+            if seg.startswith("."):
+                continue
             hit_dir = seg
             break
         if hit_dir:
