@@ -148,6 +148,8 @@ Tests include real temporary Git repositories, native subprocess fixtures and of
 
 Current implementation and evidence: [architecture and extension guide](docs/current-architecture.md), [refactor verification](openspec/changes/refactor-codeguard-architecture/verification.md). Earlier documents remain historical context: [verdict and Java architecture](docs/verdict-java-architecture.md), [prior verification](docs/verification-verdict-java.md), [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
 
+Version history: see [CHANGELOG.md](CHANGELOG.md) for release highlights by version.
+
 ## License and privacy
 
 Apache-2.0 — [LICENSE](./LICENSE). Native build/scanning tools may access dependency registries and vulnerability databases; review [PRIVACY.md](./PRIVACY.md) and [TERMS.md](./TERMS.md).

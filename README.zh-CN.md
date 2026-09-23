@@ -148,6 +148,8 @@ ruff check hooks scripts tests
 
 当前实现与证据：[架构及扩展指南](docs/current-architecture.md)、[重构验证记录](openspec/changes/refactor-codeguard-architecture/verification.md)。旧文档保留为历史参考：[判定与 Java 架构](docs/verdict-java-architecture.md)、[此前验证报告](docs/verification-verdict-java.md)、[原架构](docs/partme-codeguard-plugin-Architecture.zh_CN.md)、[路线图](docs/technical-roadmap.zh_CN.md)。
 
+版本历史见 [CHANGELOG.md](CHANGELOG.md)（按版本段落的主题摘要）。
+
 ## 许可与隐私
 
 Apache-2.0 — [LICENSE](./LICENSE)。原生构建器/扫描器可能访问依赖仓库和漏洞数据库，请查看 [PRIVACY.md](./PRIVACY.md) 与 [TERMS.md](./TERMS.md)。
