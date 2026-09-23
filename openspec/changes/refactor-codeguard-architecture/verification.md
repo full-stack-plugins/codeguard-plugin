@@ -170,3 +170,11 @@
 - Stop 原逻辑在输出前 `take_json`，故故障注入先 RED：stdout 写入失败时会话记录已被删除。现新增准备结果和输出后确认；写入或刷新失败时记录保留可重试。若准备后有并发新写入，锁内快照不一致就不消费，允许下一次重复展示旧统计而不删除新记录。旧 `consume_summary` 兼容接口保留，Hook 改用 `prepare_summary`。两种输出故障和并发写入均有目标测试。
 - 本机现有 `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **460 unittest，全部通过、0 skipped**；`tests/run_all.py` **142/0/0**。ruff、架构门禁、语言 schema 57 项/11 规则、vendor 离线与在线、本 change strict、diff whitespace 均通过；受管技能及 lock 未改。上述为本地证据，远端 CI/版本/市场需在本批发布后另验。
 - 这两处消除了已复现的假豁免与输出前丢总结；仍不声称完整 Shell 解释、三宿主现场、Windows、在线漏洞库、全部工具链或 OpenSpec 5.4/5.6 的全目标审计完成。stdout 刷新成功不等于宿主最终消费确认，因此异常重试可出现重复总结；该取舍优先保证不丢统计。
+
+## 第十六批实际验证：跨 Hook 输出交付边界
+
+- 已发布的 v0.14.1 源码经插件 PR #47、市场 PR #4 合并到双仓 `main`；插件 `skills-check` 通过，注释 tag 与 GitHub Release 指向合并提交 `b8fa3850c877eae454845326fc167103d406b7d3`，三宿主市场清单均为 0.14.1。该证据只覆盖此前源码，不覆盖本批工作树。
+- 临时 CodeGraph 快照同步最新源码后，追踪 `PromptResult`/`SaveResult`/PreToolUse 的交付调用链：Stop 已刷新 stdout 再确认，而其余两个软 Hook 及 Git 硬门在刷新前就登记完成或缓存。当前项目的真实测试文件覆盖范围比 CodeGraph 的受影响测试提示更广，故以源码链和实际测试为准。
+- 新增 RED：UserPromptSubmit 与 PostToolUse 在 stdout 刷新失败时，旧入口仍登记完成；Git 已知拦截的输出写入失败向外抛异常，若由入口顶层 fail-open 捕获则可能放行；刷新失败还会缓存未交付拦截。现在所有确认都在刷新后；已知拦截输出故障保留 exit 2、不缓存，含无 tool_use_id 路径和缓存重放。对普通软反馈仍保持原 fail-open 协议。
+- 定向测试 **26/26**，完整单测 **465/465、0 skipped**，真实 Hook 回归 **142/0/0**；ruff、架构依赖/循环、本 change strict、语言 schema **57 项/11 规则**、vendor 离线和在线以及 diff whitespace 通过。vendor lock 仍为 v0.1.2 → `2c0c8071f96de48dc53e11de2499c083c100e44c`，受管技能与 lock 未修改。
+- 本批只证明本地输出时序与故障注入；stdout 刷新不等于宿主最终消费，可能在重试时重复反馈。三宿主已安装运行、Windows、联网漏洞库和全部语言工具链仍需独立验收；本批在此记录时尚未 bump/提交/发布。

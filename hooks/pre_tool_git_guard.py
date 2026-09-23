@@ -79,24 +79,35 @@ def extract_command(payload: dict) -> str:
 def main() -> int:
     payload = read_payload()
     with session_scope(payload):
-        if not payload.get("tool_use_id"):
-            return _main(payload)
-        key = "pre:" + str(payload["tool_use_id"]) + ":" + extract_command(payload)
-        cached = completed_event(key)
+        key = ("pre:" + str(payload["tool_use_id"]) + ":" + extract_command(payload)
+               if payload.get("tool_use_id") else None)
+        cached = completed_event(key) if key else None
         if cached is not None and cached["code"] == 2:
-            sys.stdout.write(cached["stdout"])
-            sys.stderr.write(cached["stderr"])
+            _deliver(cached["code"], cached["stdout"], cached["stderr"])
             return cached["code"]
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = _main(payload)
         out, err = stdout.getvalue(), stderr.getvalue()
         # 只复用阻断结果，硬门放行和未验证永远重跑准确快照。
-        sys.stdout.write(out)
-        sys.stderr.write(err)
-        if code == 2:
+        delivered = _deliver(code, out, err)
+        if key and code == 2 and delivered:
             record_completed_event(key, code, out, err)
         return code
+
+
+def _deliver(code: int, stdout: str, stderr: str) -> bool:
+    """刷新宿主输出后才允许缓存；已知拦截不能因输出故障降为放行。"""
+    try:
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except (OSError, UnicodeError, ValueError):
+        if code == 2:
+            return False
+        raise
+    return True
 
 
 def _main(payload: dict) -> int:

@@ -102,6 +102,7 @@ def _main(payload: dict) -> int:
             "hookEventName": "UserPromptSubmit",
             "additionalContext": result.additional_context,
         }}, ensure_ascii=False))
+    sys.stdout.flush()
     result.acknowledge()
     return 0
 

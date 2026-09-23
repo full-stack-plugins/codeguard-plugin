@@ -64,10 +64,57 @@ class GitGuardApplicationTests(unittest.TestCase):
                 patch.object(pre_tool_git_guard, "_main", side_effect=block), \
                 patch.object(pre_tool_git_guard, "completed_event", return_value=None), \
                 patch.object(pre_tool_git_guard, "record_completed_event") as record, \
-                patch.object(sys, "stdout", BrokenOutput()), \
-                self.assertRaises(OSError):
-            pre_tool_git_guard.main()
+                patch.object(sys, "stdout", BrokenOutput()):
+            self.assertEqual(2, pre_tool_git_guard.main())
         record.assert_not_called()
+
+    def test_blocked_event_is_not_cached_if_host_flush_fails(self):
+        class BrokenFlush(io.StringIO):
+            def flush(self):
+                raise OSError("host flush unavailable")
+
+        payload = {"tool_use_id": "event-2", "tool_input": {"command": "git commit -m x"}}
+
+        def block(_payload):
+            print("blocked")
+            return 2
+
+        with patch.object(pre_tool_git_guard, "read_payload", return_value=payload), \
+                patch.object(pre_tool_git_guard, "_main", side_effect=block), \
+                patch.object(pre_tool_git_guard, "completed_event", return_value=None), \
+                patch.object(pre_tool_git_guard, "record_completed_event") as record, \
+                patch.object(sys, "stdout", BrokenFlush()):
+            self.assertEqual(2, pre_tool_git_guard.main())
+        record.assert_not_called()
+
+    def test_block_without_event_id_still_blocks_if_stderr_flush_fails(self):
+        class BrokenFlush(io.StringIO):
+            def flush(self):
+                raise OSError("host stderr flush unavailable")
+
+        def block(_payload):
+            print("blocked", file=sys.stderr)
+            return 2
+
+        payload = {"tool_input": {"command": "git push"}}
+        with patch.object(pre_tool_git_guard, "read_payload", return_value=payload), \
+                patch.object(pre_tool_git_guard, "_main", side_effect=block), \
+                patch.object(sys, "stderr", BrokenFlush()):
+            self.assertEqual(2, pre_tool_git_guard.main())
+
+    def test_cached_block_remains_blocked_if_replay_cannot_write(self):
+        class BrokenOutput:
+            def write(self, _text):
+                raise OSError("host output unavailable")
+
+        payload = {"tool_use_id": "event-3", "tool_input": {"command": "git push"}}
+        cached = {"code": 2, "stdout": "blocked\n", "stderr": ""}
+        with patch.object(pre_tool_git_guard, "read_payload", return_value=payload), \
+                patch.object(pre_tool_git_guard, "completed_event", return_value=cached), \
+                patch.object(pre_tool_git_guard, "_main") as run, \
+                patch.object(sys, "stdout", BrokenOutput()):
+            self.assertEqual(2, pre_tool_git_guard.main())
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

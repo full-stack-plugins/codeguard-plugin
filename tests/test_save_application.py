@@ -10,10 +10,27 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "hooks")]
 
 
 class SaveApplicationTests(unittest.TestCase):
+    def test_hook_does_not_acknowledge_before_stdout_flush(self):
+        import post_tool_lint
+        from codeguard.save_application import SaveResult
+
+        class BrokenFlush(io.StringIO):
+            def flush(self):
+                raise OSError("host flush unavailable")
+
+        delivered = []
+        with patch.object(post_tool_lint, "ensure_user_path"), \
+                patch.object(post_tool_lint, "find_project_root", return_value=Path.cwd()), \
+                patch.object(post_tool_lint.save_application, "evaluate_save",
+                             return_value=SaveResult("检查反馈", _on_delivered=lambda: delivered.append(True))), \
+                patch.object(sys, "stdout", BrokenFlush()), self.assertRaises(OSError):
+            post_tool_lint._main({"file_path": "main.py"})
+        self.assertEqual([], delivered)
+
     def test_project_only_checker_reports_unverified_without_running(self):
         from codeguard import save_application
 

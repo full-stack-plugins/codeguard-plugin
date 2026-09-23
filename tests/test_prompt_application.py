@@ -11,10 +11,29 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "hooks")]
 
 
 class PromptApplicationTests(unittest.TestCase):
+    def test_hook_does_not_acknowledge_before_stdout_flush(self):
+        import user_prompt_validator
+        from codeguard.prompt_application import PromptResult
+
+        class BrokenFlush(io.StringIO):
+            def flush(self):
+                raise OSError("host flush unavailable")
+
+        payload = {"user_prompt": "提交代码", "session_id": "session-1"}
+        delivered = []
+        with patch.object(user_prompt_validator, "read_payload", return_value=payload), \
+                patch.object(user_prompt_validator, "ensure_user_path"), \
+                patch.object(user_prompt_validator, "find_project_root", return_value=Path.cwd()), \
+                patch.object(user_prompt_validator.prompt_application, "evaluate_prompt",
+                             return_value=PromptResult("检查反馈", _on_delivered=lambda: delivered.append(True))), \
+                patch.object(sys, "stdout", BrokenFlush()), self.assertRaises(OSError):
+            user_prompt_validator.main()
+        self.assertEqual([], delivered)
+
     def test_non_git_prompt_does_not_read_config_or_emit_host_output(self):
         from codeguard.prompt_application import evaluate_prompt
 
