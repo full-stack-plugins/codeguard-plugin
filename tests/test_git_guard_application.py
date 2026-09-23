@@ -19,6 +19,215 @@ import pre_tool_git_guard
 
 
 class GitGuardApplicationTests(unittest.TestCase):
+    def test_shell_segments_only_split_real_control_operators(self):
+        from codeguard.git_syntax import chain_skip_gate, split_shell_segments
+
+        self.assertEqual(
+            [('echo "docs; git config codeguard.skipGate true"', None),
+             ('git commit -m "a && b"', '&&')],
+            split_shell_segments(
+                'echo "docs; git config codeguard.skipGate true" && git commit -m "a && b"'),
+        )
+        self.assertEqual(
+            [(r'echo docs\; git config codeguard.skipGate true', None),
+             ('git commit -m x', '&&')],
+            split_shell_segments(r'echo docs\; git config codeguard.skipGate true && git commit -m x'),
+        )
+        self.assertFalse(chain_skip_gate('echo "docs; git config codeguard.skipGate true" && git commit'))
+        self.assertFalse(chain_skip_gate(r'echo docs\; git config codeguard.skipGate true && git commit'))
+        self.assertTrue(chain_skip_gate('git config codeguard.skipGate true && git commit'))
+
+    @staticmethod
+    def _initialized_repo(base: Path, name: str) -> Path:
+        repo = base / name
+        repo.mkdir()
+        for args in (("init", "-q"), ("config", "user.email", "test@example.com"),
+                     ("config", "user.name", "Test")):
+            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+        (repo / "README.md").write_text("safe\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "README.md"],
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-qm", "initial"],
+                       check=True, capture_output=True)
+        return repo
+
+    def test_multi_repo_commit_does_not_include_other_repos_staged_file_in_push(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-per-repo-mode-") as tmp:
+            base = Path(tmp).resolve()
+            repos = [self._initialized_repo(base, "commit-repo"),
+                     self._initialized_repo(base, "push-repo")]
+            (repos[1] / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repos[1]), "add", ".env"],
+                           check=True, capture_output=True)
+            command = f"cd {repos[0]} && git commit -m next && cd {repos[1]} && git push origin main"
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=base, load_config=dict)
+            self.assertEqual(0, result.exit_code, result.stderr)
+            self.assertEqual(2, gate.call_count)
+            self.assertEqual(
+                [("commit", True), ("push", False)],
+                [(call.kwargs["mode"], call.kwargs["pending_commit"]) for call in gate.call_args_list],
+            )
+
+    def test_inline_and_chain_bypass_do_not_bypass_another_repository(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-scoped-bypass-") as tmp:
+            base = Path(tmp).resolve()
+            first = self._initialized_repo(base, "first")
+            second = self._initialized_repo(base, "second")
+            (second / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(second), "add", ".env"],
+                           check=True, capture_output=True)
+            for prefix in ("git -c codeguard.skipGate=true commit -m x",
+                           "git config codeguard.skipGate true && git commit -m x"):
+                command = f"cd {first} && {prefix} && cd {second} && git commit -m x"
+                with self.subTest(prefix=prefix), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                    result = git_guard_application.evaluate_git_command(
+                        command, cwd=base, load_config=dict)
+                self.assertEqual(2, result.exit_code)
+                self.assertIn(".env", result.stderr)
+
+    def test_unset_before_commit_cancels_existing_repository_bypass(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-unset-bypass-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            subprocess.run(["git", "-C", str(repo), "config", "codeguard.skipGate", "true"],
+                           check=True, capture_output=True)
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "git config --unset codeguard.skipGate && git commit -m x",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_inline_bypass_only_covers_its_own_operation(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-inline-once-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "git -c codeguard.skipGate=true commit -m first && git commit -m second",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            self.assertTrue(any("内联豁免" in context for context in result.contexts))
+
+    def test_later_chain_bypass_does_not_retroactively_skip_commit(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-late-bypass-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "git commit -m x && git config codeguard.skipGate true",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_writing_other_config_file_does_not_bypass_repository(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-other-config-") as tmp:
+            base = Path(tmp).resolve()
+            repo = self._initialized_repo(base, "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            command = f"git config --file={base / 'other-config'} codeguard.skipGate true && git commit -m x"
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_unproven_chain_config_does_not_bypass_commit(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-config-flow-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            for separator in ("||", ";"):
+                command = f"git config codeguard.skipGate true {separator} git commit -m x"
+                with self.subTest(separator=separator), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                    result = git_guard_application.evaluate_git_command(
+                        command, cwd=repo, load_config=dict)
+                self.assertEqual(2, result.exit_code)
+
+    def test_quoted_config_text_does_not_bypass_commit(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-quoted-config-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            command = 'echo "docs; git config codeguard.skipGate true" && git commit -m x'
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_same_repo_commit_then_push_keeps_both_surfaces(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-same-repo-mode-") as tmp:
+            repo = Path(tmp).resolve()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            command = "git commit -m next && git push origin main"
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate, \
+                    patch.object(git_guard_application, "check_commit_safety", return_value=[]):
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code, result.stderr)
+            gate.assert_called_once()
+            self.assertEqual("push", gate.call_args.kwargs["mode"])
+            self.assertTrue(gate.call_args.kwargs["pending_commit"])
+
+    def test_repository_skip_gate_does_not_bypass_another_repository(self):
+        from codeguard import git_guard_application
+        from codeguard.git_context import GitOperation
+
+        first, second = Path("/first-repo"), Path("/second-repo")
+        with patch.object(git_guard_application, "resolve_git_operations",
+                          return_value=[GitOperation(first, "commit"),
+                                        GitOperation(second, "commit")]), \
+                patch.object(git_guard_application, "skip_gate_via_git_config",
+                             side_effect=lambda root: root == first), \
+                patch.object(git_guard_application, "staging_intent",
+                             return_value=(("staged",), [])), \
+                patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate, \
+                patch.object(git_guard_application, "check_commit_safety",
+                             side_effect=lambda root, *_args, **_kwargs:
+                             [(".env", "sensitive", "remove it")] if root == second else []), \
+                patch.object(git_guard_application, "record_skip_event") as record:
+            result = git_guard_application.evaluate_git_command(
+                "git commit -m x", cwd=first, load_config=dict)
+        self.assertEqual(2, result.exit_code)
+        self.assertIn(".env", result.stderr)
+        gate.assert_called_once()
+        self.assertEqual(second, gate.call_args.args[0])
+        record.assert_called_once_with("skipGate", first)
+
     def test_explicit_non_git_target_never_falls_back_to_callers_repo(self):
         from codeguard import git_guard_application
 
@@ -74,7 +283,7 @@ class GitGuardApplicationTests(unittest.TestCase):
         from codeguard import git_guard_application
         from git_snapshot import SnapshotError
 
-        with patch.object(git_guard_application, "resolve_project_roots",
+        with patch.object(git_guard_application, "resolve_git_operations",
                           side_effect=SnapshotError("rev-parse failed")), \
                 patch.object(git_guard_application, "fallback_roots") as fallback:
             result = git_guard_application.evaluate_git_command(
@@ -105,7 +314,7 @@ class GitGuardApplicationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="cg-guard-app-") as tmp:
             output, errors = io.StringIO(), io.StringIO()
-            with patch.object(git_guard_application, "resolve_project_roots", return_value=[]), \
+            with patch.object(git_guard_application, "resolve_git_operations", return_value=[]), \
                     patch.object(git_guard_application, "fallback_roots", return_value=[]), \
                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                 result = git_guard_application.evaluate_git_command(
@@ -121,9 +330,11 @@ class GitGuardApplicationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="cg-guard-inline-") as tmp:
             root = Path(tmp)
             output = io.StringIO()
-            with patch.object(git_guard_application, "resolve_project_roots", return_value=[root]), \
+            from codeguard.git_context import GitOperation
+
+            with patch.object(git_guard_application, "resolve_git_operations",
+                              return_value=[GitOperation(root, "commit", "inline-skipGate")]), \
                     patch.object(git_guard_application, "skip_gate_via_git_config", return_value=False), \
-                    patch.object(git_guard_application, "inline_skip_gate", return_value=True), \
                     patch.object(git_guard_application, "record_skip_event") as record, \
                     contextlib.redirect_stdout(output):
                 result = git_guard_application.evaluate_git_command(
