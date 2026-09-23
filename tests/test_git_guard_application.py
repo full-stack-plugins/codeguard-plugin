@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,6 +19,87 @@ import pre_tool_git_guard
 
 
 class GitGuardApplicationTests(unittest.TestCase):
+    def test_explicit_non_git_target_never_falls_back_to_callers_repo(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-explicit-target-") as tmp:
+            base = Path(tmp).resolve()
+            repo, plain = base / "repo", base / "plain"
+            repo.mkdir()
+            plain.mkdir()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            for command in (f"cd {plain} && git push origin main",
+                            f"git -C {plain} commit -m x"):
+                with self.subTest(command=command), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])) as run_gate, \
+                        patch.object(git_guard_application, "fallback_roots", return_value=[]) as fallback, \
+                        patch.object(git_guard_application, "check_commit_safety", return_value=[]):
+                    result = git_guard_application.evaluate_git_command(
+                        command, cwd=repo, load_config=dict)
+                    self.assertEqual(2, result.exit_code)
+                    self.assertIn(str(plain), result.stderr)
+                    self.assertIn("目标", result.stderr)
+                    run_gate.assert_not_called()
+                    fallback.assert_not_called()
+
+    def test_explicit_git_c_overrides_non_git_cd_target(self):
+        from codeguard.git_context import resolve_project_roots
+
+        with tempfile.TemporaryDirectory(prefix="cg-explicit-override-") as tmp:
+            base = Path(tmp).resolve()
+            repo, plain = base / "repo", base / "plain"
+            repo.mkdir()
+            plain.mkdir()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            roots = resolve_project_roots(
+                f"cd {plain} && git -C {repo} commit -m x", cwd=repo)
+            self.assertEqual([repo], roots)
+
+    def test_staging_intent_uses_explicit_callers_cwd(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-staging-cwd-") as tmp:
+            repo = Path(tmp).resolve()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            (repo / "new.py").write_text("print(1)\n", encoding="utf-8")
+            with patch.object(Path, "cwd", return_value=repo.parent), \
+                    patch.object(git_guard_application, "run_gate", return_value=([], [])) as run_gate, \
+                    patch.object(git_guard_application, "check_commit_safety", return_value=[]):
+                result = git_guard_application.evaluate_git_command(
+                    "git add '*.py' && git commit -m x", cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code)
+            self.assertEqual(["new.py"], run_gate.call_args.kwargs["extra"])
+
+    def test_git_root_observation_failure_is_not_fail_open(self):
+        from codeguard import git_guard_application
+        from git_snapshot import SnapshotError
+
+        with patch.object(git_guard_application, "resolve_project_roots",
+                          side_effect=SnapshotError("rev-parse failed")), \
+                patch.object(git_guard_application, "fallback_roots") as fallback:
+            result = git_guard_application.evaluate_git_command(
+                "git commit -m x", cwd=Path.cwd(), load_config=dict)
+        self.assertEqual(2, result.exit_code)
+        self.assertIn("rev-parse failed", result.stderr)
+        fallback.assert_not_called()
+
+    def test_real_hook_blocks_explicit_non_git_target(self):
+        with tempfile.TemporaryDirectory(prefix="cg-hook-target-") as tmp:
+            base = Path(tmp).resolve()
+            repo, plain = base / "repo", base / "plain"
+            repo.mkdir()
+            plain.mkdir()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            payload = {"tool_name": "Bash", "tool_use_id": "explicit-target",
+                       "tool_input": {"command": f"cd {plain} && git push origin main"}}
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                input=json.dumps(payload), cwd=repo, capture_output=True, text=True,
+                env={**os.environ, "CODEGUARD_HOME": str(base / "state")}, timeout=15, check=False)
+        self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+        self.assertIn(str(plain), result.stderr)
+        self.assertIn("目标 UNVERIFIED", result.stderr)
+
     def test_no_git_repository_blocks_with_diagnostic_without_printing(self):
         from codeguard import git_guard_application
 

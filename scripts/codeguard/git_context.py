@@ -23,6 +23,9 @@ _SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".py", ".mjs", ".js", ".ts")
 _INTERPRETERS = ("bash", "sh", "zsh", "python", "python3", "node")
 
 
+class GitTargetError(ValueError):
+    """显式 Git 目标无法绑定时拒绝猜测其它仓库。"""
+
 
 def _is_git_repo(p: Path) -> bool:
     """只读查询 Git 仓边界；工具不可用时交由调用者降级。"""
@@ -34,7 +37,7 @@ def resolve_project_roots(command: str, cwd: Path | None = None) -> list[Path]:
 
     链式发布（cd plugins && git commit && cd minimax && git push）操作
     多个仓库——每个 git 段的边界 = `git -C <path>` 显式指定的仓，否则取它
-    之前最近的 cd（且必须是 git 仓）；无 cd 则用 cwd（需是 git 仓）。
+    之前最近的 cd（且必须是 git 仓）；无 cd 才用 cwd（需是 git 仓）。
     去重保序，找不到任何边界返回 []。
 
     **必须与 is_guarded 同源判定**（`_git_side_effect_sub` 归一化后判子命令）：
@@ -46,6 +49,7 @@ def resolve_project_roots(command: str, cwd: Path | None = None) -> list[Path]:
     command = _flatten_substitutions(command)
     roots: list[Path] = []
     last_cd: Path | None = None
+    explicit_cd = False
     caller_dir = (cwd or Path.cwd()).resolve()
     current_dir = caller_dir
     for seg in re.split(r"&&|\|\||;|\n", command):
@@ -56,7 +60,7 @@ def resolve_project_roots(command: str, cwd: Path | None = None) -> list[Path]:
         if m:
             target = (current_dir / m.group(1).strip("\"'")).resolve()
             current_dir = target
-            # 兼容旧降级策略：非 Git 目录后回退调用方 cwd；不是完整 shell 求值。
+            explicit_cd = True
             last_cd = target if target.is_dir() and _is_git_repo(target) else None
             continue
         if _git_side_effect_sub(seg) is None:
@@ -66,14 +70,16 @@ def resolve_project_roots(command: str, cwd: Path | None = None) -> list[Path]:
             c_path = (current_dir / c_path).resolve()
         if c_path is not None:
             root = c_path if c_path.is_dir() and _is_git_repo(c_path) else None
+            if root is None:
+                raise GitTargetError(f"git -C 显式目标不是可解析的 Git 工作树：{c_path}")
         else:
-            root = last_cd or (caller_dir if _is_git_repo(caller_dir) else None)
+            if explicit_cd and last_cd is None:
+                raise GitTargetError(f"cd 显式目标不是可解析的 Git 工作树：{current_dir}")
+            root = last_cd if explicit_cd else (caller_dir if _is_git_repo(caller_dir) else None)
         if root:
             root = repository_root(root)
             if root not in roots:
                 roots.append(root)
-    # 有意行为（勿"修掉"）：cd 到非 git 目录后 last_cd=None，git 段回退用
-    # 调用方 cwd。这是历史降级行为，不应声称等价于 shell 的 cd 语义。
     return roots
 
 

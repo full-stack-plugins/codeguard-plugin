@@ -30,14 +30,15 @@ def resolve_pathspecs(cwd: Path, paths: list[str], *, tracked_only=False,
     return sorted({os.fsdecode(name) for name in git(cwd, *args, "--", *paths).split(b"\0") if name})
 
 
-def staging_intent(command: str, project_root: Path | None = None) -> tuple[tuple[str, ...], list[str]]:
+def staging_intent(command: str, project_root: Path | None = None, *,
+                   cwd: Path | None = None) -> tuple[tuple[str, ...], list[str]]:
     """逐段绑定 cd/-C 与仓库；返回 lanes 和已解析的仓根相对字面路径。
 
     保留旧无 project_root 的调用面；硬门禁必须传目标仓，以免多仓范围串扰。
     不执行 add，不模拟动态 Shell、交互暂存或 pathspec-from-file；不能证明时抛
     SnapshotError，由 Hook 以既有 fail-open 协议明示未验证。
     """
-    cwd = Path.cwd().resolve()
+    current_dir = (cwd or Path.cwd()).resolve()
     wanted = Path(project_root).resolve() if project_root is not None else None
     lanes = {"staged"}
     extra = set()
@@ -49,7 +50,7 @@ def staging_intent(command: str, project_root: Path | None = None) -> tuple[tupl
         if not words:
             continue
         if words[0] == "cd" and len(words) == 2:
-            cwd = (cwd / words[1]).resolve()
+            current_dir = (current_dir / words[1]).resolve()
             continue
         tokens, c_path = _analyze_segment(segment)
         if len(tokens) < 2 or tokens[0] != "git" or tokens[1] not in ("add", "commit"):
@@ -57,7 +58,7 @@ def staging_intent(command: str, project_root: Path | None = None) -> tuple[tupl
         sub, rest = tokens[1], tokens[2:]
         if sub == "commit" and not any(flag in ("-a", "-am", "--all") for flag in rest):
             continue
-        location = (cwd / c_path).resolve() if c_path is not None else cwd
+        location = (current_dir / c_path).resolve() if c_path is not None else current_dir
         repo = repository_root(location)
         if wanted is not None and repo != wanted:
             continue

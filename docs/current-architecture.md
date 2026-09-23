@@ -27,6 +27,7 @@ flowchart TD
 ```
 
 `execution` 只记录进程证据，不把非零退出自动认定为代码违规。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
+Git 命令的仓库定位与拟暂存解析共用入口传入的 cwd；显式 `cd`/`git -C` 无法绑定 Git 工作树时，硬门禁给出目标未验证并阻断，不退回到调用者仓或无关子仓。未给出显式目标且调用目录非仓时仍保留 workspace 子仓兜底。静态命令解析不等于完整 Shell 执行模拟。
 
 ## 模块所有权
 
@@ -66,4 +67,4 @@ python3 scripts/vendor/skill_vendor.py check
 openspec validate refactor-codeguard-architecture --strict
 ```
 
-真实 Maven/Gradle 大型项目、联网漏洞数据库、57 种工具链、Windows 与三宿主已安装运行均需要独立证据。临时 Git 快照不是执行沙箱；构建和扫描命令以当前用户权限运行。当前重构的任务进度和本地证据见 `openspec/changes/refactor-codeguard-architecture/verification.md`。v0.14.1 的源码、CI、tag、Release 和市场已核对；其后工作树变更仍需独立发布，宿主安装运行尚未验收。
+真实 Maven/Gradle 大型项目、联网漏洞数据库、57 种工具链、Windows 与三宿主已安装运行均需要独立证据。临时 Git 快照不是执行沙箱；构建和扫描命令以当前用户权限运行。当前重构的任务进度和各阶段发布证据见 `openspec/changes/refactor-codeguard-architecture/verification.md`；不能以某一阶段的源码、CI、tag、Release 或市场记录替代后续改动的发布与宿主验收。

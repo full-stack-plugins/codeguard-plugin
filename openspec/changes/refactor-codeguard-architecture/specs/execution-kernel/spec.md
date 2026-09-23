@@ -194,10 +194,23 @@ CLI 呈现 MUST 各有单一所有者。只有有效报告且执行状态可解�
 路径并集。显式 pathspec MUST 交由只读 Git 查询成组解析，保留目录、glob、literal、exclude、
 引号路径及 -u/-f 的选择差异；展开后的文件名不得再作为 glob 解释。观察 MUST 不改写实际
 index 或工作树；不支持的动态/交互式形态必须明确未验证，不得冒充准确暂存面。
+仓库定位与拟暂存解析 MUST 使用同一个显式调用目录，不能一处用传入的 cwd、另一处读取
+门禁进程的全局工作目录。
+显式 `cd` 或 `git -C` 已给出目标时，若该目标不是可解析的 Git 工作树，MUST 阻断
+该 Git 副作用命令并报告目标不可确定；不得回退调用者仓或扫调用者一层子仓。
+只有命令未给出显式目标且调用目录不是 Git 仓时，才保留既有 workspace 子仓兜底策略。
 
 #### Scenario: Two repositories have different staging commands
 - **WHEN** 一条命令链对 A 执行 add -A、对 B 只提交已暂存内容
 - **THEN** B 的未暂存及未跟踪文件不进入拟提交检查面
+
+#### Scenario: An explicit Git target is not a repository
+- **WHEN** 命令从 Git 仓调用，但在 `cd` 到非 Git 目录后运行 `git push`，或使用无效的 `git -C` 目标
+- **THEN** 门禁以明确诊断阻断，而不是检查调用者仓或用 workspace 兜底；后续显式 `git -C` 指向有效仓时仍能正确绑定该仓
+
+#### Scenario: Explicit invocation directory binds staging intent
+- **WHEN** 应用服务收到的调用目录与门禁进程当前目录不同，命令在调用目录中 `git add` 并提交
+- **THEN** 拟暂存路径按传入调用目录的仓与文件解析，不遗漏额外路径，也不纳入进程目录的仓
 
 #### Scenario: Exclusion and literal pathspecs remain exact
 - **WHEN** git add 指定包含与排除 pathspec，或字面文件名包含星号
