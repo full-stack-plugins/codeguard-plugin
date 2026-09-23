@@ -21,6 +21,6 @@
 
 ## 4. 发版
 
-- [ ] 4.1 全量回归 + ruff 干净
-- [ ] 4.2 dogfood：直跑 `node scripts/bump-plugin.mjs codeguard patch`（不带包装）过门禁并发版
-- [ ] 4.3 市场仓同步 + PR/CI/合并 + 两仓推送
+- [x] 4.1 全量回归 + ruff 干净
+- [x] 4.2 dogfood：直跑 `node scripts/bump-plugin.mjs codeguard patch`（不带包装）过门禁并发版
+- [x] 4.3 市场仓同步 + PR/CI/合并 + 两仓推送
