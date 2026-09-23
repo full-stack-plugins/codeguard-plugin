@@ -1,7 +1,7 @@
 # gate-trigger-policy Specification
 
 ## Purpose
-TBD - created by archiving change 2026-09-22-fix-gate-trigger-and-mcp. Update Purpose after archive.
+定义 UserPromptSubmit 门禁的触发策略：只有真实提交意图才启动 lint 门禁的精确判据（词边界、疑问句识别、否定式排除、可识别语言收窄），消除日常对话的误触发与无关全量检查。
 ## Requirements
 ### Requirement: The UserPromptSubmit hook SHALL run the lint gate only when intent is commit-like
 The `UserPromptSubmit` hook MUST evaluate the user's prompt for commit intent using word-boundary matching of trigger words (`commit|push|deploy|发布|部署`) and a separate action-verb check. The hook SHALL exit silently when either (a) no trigger word is present, (b) the only trigger occurrence is followed by `?`, or (c) a trigger word appears in an interrogative sentence identified by `QUESTION_MARKERS` (`?`, `？`, `么`, `吗`, `如何`, `怎么`, `有没有`, `是不是`, `什么是`, `哪些`).

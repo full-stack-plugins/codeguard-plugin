@@ -1,7 +1,7 @@
 # bilingual-docs-consistency Specification
 
 ## Purpose
-TBD - created by archiving change add-readme-parity-gate. Update Purpose after archive.
+定义 README.md 与 README.zh-CN.md 的结构一致性契约：标题层级、本地链接目标与版本串必须镜像，由 tests/test_readme_parity.py 门禁强制，保证双语用户入口同步演进、任一边漏改即失败。
 ## Requirements
 ### Requirement: README structural parity SHALL be enforced by tests/test_readme_parity.py
 

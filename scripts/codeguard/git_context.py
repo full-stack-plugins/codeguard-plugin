@@ -21,6 +21,7 @@ from .git_syntax import (
     _git_side_effect_sub,
     _segment_is_git_side_effect,
     _strip_command_prefix,
+    dynamic_git_effects,
     inline_skip_gate,
     skip_gate_config_change,
     split_shell_segments,
@@ -93,14 +94,26 @@ def resolve_git_operations(command: str, cwd: Path | None = None, *,
         indirect = _indirect_body(seg, current_dir)
         if indirect is not None:
             body, is_shell = indirect
-            body_segments = split_shell_segments(_flatten_substitutions(body))
-            if any(skip_gate_config_change(part) is not None
-                   for part, _separator in body_segments):
-                raise GitIntentError("间接脚本修改 skipGate，无法证明后续配置状态；请拆分命令")
-            body_effects = _collect_subs(body)
-            if not body_effects and any(_analyze_segment(part)[0][:2] == ["git", "add"]
-                                        for part, _separator in body_segments):
-                unresolved_indirect_add = True
+            if is_shell:
+                body_segments = split_shell_segments(_flatten_substitutions(body))
+                if any(skip_gate_config_change(part) is not None
+                       for part, _separator in body_segments):
+                    raise GitIntentError("间接脚本修改 skipGate，无法证明后续配置状态；请拆分命令")
+                body_effects = _collect_subs(body)
+                if not body_effects and any(_analyze_segment(part)[0][:2] == ["git", "add"]
+                                            for part, _separator in body_segments):
+                    unresolved_indirect_add = True
+            else:
+                # 非 Shell 正文不做 shell 切段：模板字符串/帮助文本里的 git 字面量
+                # 不是调用（bump-plugin.mjs 帮助文本实测误报）。只认 exec/subprocess
+                # 调用形态，命中仍按「不可建模」阻断——方向安全不放松。
+                dynamic_subs, dynamic_skip = dynamic_git_effects(body)
+                if dynamic_skip is not None:
+                    raise GitIntentError("间接脚本修改 skipGate，无法证明后续配置状态；请拆分命令")
+                if "add" in dynamic_subs and not any(
+                        name in dynamic_subs for name in ("commit", "push")):
+                    unresolved_indirect_add = True
+                body_effects = [name for name in dynamic_subs if name in ("commit", "push")]
             if body_effects:
                 if unresolved_indirect_add and "commit" in body_effects:
                     raise GitIntentError("间接脚本暂存与后续提交跨越解释器边界；请拆分命令")
@@ -233,14 +246,21 @@ def _indirect_bodies(command: str, cwd: Path | None = None):
             continue
         indirect = _indirect_body(segment, current_dir)
         if indirect is not None:
-            yield indirect[0]
+            yield indirect
 
 
 def _command_indirect(command: str) -> bool:
     """兼容一层间接识别；不执行脚本，不承诺分析动态拼接的 subprocess。"""
-    return any(_segment_is_git_side_effect(segment)
-               for body in _indirect_bodies(command)
-               for segment, _separator in split_shell_segments(body))
+    for body, is_shell in _indirect_bodies(command):
+        if is_shell:
+            if any(_segment_is_git_side_effect(segment)
+                   for segment, _separator in split_shell_segments(body)):
+                return True
+        else:
+            subs, _skip = dynamic_git_effects(body)
+            if any(name in subs for name in ("commit", "push")):
+                return True
+    return False
 
 
 def _repo_root_of(p: Path) -> Path | None:
@@ -267,8 +287,12 @@ def _guarded_mode(command: str, cwd: Path | None = None) -> str | None:
     分别选择门禁面，不能把这里的整链模式传播到其它仓。
     """
     subs = _collect_subs(command)
-    for body in _indirect_bodies(command, cwd):
-        subs.extend(_collect_subs(body))
+    for body, is_shell in _indirect_bodies(command, cwd):
+        if is_shell:
+            subs.extend(_collect_subs(body))
+        else:
+            dynamic_subs, _skip = dynamic_git_effects(body)
+            subs.extend(name for name in dynamic_subs if name in ("commit", "push"))
     if not subs:
         return None
     return "push" if "push" in subs else "commit"

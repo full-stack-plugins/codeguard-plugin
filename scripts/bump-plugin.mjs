@@ -128,12 +128,19 @@ catalogText = catalogText.slice(0, segStart) + `"version": "${newVersion}"` + ca
 fs.writeFileSync(catalogPath, catalogText);
 
 // 2) 各仓 manifest
-const bumpPlain = (text) => text.replace(`"version": "${oldVersion}"`, `"version": "${newVersion}"`);
+const bumpPlain = (text, rel) => {
+  const updated = text.replace(`"version": "${oldVersion}"`, `"version": "${newVersion}"`);
+  if (updated === text) {
+    const actual = /"version": "([^"]+)"/.exec(text)?.[1] ?? "(未找到)";
+    throw new Error(`${rel}: manifest 版本 ${actual} 与 catalog ${oldVersion} 漂移；拒绝静默跳过，请先对齐版本再发版`);
+  }
+  return updated;
+};
 const bumpCodex = (text) => text.replace(/"version": "\d+\.\d+\.\d+(?:\+codex\.\d+)?"/, `"version": "${newVersion}+codex.${today}"`);
 
 for (const rel of plainManifestRels) {
   const manifest = path.join(repoDir, rel);
-  fs.writeFileSync(manifest, bumpPlain(fs.readFileSync(manifest, "utf8")));
+  fs.writeFileSync(manifest, bumpPlain(fs.readFileSync(manifest, "utf8"), rel));
 }
 const repositoryMarketplace = path.join(repoDir, ".agents/plugins/marketplace.json");
 const marketplace = JSON.parse(fs.readFileSync(repositoryMarketplace, "utf8"));
@@ -152,6 +159,19 @@ marketplacePlugin.interface.logo = logoUrl;
 fs.writeFileSync(repositoryMarketplace, `${JSON.stringify(marketplace, null, 2)}\n`);
 const codexManifest = path.join(repoDir, ".codex-plugin/plugin.json");
 fs.writeFileSync(codexManifest, bumpCodex(fs.readFileSync(codexManifest, "utf8")));
+
+// 写后回读：五文件版本必须与计划一致——写后不验等于没写（防半程假成功）
+for (const rel of plainManifestRels) {
+  const readback = JSON.parse(fs.readFileSync(path.join(repoDir, rel), "utf8")).version;
+  if (readback !== newVersion) throw new Error(`${rel}: 写后回读 ${readback} != ${newVersion}`);
+}
+const codexReadback = fs.readFileSync(codexManifest, "utf8");
+if (!codexReadback.includes(`"version": "${newVersion}+codex.${today}"`)) {
+  throw new Error(`.codex-plugin/plugin.json: 写后回读版本不符`);
+}
+if (!catalogText.includes(`"version": "${newVersion}"`)) {
+  throw new Error(`catalog.json: 写后回读版本不符`);
+}
 
 // 3) 重新生成三平台清单 + 全量校验
 const pluginFilter = `--plugin=${pluginId}`;

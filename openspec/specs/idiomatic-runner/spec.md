@@ -1,7 +1,7 @@
 # idiomatic-runner Specification
 
 ## Purpose
-TBD - created by archiving change add-run-per-language. Update Purpose after archive.
+定义按语言执行的运行器契约：per-language 子进程执行收口在 scripts/run_per_language.py，入口（run_check.py/fix.py）不再自建 subprocess 运行器，退出码统一归一化，避免同一执行语义多处漂移。
 ## Requirements
 ### Requirement: Per-language execution SHALL live in scripts/run_per_language.py
 

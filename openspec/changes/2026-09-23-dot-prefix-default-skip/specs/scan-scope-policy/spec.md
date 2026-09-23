@@ -8,7 +8,7 @@
 
 ### Requirement: Check and save faces MUST skip dot-prefixed paths by default
 
-相对项目根，任一路径段以 `.` 开头（`.`、`..` 段除外）的目录与文件为点前缀路径，默认忽略：不扫描、不检查、不报告。适用于 PostToolUse 保存面、提交门禁 delta 面、语言发现面，以及全量扫描的 ruff 与 `find` 型 gate 通道。项目根本身位于点前缀父目录下（如 `~/.config/proj/`）不构成点前缀命中。
+点前缀路径的默认忽略 MUST 作用于全部检查面。相对项目根，任一路径段以 `.` 开头（`.`、`..` 段除外）的目录与文件为点前缀路径，默认忽略：不扫描、不检查、不报告。适用于 PostToolUse 保存面、提交门禁 delta 面、语言发现面，以及全量扫描的 ruff 与 `find` 型 gate 通道。项目根本身位于点前缀父目录下（如 `~/.config/proj/`）不构成点前缀命中。
 
 #### Scenario: PostToolUse skips dot-prefixed files
 
@@ -37,7 +37,7 @@
 
 ### Requirement: Commit safety face MUST NOT be weakened by dot-prefix skipping
 
-点前缀默认忽略只作用于检查面。入库安全检查独立收集拟入库路径：密钥/凭据类文件模式（`.env`、`*.pem`、`.DS_Store` 等）无论点前缀与否照常拦截；点前缀目录（宿主插件清单与第一方配置）照常可入库。
+入库安全检查 MUST NOT 因点前缀忽略而放宽。点前缀默认忽略只作用于检查面。入库安全检查独立收集拟入库路径：密钥/凭据类文件模式（`.env`、`*.pem`、`.DS_Store` 等）无论点前缀与否照常拦截；点前缀目录（宿主插件清单与第一方配置）照常可入库。
 
 #### Scenario: Secret files remain blocked
 
@@ -51,7 +51,7 @@
 
 ### Requirement: Config discovery MUST keep matching dot-prefixed config files
 
-linter 配置发现（`requiresConfig`、`linter_config_files` 项目级匹配）不受点前缀忽略影响：点前缀配置文件照常使语言判定为已接入。
+配置发现 MUST NOT 受点前缀忽略影响。linter 配置发现（`requiresConfig`、`linter_config_files` 项目级匹配）不受点前缀忽略影响：点前缀配置文件照常使语言判定为已接入。
 
 #### Scenario: requiresConfig matches dot files
 

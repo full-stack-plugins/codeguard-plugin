@@ -1,7 +1,7 @@
 # plugin-manifest-contracts Specification
 
 ## Purpose
-TBD - created by archiving change add-manifest-bundle-dynamic. Update Purpose after archive.
+定义插件清单族的一致性契约：四端 manifest 与市场清单的版本链一致、发布物中的 skills bundle 必须等于 skills.lock 与 plugin-local 声明的并集，安装面不出现缺技能或多技能。
 ## Requirements
 ### Requirement: Released manifest skills bundle SHALL equal the lock+local union
 
