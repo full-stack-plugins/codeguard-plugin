@@ -16,6 +16,7 @@ from .fingerprint import check_identity
 from .hook_state import codeguard_home
 from .planning import scoped_plan
 from .registry import LANG_COMMANDS
+from .storage import write_private_text
 from .verdict import UNVERIFIED, lint_verdict
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -100,7 +101,7 @@ def _failure_context(file_path: str, lang: str, cmd_def: dict, stdout: str,
         try:
             key = hashlib.sha1(str(file_path).encode()).hexdigest()[:12]
             full_path = Path(tempfile.gettempdir()) / f"codeguard-post-{lang}-{key}.log"
-            full_path.write_text(raw, encoding="utf-8")
+            write_private_text(full_path, raw)
             problems += f"\n…（截断，共 {len(problem_lines)} 行；完整输出: {full_path}）"
         except OSError:
             problems += f"\n…（截断，共 {len(problem_lines)} 行）"

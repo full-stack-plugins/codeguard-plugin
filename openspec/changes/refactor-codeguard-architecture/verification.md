@@ -316,3 +316,9 @@
 - 两次复核之间仍有观察间隙；工作树覆盖层在复制后的变化、并发引用更新/回滚、跨进程文件系统对手，以及三宿主已安装运行、Windows、在线 CVE 与大型 Maven/Gradle 项目仍需独立证据。
 - 验证期间并行的点前缀默认忽略 PR #59 合并到源码 main `eb5b638db31db0535d269c0a0b8aed1c4b4bd6b2`，市场 catalog 同步为 0.15.0。本批本地提交重基到该 main 后重新执行完整单测 **583/583、0 skipped**，真实 Hook **144/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。该次源码 main CI 也成功，但截至本次只读核对 0.15.0 尚无远端 tag/Release；本批本身仍未 bump、推送或发布，不能借并行变更的 main CI 充作本批 PR/CI 证据。
 - 继续自查发现提交模式同样以 HEAD 为暂存差异基线，原先只在推送模式复核 HEAD 会漏掉“检查期间产生同树空提交”和“unborn 仓首次提交”。两项真实 Git 测试先 RED，现统一复核存在/不存在的 HEAD 身份；对象列表与 HEAD 的两次复核覆盖 commit/push，协议测试 **28/28**。最终基于 0.15.0 main 的本地完整单测 **585/585、0 skipped**，真实 Hook **144/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。仍不声称两次观察之间是原子事务，本批仍未远端发布。
+
+## 第三十一批本地验证：保存 Hook 诊断日志边界
+
+- CodeGraph 沿 `save_application._failure_context → storage.write_private_text` 审计发现：保存检查的截断诊断仍直接用可预测的临时路径 `write_text`，不同于已收敛的 CLI/MCP/Git 门禁日志。四项真实文件系统测试先 RED，分别覆盖宽松 umask、预置文件链接、临时父目录链接和原子替换失败；现由统一私有原子写入处理，日志故障不改变保存反馈且不返回虚假路径。另以 `evaluate_save` 的应用层用例锁定错误反馈及私有日志路径。
+- 在 0.15.0 main 上本地完整单测 **590/590、0 skipped**，真实 Hook **144/0/0**；Ruff、架构依赖门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。临时索引已同步到 143 文件、2,334 节点、5,263 边；CodeGraph 的受影响测试列表为空，不能替代实际回归。上述只证明本地契约，不证明三宿主现场、Windows、联网 CVE、大型 Java 工程或恶意并发文件系统。
+- 并行的 0.15.0 源码 main `eb5b638` CI 已成功；缺失的 `v0.15.0` 注释 tag 与正式 Release 已补齐，均指向该 main 提交。第三十、三十一批自身仍须另行升级版本、PR/CI、市场同步和发布，不借 0.15.0 的证据声称交付。
