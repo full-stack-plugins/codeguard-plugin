@@ -70,7 +70,7 @@ Coverage is module-level, not a symbol call graph or business-semantic proof. A 
 
 ## Git content integrity
 
-A plain commit checks the index, not an unstaged repair. Supported preceding git add operations overlay predicted worktree paths; pure push checks HEAD and upstream differences. Without a resolvable upstream, the HEAD tree is checked. Sensitive-file rules use the same proposed scope; removing a sensitive file is not treated as introducing it.
+A plain commit checks the index, not an unstaged repair. Supported preceding git add operations overlay predicted worktree paths; in a direct command chain without shell substitution, an add after the final commit is not projected backward into that commit or a following push. Pure push checks HEAD and upstream differences. Without a resolvable upstream, the HEAD tree is checked. Sensitive-file rules use the same proposed scope; removing a sensitive file is not treated as introducing it.
 
 Checks materialize temporary Git blobs without stash, checkout or modifying the real index. The exact-content gate does not reuse the soft working-tree cache. Missing ignored dependencies remain UNVERIFIED rather than silently falling back to different source content.
 

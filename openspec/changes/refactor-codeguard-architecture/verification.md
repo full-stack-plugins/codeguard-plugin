@@ -243,3 +243,14 @@
 - 三项故障注入先 RED：一种语言抛内部异常、另一语言真实执行违规命令时整批抛错；安全路径读取失败时，无论是否已有 lint 失败，应用均抛错；Hook 无法交付结构化未知上下文。现 `gate` 在单语言任务边界返回不可变 `GateOutcome` 的 UNVERIFIED 备注，不泄漏异常原文，继续保留其它语言的失败和原仓审计；`git_guard_application` 将预期的安全路径快照故障转为 JSON additionalContext，已有拦截仍 exit 2，未有已知失败则保持现行 fail-open exit 0。三项目标测试转绿，真实 Hook 协议入口的 JSON 也实测。
 - 沿 `mcp_tool_payload → auto_fix → run_fix` 审查发现，修复结果的公开投影原本只收敛 `execution_trace`，却把同一结果字典的原始 `command` 与 `stderr_tail` 复制进 MCP JSON。凭据注入测试先 RED；现按允许字段投影修复状态，将 formatter 诊断尾部写入私有 `out/.codeguard-fix.log`，仅在成功落盘后返回路径。真实失败 formatter 的进程输出、POSIX 0600 权限及输出目录链接不可用时不退回公开原文均已测试。CLI 的原始本地诊断未改变。
 - 本地完整单测 **517/517、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。临时 CodeGraph 索引已同步本批 3 个变更源码文件，当前 138 files / 2138 nodes / 4816 edges；源仓未初始化索引。受管技能及 lock 未改；当前发布的 v0.14.8 不含本批代码。三个宿主的已安装运行、Windows、在线 CVE、真实大型 Maven/Gradle 与进程池基础设施级故障仍未验收。
+
+- 第二十三批随后发布为 v0.14.9：源码 PR #55 合并到 `a7cff4e8548b2f496f4572c8a9b951a404b6a0d8`，市场 PR #13 合并到 `46a2fc6571d44163f71d626c672930351c052010`；源码 PR 与合并后 main 的 `skills-check` 均成功。远端注释 tag 解引用到源码合并提交，正式 GitHub Release 非 draft、非 prerelease。Codex/ZCode/Kimi 生成市场清单全量校验通过且版本均为 0.14.9；市场 PR 无 CI 检查，不称其 CI 已通过。两仓本地 main 已快进且干净。此发布不覆盖以下第二十四批工作树。
+
+## 第二十四批实际验证：按 Git 操作时间投影拟暂存面
+
+- 最新源码同步临时 CodeGraph 索引后，沿 `evaluate_git_command → staging_intent → proposed_paths/validation_tree` 追出整条命令链暂存并集的时间归属缺口：安全文件已暂存，`git commit -m safe && git add .env` 或后接 push 会把后置 `.env` 倒算进此前提交并错误拦截。真实 PreToolUse Hook 的两个场景先 RED，index 字节保持不变；`commit && add .env && commit` 的阻断对照仍为 RED 测试中的通过项。
+- `git_staging` 先记录绑定目标仓的不可变 add/commit 事件，再在无间接脚本的硬门禁中投影到该仓最后一次 commit；旧独立 `staging_intent` 默认完整暂存面不变。一层间接脚本缺跨层事件时钟，继续保守并集，不能用本次局部排序削弱可能提交的敏感内容。三个真实 Hook 场景转绿；含 `git add -p` 的后置交互暂存不回溯污染此前提交。
+- 首轮全量发现 workspace 子仓兜底回归：合成子仓目标的暂存观察仍以非 Git workspace cwd 解析，原有脏子仓拦截变成 exit 0。保留原回归用例为 RED 证据，改为兜底时绑定已选子仓根；原测试与目标测试转绿。另增 A 仓先 commit 后 add、B 仓随后 commit 的真实 Hook 用例，证明截止点按仓计算且两个 index 字节均未改变。
+- 继续沿 CodeGraph 的 `_flatten_substitutions → resolve_git_operations/staging_intent` 审查时发现安全反例：`$(git add .env)` 与反引号在外层 commit 前执行，但静态展开把内层文本附到末尾。真实 Hook 测试先 RED（敏感文件被错误放行）；现含命令替换的链保守并集，不启用文本顺序截止。两种带有效提交消息的形式均转绿，原始 index 不改写。单引号中的字面替换可能保守误拦，这一历史解析边界未宣称解决。
+- 本地完整单测 **521/521、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过。受管技能及 lock 未改；已发布的 v0.14.9 不含本批工作树。当前只证明无脚本/命令替换的直接静态链顺序归属，跨一层脚本与命令替换仍保守合并；Windows、三宿主已安装运行、在线 CVE、大型 Maven/Gradle 与完整 Shell 控制流仍未验收。
+- 宿主只读复核：本机 ZCode `installed_plugins.json` 的 `codeguard@full-stack-plugins` 仍登记 `0.14.7`，不能拿 v0.14.9 的 Release 或市场 ref 当作该宿主的当前加载/触发证据。未修改任何宿主安装。

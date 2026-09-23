@@ -242,9 +242,16 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 显式 `cd` 或 `git -C` 已给出目标时，若该目标不是可解析的 Git 工作树，MUST 阻断
 该 Git 副作用命令并报告目标不可确定；不得回退调用者仓或扫调用者一层子仓。
 只有命令未给出显式目标且调用目录不是 Git 仓时，才保留既有 workspace 子仓兜底策略。
+兜底为每个子仓构造的合成目标 MUST 同时用于暂存观察；不能仍以非 Git workspace 目录
+解析 commit，导致脏子仓的已确认违规降级为无阻断的未知结果。
 一条命令链触及多个仓库时，commit/push 门禁面和是否存在待提交操作 MUST 按仓库分别
 归属；A 仓的 commit 不得使 B 仓的纯 push 检查包含 B 仓尚未提交的 index。若同一仓
 同时 commit 和 push，则继续检查该仓已有待推送内容及拟提交内容，不得缩窄既有检查面。
+对于没有间接脚本或命令替换的静态命令链，拟暂存面 MUST 按同仓 Git 操作的先后顺序投影：最后一个
+commit 之后才出现的 add 不得回溯到已完成的 commit 或随后的 push；最后一个 commit 之前的
+add（包括多个 commit 之间的 add）仍须检查。无法可靠排序的一层间接脚本继续采用保守并集
+或明确 UNVERIFIED；`$(...)` 和反引号会先执行内层、再执行外层，现有静态展开无执行时钟，
+也 MUST 保守合并。不得通过此优化遗漏可能提交的敏感内容。
 仓库级 `codeguard.skipGate` 只豁免设置它的仓库，不得因 A 仓豁免而跳过同链 B 仓。
 内联 `git -c codeguard.skipGate` 只豁免对应 Git 操作；链式 `git config` 设置/取消
 须按命令顺序归属到目标仓，不得把 A 仓的豁免传播到 B 仓或此前操作。写入
@@ -329,6 +336,26 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 #### Scenario: Exclusion and literal pathspecs remain exact
 - **WHEN** git add 指定包含与排除 pathspec，或字面文件名包含星号
 - **THEN** 快照只覆盖 Git 实际匹配的文件，排除项及同名 glob 邻居不会被额外暂存
+
+#### Scenario: Add after the final commit is not retroactive
+- **WHEN** 同仓静态命令链先提交已暂存的安全文件，再 `git add .env`，可选地随后执行 push，但没有第二次 commit
+- **THEN** 门禁仍检查已提交内容和待推送 HEAD，不把之后才 add 的 `.env` 算进先前提交；真实 index 不被观察过程改写
+
+#### Scenario: Add between commits remains guarded
+- **WHEN** 同仓静态命令链先提交安全文件，再 `git add .env` 并进行第二次 commit
+- **THEN** 门禁将 `.env` 纳入第二次拟提交内容并阻断整条工具调用
+
+#### Scenario: Another repository's later commit does not extend the cutoff
+- **WHEN** A 仓先 commit 后 add 敏感文件，命令链随后在 B 仓 commit
+- **THEN** A 仓后置 add 不因 B 仓较晚的 commit 被倒算入 A 的提交；两仓的预测 index 均不被改写
+
+#### Scenario: Command substitution stages before its outer commit
+- **WHEN** 外层 `git commit -m "safe $(git add .env)"` 或反引号等价形式触发内层暂存
+- **THEN** 不按展开文本顺序将内层 add 裁成“提交后操作”；门禁仍将 `.env` 纳入拟提交面并阻断，index 不被观察过程改写
+
+#### Scenario: Fallback uses its selected child repository
+- **WHEN** 调用目录为非 Git workspace，兜底发现一个暂存违规的子仓及一个无提交面的子仓
+- **THEN** 暂存观察绑定前者的合成仓根，继续阻断其真实违规，且不连坐后者
 
 ### Requirement: Dockerfile checks SHALL preserve scope and incomplete evidence
 

@@ -131,6 +131,82 @@ class GitStagingTests(unittest.TestCase):
         self.assertIn("private/a.pem", result.stderr)
         self.assertEqual(before, (self.root / ".git/index").read_bytes())
 
+    def test_real_hook_does_not_project_add_after_final_commit_backwards(self):
+        self.put("base.txt", "safe update")
+        self.git("add", "base.txt")
+        self.put(".env", "SECRET=fixture-only")
+        before = (self.root / ".git/index").read_bytes()
+        for command in (
+            "git commit -m safe && git add .env",
+            "git commit -m safe && git add .env && git push origin main",
+            "git commit -m safe && git add -p",
+        ):
+            with self.subTest(command=command):
+                payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+                result = subprocess.run([sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                                        input=json.dumps(payload), cwd=self.root, capture_output=True,
+                                        text=True, check=False, timeout=15,
+                                        env={**os.environ, "CODEGUARD_HOME": str(self.root.parent / "state")})
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertNotIn(".env", result.stderr)
+                self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_real_hook_still_blocks_add_between_two_commits(self):
+        self.put("base.txt", "safe update")
+        self.git("add", "base.txt")
+        self.put(".env", "SECRET=fixture-only")
+        before = (self.root / ".git/index").read_bytes()
+        payload = {"tool_name": "Bash", "tool_input": {"command":
+                   "git commit -m safe && git add .env && git commit -m sensitive"}}
+        result = subprocess.run([sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                                input=json.dumps(payload), cwd=self.root, capture_output=True,
+                                text=True, check=False, timeout=15,
+                                env={**os.environ, "CODEGUARD_HOME": str(self.root.parent / "state")})
+        self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+        self.assertIn(".env", result.stderr)
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_command_substitution_add_runs_before_outer_commit(self):
+        self.put("base.txt", "safe update")
+        self.git("add", "base.txt")
+        self.put(".env", "SECRET=fixture-only")
+        before = (self.root / ".git/index").read_bytes()
+        for command in ('git commit -m "safe $(git add .env)"',
+                        'git commit -m "safe `git add .env`"'):
+            with self.subTest(command=command):
+                payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+                result = subprocess.run([sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                                        input=json.dumps(payload), cwd=self.root, capture_output=True,
+                                        text=True, check=False, timeout=15,
+                                        env={**os.environ, "CODEGUARD_HOME": str(self.root.parent / "state")})
+                self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+                self.assertIn(".env", result.stderr)
+                self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_direct_chain_cutoff_is_per_repository(self):
+        other = self.root.parent / "other"
+        other.mkdir()
+        subprocess.run(["git", "init", "-q", str(other)], check=True, capture_output=True)
+        (other / "safe.txt").write_text("safe", encoding="utf-8")
+        subprocess.run(["git", "-C", str(other), "add", "safe.txt"],
+                       check=True, capture_output=True)
+        self.put("base.txt", "safe update")
+        self.git("add", "base.txt")
+        self.put(".env", "SECRET=fixture-only")
+        before = (self.root / ".git/index").read_bytes()
+        other_before = (other / ".git/index").read_bytes()
+        command = (f"git -C {self.root} commit -m safe && git -C {self.root} add .env && "
+                   f"git -C {other} commit -m other")
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+        result = subprocess.run([sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                                input=json.dumps(payload), cwd=self.root, capture_output=True,
+                                text=True, check=False, timeout=15,
+                                env={**os.environ, "CODEGUARD_HOME": str(self.root.parent / "state")})
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn(".env", result.stderr)
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+        self.assertEqual(other_before, (other / ".git/index").read_bytes())
+
     def test_hook_normalizes_subdirectory_to_worktree_root(self):
         self.put("space dir/a.pem", "fixture-only")
         commands = [(f"git -C {shlex.quote(str(self.root / 'space dir'))} add '*.pem' && "

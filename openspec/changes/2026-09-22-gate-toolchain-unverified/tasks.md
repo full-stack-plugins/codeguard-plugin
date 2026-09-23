@@ -47,6 +47,6 @@
 
 ## 7. 让位项（pre_tool_git_guard.py 并行修改活跃期，避免竞争写入）
 
-- [ ] 7.1 `match_pathspec`：git status pathspec 引擎解析 add 目标（glob/目录/等价语法）接进 staging_intent（测试已备标 skip；当前手工 resolve 对 glob/目录按字面子处理 → 提交面算窄）
-- [ ] 7.2 内联/链式豁免放行的用户即时明示（hookSpecificOutput 提醒，测试已备标 skip）
+- [x] 7.1 已由架构重构接管：`git_staging.resolve_pathspecs` 成组调用只读 Git pathspec 查询，目录/glob/literal/exclude/`-u`/`-f` 与真实 Hook 敏感文件回归均已恢复为常规测试；无需另建第二份 `match_pathspec` 实现。
+- [x] 7.2 已由架构重构接管：内联与链式豁免按目标仓审计并在 Hook additionalContext 明示，`test_inline_skip_emits_user_visible_notice` 与多仓豁免测试为常规回归。
 - [ ] 7.3 双副本判定一致性核对（partme-ai 0.3.4 悬挂 hook 已用 fail-open 占位止血——宿主仍执行已删除的 hook 致全部 Bash 报错；根治=宿主禁用 codeguard@partme-ai 旧副本）

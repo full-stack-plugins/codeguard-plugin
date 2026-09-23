@@ -32,7 +32,8 @@ CORE_DEPENDENCIES = {
     # scope 是已有文件物化适配器：注入配置/排除目录，尚未迁入内核包。
     "codeguard.planning": {"__future__", "collections", "pathlib", "scope", "codeguard.models"},
     "codeguard.git_syntax": {"__future__", "pathlib", "re", "shlex"},
-    "codeguard.git_staging": {"__future__", "os", "shlex", "pathlib", "git_snapshot", "codeguard.git_syntax"},
+    "codeguard.git_staging": {"__future__", "dataclasses", "os", "shlex", "pathlib",
+                              "git_snapshot", "codeguard.git_syntax"},
     "codeguard.git_context": {"__future__", "dataclasses", "pathlib", "re", "shlex", "scope",
                              "codeguard.execution", "codeguard.git_syntax", "codeguard.git_staging"},
     "codeguard.path_policy": {"__future__", "fnmatch", "pathlib"},
