@@ -2,9 +2,7 @@
 
 ## Purpose
 定义语言注册表中每个条目所声明命令的可执行性要求：`lint` / `format` / `probe` 必须能以声明的方式真正运行，需要路径或文件参数时必须以显式占位符或 glob 表达；并定义语言声明配置前置条件的能力，使「项目未接入」与「检查失败」不再混为一谈。
-
 ## Requirements
-
 ### Requirement: Declared commands must be runnable as written
 
 注册表声明的 `lint` / `format` / `probe` 命令 SHALL 能按声明形式直接执行；需要文件或路径参数的 SHALL 以 `{file}` 占位符或显式 glob 表达，不得依赖调用方补全。
@@ -139,3 +137,28 @@ PostToolUse MUST 将文件型命令限制到编辑文件；项目级命令 MUST 
 #### Scenario: Changed API breaks an unchanged caller
 - **WHEN** 新修改接口导致未修改调用方报告错误
 - **THEN** 保留失败结论，不自动标记存量债务
+
+### Requirement: Default build-check level SHALL exclude test execution
+
+java 门禁的默认检查命令 MUST 跳过测试**执行**（Maven 追加 `-DskipTests`、
+Gradle 追加 `-x test`）——测试代码仍参与编译，编译错误照常拦截。门禁职责
+是提交面的编译/打包/静态正确性；测试执行由 CI 或项目显式声明承担。项目
+MUST 能通过 `codeguard.json` 的 `java.commands` 权威覆盖声明含测试执行的
+完整 verify。
+
+#### Scenario: Maven default skips test execution
+- **WHEN** 项目有 pom.xml 且无 `codeguard.json` `java.commands`
+- **THEN** 生成的命令含 `-DskipTests` 且目标为 `verify`（测试编译仍执行）
+
+#### Scenario: Gradle default excludes the test task
+- **WHEN** 项目有 Gradle 构建描述且无 `codeguard.json` `java.commands`
+- **THEN** 生成的命令含 `-x test`
+
+#### Scenario: Project can opt into full verification
+- **WHEN** `codeguard.json` 声明 `java.commands: [["./mvnw", "-B", "verify"]]`
+- **THEN** 门禁按声明执行完整 verify（含测试执行），默认等级不再适用
+
+#### Scenario: Test code still must compile
+- **WHEN** 本次改动使测试源码编译失败
+- **THEN** 默认等级的 `verify` 生命周期编译测试代码，门禁照常 FAIL
+
