@@ -58,7 +58,7 @@ CORE_DEPENDENCIES = {
                                   "codeguard.registry", "codeguard.storage", "codeguard.verdict",
                                   "codeguard.java_analysis"},
     "codeguard.check_application": {"__future__", "pathlib", "scope", "codeguard.config",
-                                    "codeguard.discovery", "codeguard.java_analysis",
+                                    "codeguard.discovery", "codeguard.fingerprint", "codeguard.java_analysis",
                                     "codeguard.language_check", "codeguard.registry", "codeguard.storage"},
     "codeguard.session_application": {"__future__", "collections.abc", "dataclasses", "pathlib",
                                       "codeguard.execution",

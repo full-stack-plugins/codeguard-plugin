@@ -92,6 +92,18 @@ CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原�
 - **WHEN** 计划没有任何可执行命令
 - **THEN** 规划调用方返回 SKIPPED、PLANNED 或 UNVERIFIED；执行器拒绝将空计划解释为成功
 
+### Requirement: MCP auto-fix SHALL observe changed files within a bounded safe scope
+
+MCP `auto_fix` 在运行 formatter 之前 MUST 验证所有拟修复路径仍位于项目根内、不是符号链接或特殊文件，并以有总量预算的流式内容身份记录修复前状态，不得整份载入任意大小文件。路径逃逸、读取故障、并发替换或超预算 MUST 明确 UNVERIFIED 且不启动修复。修复后身份无法可靠采集时 MUST 保留实际修复与复检证据，但不得声称已确认 `fixed`。已确认的内容或权限变化仍按既有 `fixed` 字段呈现。
+
+#### Scenario: Changed path escapes through a parent symlink
+- **WHEN** Git 改动路径经父目录符号链接指向仓外普通文件
+- **THEN** `auto_fix` 不读取仓外内容、不运行 formatter，返回明确 UNVERIFIED
+
+#### Scenario: Changed file exceeds the observation budget or changes during reading
+- **WHEN** 改动文件超出身份预算、读取失败或被并发替换
+- **THEN** 修复前故障不启动 formatter；修复后故障保留已执行结果但不宣称 `fixed`
+
 ### Requirement: Hook state SHALL preserve concurrent and session ownership
 
 统计、绕过明细、冷却与审计的读改写 MUST 在进程锁内完成并原子替换文件。宿主提供 session_id 时，统计 MUST 绑定会话与当前 worktree；Stop MUST 只消费该作用域的记录，并与并发写入互斥。无 session_id 时保留旧共享状态兼容，MUST 明示不能证明跨会话隔离。去重 MUST NOT 把未完成或 UNVERIFIED 的检查当成已完成检查。

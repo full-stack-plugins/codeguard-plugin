@@ -7,6 +7,7 @@ from scope import changed_files
 
 from .config import ConfigurationError, get_overrides, load_user_config
 from .discovery import detect_languages, find_project_root
+from .fingerprint import MAX_BYTES, MAX_FILES, file_content
 from .java_analysis import analyze
 from .language_check import run_check, run_fix
 from .registry import REGISTRY
@@ -93,19 +94,57 @@ def _public_fix_results(root: Path, results: list[dict]) -> list[dict]:
     return public
 
 
+def _repair_identity(root: Path, files: list[str]) -> dict[Path, str]:
+    """对拟修复文件采集有预算的内容身份，不读取仓外路径或整份大文件。"""
+    root = root.resolve()
+    if len(files) > MAX_FILES:
+        raise ValueError("改动文件数超过身份预算")
+    identities = {}
+    remaining = MAX_BYTES
+    for name in files:
+        if not isinstance(name, str):
+            raise TypeError("改动路径不是字符串")
+        path = root / name
+        try:
+            resolved = path.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("改动路径无法解析") from exc
+        if not resolved.is_relative_to(root) or path.is_symlink():
+            raise ValueError("改动路径越界或包含符号链接")
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            # Git 已删除的文件不需要修复；读取期间消失的文件仍由 file_content 拒绝。
+            continue
+        identity, used = file_content(path, remaining)
+        identities[path] = identity
+        remaining -= used
+    return identities
+
+
 def auto_fix(root: Path, languages: list[str]) -> dict:
     """仅修复当前 Git 改动；无法确定范围时不扩大写入面。"""
     files = changed_files(root)
     if files is None:
         return {"fixed": False, "status": "UNVERIFIED", "reason": "无法确定 Git 改动范围；请显式使用 CLI fix --all",
                 "check": []}
-    targets = [root / file for file in files if (root / file).is_file() and not (root / file).is_symlink()]
-    before = {path: path.read_bytes() for path in targets}
+    try:
+        before = _repair_identity(root, files)
+    except (OSError, TypeError, ValueError):
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "改动文件路径或内容身份不可验证（链接、读取故障或超预算）；未执行自动修复",
+                "check": []}
     fix_results = run_fix(languages, root, files=files)
     results = run_check(languages, root, files=files, log_dir=root / "out")
-    changed = any(not path.is_file() or path.read_bytes() != body for path, body in before.items())
     public_fixes = _public_fix_results(root, fix_results)
-    return {"fixed": changed, "fix_results": public_fixes, "check": result_envelope(results)}
+    checks = result_envelope(results)
+    try:
+        after = _repair_identity(root, files)
+    except (OSError, TypeError, ValueError):
+        return {"fixed": False, "status": "UNVERIFIED",
+                "reason": "修复后的文件身份不可验证，不能确认内容变化",
+                "fix_results": public_fixes, "check": checks}
+    return {"fixed": before != after, "fix_results": public_fixes, "check": checks}
 
 
 def mcp_tool_payload(name: str, arguments: dict | None, project_root: Path):
