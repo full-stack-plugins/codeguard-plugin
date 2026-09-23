@@ -20,7 +20,7 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 
-from codeguard.path_policy import check_paths  # noqa: E402
+from codeguard.path_policy import check_paths
 
 
 def flagged(paths: list[str]) -> set[str]:

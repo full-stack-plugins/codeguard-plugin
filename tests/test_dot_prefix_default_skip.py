@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -20,10 +21,10 @@ PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 sys.path.insert(0, str(PLUGIN / "hooks"))
 
-import scope  # noqa: E402
-from codeguard.discovery import detect_languages, project_uses_linter  # noqa: E402
-from codeguard.path_policy import check_paths, is_dot_prefixed  # noqa: E402
-from codeguard.save_application import should_skip  # noqa: E402
+import scope
+from codeguard.discovery import detect_languages, project_uses_linter
+from codeguard.path_policy import check_paths, is_dot_prefixed
+from codeguard.save_application import should_skip
 
 REGISTRY = json.loads((PLUGIN / "scripts" / "languages.json").read_text(encoding="utf-8"))
 SHELL_GATE = next(l for l in REGISTRY["languages"] if l["id"] == "shell")["gate"]
@@ -99,7 +100,7 @@ class CheckFaceTests(unittest.TestCase):
 
     def test_full_scan_ruff_gains_dot_excludes(self) -> None:
         out = scope.scope_cmd(["ruff", "check", "."], ".", full_excludes=True)
-        pairs = list(zip(out, out[1:]))
+        pairs = list(itertools.pairwise(out))
         self.assertIn(("--exclude", ".*"), pairs)
         self.assertIn(("--exclude", "**/.*"), pairs)
 
