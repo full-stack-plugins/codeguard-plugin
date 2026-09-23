@@ -75,6 +75,7 @@ A plain commit checks the index, not an unstaged repair. Supported preceding git
 Checks materialize temporary Git blobs without stash, checkout or modifying the real index. The exact-content gate does not reuse the soft working-tree cache. Missing ignored dependencies remain UNVERIFIED rather than silently falling back to different source content.
 
 Limits: 20,000 tracked files / 256 MiB Git content / 32 MiB per overlay file. Symlinks, submodules, conflicts and unsupported content need separate validation. Complex shell rewrites, arbitrary Git refspecs, dynamic aliases and concurrent edits are not a fully modeled transaction. A hook is not a replacement for protected-branch CI.
+One statically readable layer of bash/sh/zsh `-c` or script execution is included in repository and staging analysis; unmodelled indirect Git operations are blocked as UNVERIFIED. Dynamic scripts and subprocess calls assembled by Python/Node remain outside this static model.
 
 There is no “historical debt” exemption based only on an unchanged diagnostic filename; a modified API can break an unchanged caller.
 

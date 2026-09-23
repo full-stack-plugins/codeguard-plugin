@@ -195,3 +195,11 @@
 - 追加 RED：`git config --file=其它文件` 错被当成本仓豁免；`git config ... || git commit` 错把仅在设置失败时才会执行的提交放行。现在前者不构成豁免，后者及 `;`/换行连接的配置状态报告 UNVERIFIED 并要求拆分命令。未把完整 Shell 求值器伪装成已实现。
 - 完整单测 **479/479、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过；受管技能及 lock 未改。测试覆盖真实 Git/快照与应用层故障，但静态 Shell 解析仍非完整求值器，三宿主现场、Windows、在线漏洞库和全部语言工具链仍未独立验收。本批发布闭环待执行。
 - 后续 RED 发现：`echo "docs; git config codeguard.skipGate true" && git commit` 会把引号内分号当真实分隔符，错误放行含 `.env` 的提交。语法/仓库/间接脚本/拟暂存改用同一个引号及转义感知切分函数；真实 Git 提交安全用例与纯语法用例转绿。复核后完整单测 **481/481、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。本批发布证据仍待补齐。
+- 第十八批随后发布为 v0.14.4：插件 PR #50、市场 PR #7 已合并双仓 `main`；插件合并后 `skills-check` 成功，注释 tag 解引用到 `be619cd4b769495280c7d0d7405f9b01a8ca4dc9`，GitHub Release 正式发布；市场 Codex/ZCode/Kimi 清单及双语导航均为 0.14.4。此证据仅覆盖第十八批及此前代码，不覆盖以下新工作树。
+
+## 第十九批实际验证：一层 Shell 间接 Git 操作归属
+
+- 将最新 v0.14.4 `main` 同步至已有临时 CodeGraph 索引（136 文件；源码仓不建索引），沿 `PreToolUse → evaluate_git_command → _guarded_mode/resolve_git_operations → staging_intent` 追出检测与归属分叉。真实临时 Git 仓先 RED：`bash -c 'git commit'` 在调用仓报“无仓”；内层 `git add .env` 不进拟暂存面；外层已有 commit 时忽略后续 Shell 脚本对另一仓的 commit；`cd` 后相对脚本找不到。上述都可能让宿主得到错误仓库或错误范围的结论。
+- 一层 bash/sh/zsh `-c`（含 `-lc`）或可读脚本现在按解释器实际参数位置、调用目录解析；内层 Git 操作携带来源正文与 cwd，和外层操作按仓聚合。拟暂存分析合并外层与内层来源，真实 Hook 子进程证明未实际执行 `git add` 就拦截 `.env` 且 index 字节不变。纯 push 不纳入未提交 index；外层 skipGate 设置只传递给所属仓的内层操作。
+- 不能可靠建模的 Python/Node 间接命中、脚本内 skipGate 配置变化、交互暂存与后续提交跨解释器边界时，明确返回 Git 意图 UNVERIFIED 并阻断；仅在纯 push 之后的独立暂存不误扩该 push 面。脚本的普通 `-c` 参数不再被误认成解释器代码。动态脚本与任意 subprocess 构造仍是未覆盖边界。
+- RED→GREEN 的目标用例及最终完整单测 **495/495、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。受管技能及 lock 未改；这些是本地契约证据，不是三宿主安装、在线漏洞库、Windows 或第十九批发布证据。本批已准备 v0.14.5 元数据；远端发布须另行核对 PR、CI、tag、Release 与市场主线。

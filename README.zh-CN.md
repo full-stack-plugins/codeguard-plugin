@@ -75,6 +75,7 @@ Maven 使用 verify 并追加 -DskipTests（测试代码仍编译，仅跳过执
 检查在临时目录物化 Git blobs，不 stash、不 checkout、不更改真实 index。精确内容门禁不复用软提醒的工作树缓存。快照缺 ignored 依赖时保持 UNVERIFIED，不改查另一份源码。
 
 限制：20,000 个已跟踪文件 / 256 MiB Git 内容 / 每个覆盖文件 32 MiB。符号链接、子模块、冲突及不支持的内容需要独立验证。复杂 shell 写入、任意 Git refspec、动态别名与并发编辑尚未完整建模；钩子不能替代受保护分支 CI。
+仓库归属与拟暂存分析覆盖一层静态可读的 bash/sh/zsh `-c` 或脚本执行；无法建模的间接 Git 操作会以 UNVERIFIED 阻断。动态脚本以及 Python/Node 中拼接的 subprocess 调用仍不在此静态模型内。
 
 不再仅凭“报错文件没修改”豁免历史债：变更 API 也会破坏未修改的调用方。
 

@@ -37,6 +37,227 @@ class GitGuardApplicationTests(unittest.TestCase):
         self.assertFalse(chain_skip_gate(r'echo docs\; git config codeguard.skipGate true && git commit'))
         self.assertTrue(chain_skip_gate('git config codeguard.skipGate true && git commit'))
 
+    def test_bash_c_commit_uses_invocation_repository(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-repo-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "bash -c 'git commit -m x'", cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_bash_lc_commit_is_not_an_unguarded_wrapper(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-login-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "bash -lc 'git commit -m x'", cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+
+    def test_script_argument_named_dash_c_is_not_interpreter_code(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-script-argv-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / "harmless.sh").write_text("echo hello\n", encoding="utf-8")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "bash harmless.sh -c 'git commit -m x'", cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code)
+            gate.assert_not_called()
+
+    def test_indirect_pure_push_does_not_inspect_uncommitted_index(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-push-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "bash -c 'git push origin main'", cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code, result.stderr)
+            gate.assert_called_once()
+            self.assertEqual("push", gate.call_args.kwargs["mode"])
+            self.assertFalse(gate.call_args.kwargs["pending_commit"])
+
+    def test_bash_c_add_predicts_sensitive_file_without_staging_it(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-add-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            before = (repo / ".git/index").read_bytes()
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])):
+                result = git_guard_application.evaluate_git_command(
+                    "bash -c 'git add .env && git commit -m x'", cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            self.assertEqual(before, (repo / ".git/index").read_bytes())
+
+    def test_shell_script_after_cd_binds_its_repository(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-cd-") as tmp:
+            base = Path(tmp).resolve()
+            caller = self._initialized_repo(base, "caller")
+            target = self._initialized_repo(base, "target")
+            (target / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(target), "add", ".env"],
+                           check=True, capture_output=True)
+            (target / "release.sh").write_text("git commit -m x\n", encoding="utf-8")
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    f"cd {target} && bash release.sh", cwd=caller, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            gate.assert_called_once()
+            self.assertEqual(target, gate.call_args.args[0])
+
+    def test_outer_commit_does_not_hide_inner_shell_commit(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-mixed-") as tmp:
+            base = Path(tmp).resolve()
+            caller = self._initialized_repo(base, "caller")
+            target = self._initialized_repo(base, "target")
+            (caller / "README.md").write_text("next\n", encoding="utf-8")
+            (target / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            for repo, name in ((caller, "README.md"), (target, ".env")):
+                subprocess.run(["git", "-C", str(repo), "add", name],
+                               check=True, capture_output=True)
+            command = (f"git -C {caller} commit -m x && "
+                       f"bash -c 'cd {target} && git commit -m x'")
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=caller, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            self.assertEqual([caller, target], [call.args[0] for call in gate.call_args_list])
+
+    def test_parent_chain_bypass_covers_only_its_inner_repository(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-bypass-") as tmp:
+            base = Path(tmp).resolve()
+            first = self._initialized_repo(base, "first")
+            second = self._initialized_repo(base, "second")
+            for repo in (first, second):
+                (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+                subprocess.run(["git", "-C", str(repo), "add", ".env"],
+                               check=True, capture_output=True)
+            command = (f"git -C {first} config codeguard.skipGate true && "
+                       f"bash -c 'git -C {first} commit -m x' && "
+                       f"git -C {second} commit -m x")
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    command, cwd=base, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn(".env", result.stderr)
+            gate.assert_called_once()
+            self.assertEqual(second, gate.call_args.args[0])
+
+    def test_non_shell_indirect_git_text_is_explicitly_unverified(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-unknown-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / "opaque.py").write_text("git commit -m x\n", encoding="utf-8")
+            with patch.object(git_guard_application, "run_gate") as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "python3 opaque.py", cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn("Git 意图 UNVERIFIED", result.stderr)
+            gate.assert_not_called()
+
+    def test_indirect_skip_gate_mutation_cannot_borrow_persisted_bypass(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-config-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            subprocess.run(["git", "-C", str(repo), "config", "codeguard.skipGate", "true"],
+                           check=True, capture_output=True)
+            with patch.object(git_guard_application, "run_gate") as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "bash -c 'git config codeguard.skipGate false' && git commit -m x",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn("Git 意图 UNVERIFIED", result.stderr)
+            gate.assert_not_called()
+
+    def test_unmodelled_inner_staging_blocks_instead_of_reporting_soft_context(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-staging-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / "README.md").write_text("changed\n", encoding="utf-8")
+            with patch.object(git_guard_application, "run_gate") as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "bash -c 'git add -p && git commit -m x'", cwd=repo, load_config=dict)
+            self.assertEqual(2, result.exit_code)
+            self.assertIn("Git 意图 UNVERIFIED", result.stderr)
+            gate.assert_not_called()
+
+    def test_shell_add_then_outer_commit_cannot_lose_staging_intent(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-shell-add-outer-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            for command in ("bash -c 'git add .env' && git commit -m x",
+                            "bash -c 'git add .env' && bash -c 'git commit -m x'"):
+                with self.subTest(command=command), \
+                        patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                    result = git_guard_application.evaluate_git_command(
+                        command, cwd=repo, load_config=dict)
+                    self.assertEqual(2, result.exit_code)
+                    self.assertIn("Git 意图 UNVERIFIED", result.stderr)
+                    gate.assert_not_called()
+
+    def test_shell_add_after_pure_push_is_not_a_commit_bypass(self):
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-shell-add-after-push-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            with patch.object(git_guard_application, "run_gate", return_value=([], [])) as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "git push origin main && bash -c 'git add .env'",
+                    cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code, result.stderr)
+            gate.assert_called_once()
+
+    def test_real_hook_blocks_sensitive_add_inside_shell_wrapper(self):
+        with tempfile.TemporaryDirectory(prefix="cg-hook-indirect-") as tmp:
+            base = Path(tmp).resolve()
+            repo = self._initialized_repo(base, "repo")
+            (repo / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            before = (repo / ".git/index").read_bytes()
+            payload = {"tool_name": "Bash", "tool_use_id": "indirect-sensitive",
+                       "tool_input": {"command": "bash -c 'git add .env && git commit -m x'"}}
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "hooks/pre_tool_git_guard.py")],
+                input=json.dumps(payload), cwd=repo, capture_output=True, text=True,
+                env={**os.environ, "CODEGUARD_HOME": str(base / "state")}, timeout=15, check=False)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            self.assertIn(".env", result.stderr)
+            self.assertEqual(before, (repo / ".git/index").read_bytes())
+
     @staticmethod
     def _initialized_repo(base: Path, name: str) -> Path:
         repo = base / name
