@@ -4,10 +4,11 @@
 
 ## v0.15.x — Git 归因收敛与诊断安全
 
-- **v0.15.4** 测试卫生与可见性（0.15.3 为未发布的中间 bump 态，不对外）：`tests/run_all.py`（809 行）拆分为
+- **v0.15.4** 测试卫生与可见性：`tests/run_all.py`（809 行）拆分为
   `_harness.py`（共享夹具）+ `_subsets.py`（8 个回归子集），入口签名与
   逐字节输出保持不变（golden diff 验证）；CI 单测改由 coverage 包装并
   追加 advisory 覆盖率报告（非门禁）。
+- **v0.15.3** heredoc 正文按归属语义归因（数据段 git 样例误报清零）。
 - **v0.15.2** 发版链 fail-loud（bump 漂移即抛错）；非 Shell 间接 git 归因收紧；`hook-protocol` 归因 delta 并入主规格。
 - **v0.15.1** 诊断日志改为私有原子落盘；准确 Git 快照的 index 与 HEAD 身份复核。
 - **v0.15.0** 点前缀目录与文件默认忽略（代码 + 提示词双层硬约束）。
