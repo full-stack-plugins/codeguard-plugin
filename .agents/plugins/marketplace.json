@@ -9,20 +9,20 @@
       "source": {
         "source": "url",
         "url": "https://github.com/full-stack-plugins/codeguard-plugin.git",
-        "ref": "v0.16.0"
+        "ref": "v0.16.1"
       },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_USE"
       },
       "category": "Developer Tools",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
-      "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.16.0/assets/official-logo.png",
+      "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.16.1/assets/official-logo.png",
       "interface": {
         "displayName": "代码规范守卫",
         "shortDescription": "Trustworthy code checks and Java impact analysis",
-        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.16.0/assets/official-logo.png"
+        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.16.1/assets/official-logo.png"
       }
     }
   ]

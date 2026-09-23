@@ -2,6 +2,19 @@
 
 按版本段落提炼的主题摘要（生成于 2026-09-23，来源：git 历史 212 个提交与各 release 提交）。逐提交细节以 `git log` 与 GitHub Releases 为准；本文件按主题归纳，不逐条罗列。
 
+## v0.16.1 — 测试可移植性收口与汇流
+
+- 测试可移植性与迁移债三批收口（P0 skipIf 守卫、requirements-dev、CI 矩阵 3.11/3.12/3.13；P1 shim 弃用通告、SCRIPT_ROLES 角色登记、双轨分工说明；P2 bump 歧义报错、init exit 0、README 计数锁定），615/615 单测与 run_all 144/144 全过。
+- bump-plugin 写后回读支持 `.claude-plugin` 嵌套版本路径（`plugins[0].version`）。
+- 汇流收口：test-portability 批次与起草中的统一 Rust CLI 变更骨架一并入 main。
+- skipGate 豁免范围收窄：代理可控豁免（仓库配置/内联 `-c`/链式）只覆盖语言门禁，
+  入库内容安全扫描（密钥/凭据类）恒执行；唯一完整逃生门为进程环境变量
+  `CODEGUARD_SKIP_GATE`（1/true/yes，仅用户可设）。软硬门禁与四份文档同批同步。
+- 工具链 PATH 根因修复：符号链接解释器机器上 `ensure_user_path` 补 resolve 目录与
+  sysconfig scripts 目录；探活 not_found 时以 `python3 -m <tool>` 试判「未安装」vs
+  「入口缺失」；run_gate 入口先补 PATH 再采集缓存身份（check_identity 计入 PATH，
+  事后改写会使 ck≠after、软缓存永不落盘）。
+
 ## v0.16.0 — Claude 安装面与 Go CVE 生态
 
 - Claude 安装面补件（新增 `.claude-plugin/marketplace.json`）；CVE 新增 go 生态；

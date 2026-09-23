@@ -188,7 +188,7 @@ def gate_directive(failures: list, project_root: Path | str | None = None) -> st
         "（不落配置、无残留，推荐）；**仓库级豁免**在该仓库执行 git config codeguard.skipGate true，"
 "完成后 git config --unset codeguard.skipGate 恢复。环境变量 CODEGUARD_SKIP_GATE "
 "只认 1/true/yes 且须存在于钩子进程环境——宿主命令内联赋值不会传入钩子，"
-        "设 0/false 不豁免（该变量不建议使用，优先单次豁免）。两种豁免都会记入会话审计明细。"
+        "设 0/false 不豁免（该变量不建议使用，优先单次豁免）。两种豁免都会记入会话审计明细。**豁免只覆盖语言门禁**：入库内容安全扫描（密钥/凭据类）不随之跳过；需要完整放行（含安全扫描）时使用进程环境变量 CODEGUARD_SKIP_GATE，该开关仅用户可设。"
         "注意：仓库级豁免对该克隆**所有分支**生效且跨会话残留，务必按上方说明 unset 恢复。",
         "─" * 60,
     ]

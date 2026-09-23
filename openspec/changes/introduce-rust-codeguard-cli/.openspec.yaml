@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-24
+goal: 通过统一 Rust CLI 恢复全语言传统静态工具质量守卫，降低误报且禁止自动降级门禁

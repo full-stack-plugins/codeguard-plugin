@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 
+from paths import ensure_user_path
 from scope import changed_files
 
 from .cache import cache_path, load_result, store_result
@@ -73,6 +74,9 @@ def run_gate(
     - failures: [(lang, 问题节选, 修复命令, install_hint)]
     - skipped:  [str] 无法验证的说明（工具未装/超时），不阻塞
     """
+    # 必须先于缓存身份采集：check_identity 把 PATH 计入摘要，
+    # 采集后再改写 PATH 会使 ck != after，软观察缓存永不落盘。
+    ensure_user_path()
     if exact:
         from git_snapshot import SnapshotError, validation_tree
         from scope import is_build_artifact

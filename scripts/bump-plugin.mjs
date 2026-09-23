@@ -176,7 +176,12 @@ fs.writeFileSync(codexManifest, bumpCodex(fs.readFileSync(codexManifest, "utf8")
 
 // 写后回读：五文件版本必须与计划一致——写后不验等于没写（防半程假成功）
 for (const rel of plainManifestRels) {
-  const readback = JSON.parse(fs.readFileSync(path.join(repoDir, rel), "utf8")).version;
+  const data = JSON.parse(fs.readFileSync(path.join(repoDir, rel), "utf8"));
+  // 版本路径按清单形态分流：Claude 市场清单的版本在 plugins[0].version
+  // （bumpPlain 的文本替换同样只改那一处），其余清单在顶层 version。
+  const readback = rel.startsWith(".claude-plugin/")
+    ? data.plugins?.[0]?.version
+    : data.version;
   if (readback !== newVersion) throw new Error(`${rel}: 写后回读 ${readback} != ${newVersion}`);
 }
 const codexReadback = fs.readFileSync(codexManifest, "utf8");
