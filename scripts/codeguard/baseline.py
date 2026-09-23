@@ -83,7 +83,9 @@ def baseline_stale_finding(
     pre = _git(project_root, "show", f"{baseline_ref}:{rel_path}")
     if pre is None:
         return None
-    new_sigs = finding_instances(output)
+    canonical = Path(rel_path).as_posix()
+    current_aliases = {canonical: canonical, str(project_root / rel_path): canonical}
+    new_sigs = finding_instances(output, path_aliases=current_aliases)
     if not new_sigs:
         return None
     import tempfile as _tf
@@ -99,7 +101,9 @@ def baseline_stale_finding(
         proc = execute(cmd, project_root, timeout)
         if lint_verdict(proc.returncode, cmd, proc.stdout + proc.stderr)[0] != FAIL:
             return None
-        base_sigs = finding_instances((proc.stdout or "") + (proc.stderr or ""))
+        baseline_aliases = {str(tmp): canonical, tmp.name: canonical}
+        base_sigs = finding_instances((proc.stdout or "") + (proc.stderr or ""),
+                                      path_aliases=baseline_aliases)
     if not base_sigs:
         return None
     return ("存量问题（基线同命令同工具已存在）" if

@@ -1,8 +1,10 @@
 """纯判定内核：不依赖宿主、进程执行、注册表或持久化。"""
 from __future__ import annotations
 
+import posixpath
 import re
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
 PASS, FAIL, UNVERIFIED, SKIPPED, PLANNED = "PASS", "FAIL", "UNVERIFIED", "SKIPPED", "PLANNED"
@@ -50,28 +52,40 @@ def _strip_dialect_blocks(output: str) -> str:
 
 _CODE_RE = re.compile(r"\b([A-Z]{1,4}\d{2,4})\b")
 _DIAGNOSTIC_CODE_RE = re.compile(r"\b[A-Z]{1,5}\d{1,4}\b")
-_LOCATION_RE = re.compile(r"^.+?\.[A-Za-z0-9]+:\d+(?::\d+)?:\s*")
+_LOCATION_RE = re.compile(r"^(?P<path>.+?\.[A-Za-z0-9]+):\d+(?::\d+)?:\s*")
+_SHELLCHECK_LOCATION_RE = re.compile(r"^In (?P<path>.+?) line \d+:?$")
 
 
-def finding_instances(output: str) -> Counter[str]:
-    """按诊断内容保留重复次数；不能用规则码集合授予存量豁免。
+def finding_instances(output: str, *, path_aliases: Mapping[str, str] | None = None
+                      ) -> Counter[tuple[str, str]]:
+    """按文件归属、诊断内容和次数保留发现，忽略会随编辑漂移的行列号。
 
     只接纳带规则码或文件位置的诊断行。无法识别的输出交给调用方保持
     未豁免，避免把工具的统计摘要误当作一条已证明的旧问题。
     """
-    findings: Counter[str] = Counter()
+    aliases = {posixpath.normpath(path.replace("\\", "/")): canonical
+               for path, canonical in (path_aliases or {}).items()}
+    findings: Counter[tuple[str, str]] = Counter()
+    context_path = ""
     for line in output.splitlines():
         raw = line.strip()
         if not raw:
             continue
-        located = bool(_LOCATION_RE.match(raw))
-        description = _LOCATION_RE.sub("", raw)
+        heading = _SHELLCHECK_LOCATION_RE.match(raw)
+        if heading:
+            source = posixpath.normpath(heading.group("path").replace("\\", "/"))
+            context_path = aliases.get(source, source)
+            continue
+        location = _LOCATION_RE.match(raw)
+        source = posixpath.normpath(location.group("path").replace("\\", "/")) if location else ""
+        identity = aliases.get(source, source) if location else context_path
+        description = raw[location.end():] if location else raw
         description = re.sub(r"^\^--\s*", "", description).strip()
-        if not _DIAGNOSTIC_CODE_RE.search(description) and not located:
+        if not _DIAGNOSTIC_CODE_RE.search(description) and not location:
             continue
         description = re.sub(r"\s+", " ", description)
         if description:
-            findings[description] += 1
+            findings[(identity, description)] += 1
     return findings
 
 

@@ -144,6 +144,38 @@ class BaselineStalenessTests(GitRepoCase):
         self.assertIsNone(gate_lib.baseline_stale_finding(
             self.root, "lib.sh", checker, "lib.sh:1:1: F401 `new` imported but unused"))
 
+    def test_same_diagnostic_in_another_file_is_not_stale(self):
+        self.put("lib.sh", "BAD\n")
+        self.put("other.sh", "BAD\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        checker = [sys.executable, "-c",
+                   "import sys; print(f'{sys.argv[1]}:1:1: F401 same issue'); sys.exit(1)", "{file}"]
+        self.assertIsNone(gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, "other.sh:9:1: F401 same issue"))
+
+    def test_shellcheck_heading_from_another_file_is_not_stale(self):
+        self.put("lib.sh", "BAD\n")
+        self.put("other.sh", "BAD\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        checker = [sys.executable, "-c",
+                   ("import sys; print(f'In {sys.argv[1]} line 1:\\n"
+                    "^-- SC2086 (warning): quote this'); sys.exit(1)"), "{file}"]
+        current = "In other.sh line 9:\n^-- SC2086 (warning): quote this"
+        self.assertIsNone(gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, current))
+
+    def test_same_file_diagnostic_survives_line_shift(self):
+        self.put("lib.sh", "BAD\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        checker = [sys.executable, "-c",
+                   "import sys; print(f'{sys.argv[1]}:1:1: F401 same issue'); sys.exit(1)", "{file}"]
+        stale = gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, "lib.sh:99:4: F401 same issue")
+        self.assertEqual("存量问题（基线同命令同工具已存在）", stale)
+
     def test_successful_baseline_command_cannot_prove_a_failure(self):
         self.put("lib.sh", "BAD\n")
         _git(self.root, "add", "-A")

@@ -162,3 +162,11 @@
 - 临时 CodeGraph 快照重新同步了本批改动并追踪三个新应用服务的 Hook 调用点；源仓未初始化索引。`scripts/check_architecture.py` 声明并约束新内核模块，隔离导入测试阻止其反向加载宿主 Hook/MCP。
 - 使用本机已有、带 MCP SDK 的 `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **454 unittest，全部通过、0 skipped**；`tests/run_all.py` **142/0/0**。Homebrew Python 3.14 缺 MCP SDK 时同一套测试仅执行 451 项、跳过 3 项，故不将该运行作为完整证明。ruff、架构门禁、语言 schema 57 项/11 规则、vendor 离线与在线、本 change strict、diff whitespace 通过；技能 lock 和受管技能未改。
 - 本地入口边界已满足 task 4.3。Stop 会先消费会话状态再输出，若 stdout 故障可能丢失该次总结；三宿主安装现场、Windows、联网漏洞库及所有语言真实工具链仍待独立验收。本批源码在本记录时仍未 bump/提交/推送/发布，不把 v0.13.0 的远端证据套用到新改动。
+
+## 第十五批实际验证：诊断归属与 Stop 交付确认
+
+- v0.14.0 已经插件 PR #46、市场 PR #2/#3 合并到两个 `main`；插件 PR 和合并后 `main` 的 `skills-check` 通过，不可变 tag/Release 指向插件合并提交 `0e699b85b0cb3abaf6a248e04121ecae152ba508`，市场三宿主清单及中英文导航均为 0.14.0。该发布证据只覆盖上一批代码，本批源码尚未发布。
+- 临时 CodeGraph 索引同步后追出 `check_language → baseline_stale_finding → finding_instances`；原提取器剥掉文件位置。两项真实 Git/检查器测试先 RED：其它文件的同文本 `F401` 与 ShellCheck `In <file> line N` 诊断均被误豁免。现在比较文件归属、描述、出现次数，把基线临时路径映射回原仓相对路径；同文件只移动行号仍允许有证据的豁免。CodeGraph 的受影响测试映射返回空，故以实际源码调用和目标测试作为覆盖证据，不将空映射当无测试。
+- Stop 原逻辑在输出前 `take_json`，故故障注入先 RED：stdout 写入失败时会话记录已被删除。现新增准备结果和输出后确认；写入或刷新失败时记录保留可重试。若准备后有并发新写入，锁内快照不一致就不消费，允许下一次重复展示旧统计而不删除新记录。旧 `consume_summary` 兼容接口保留，Hook 改用 `prepare_summary`。两种输出故障和并发写入均有目标测试。
+- 本机现有 `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **460 unittest，全部通过、0 skipped**；`tests/run_all.py` **142/0/0**。ruff、架构门禁、语言 schema 57 项/11 规则、vendor 离线与在线、本 change strict、diff whitespace 均通过；受管技能及 lock 未改。上述为本地证据，远端 CI/版本/市场需在本批发布后另验。
+- 这两处消除了已复现的假豁免与输出前丢总结；仍不声称完整 Shell 解释、三宿主现场、Windows、在线漏洞库、全部工具链或 OpenSpec 5.4/5.6 的全目标审计完成。stdout 刷新成功不等于宿主最终消费确认，因此异常重试可出现重复总结；该取舍优先保证不丢统计。
