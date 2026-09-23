@@ -111,14 +111,21 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
         root_mode = "push" if any(operation.mode == "push" for operation in active) else "commit"
         pending_commit = any(operation.mode == "commit" for operation in root_operations)
         try:
-            sources = [(command, cwd)]
+            # workspace 兜底创建的是合成仓库目标；暂存观察也必须绑定该目标，
+            # 否则从非 Git cwd 解析 commit 会失败并抹掉该子仓已确认的违规。
+            sources = [(command, project_root if fallback_note else cwd)]
             sources.extend((operation.source_command, operation.source_cwd)
                            for operation in root_operations if operation.source_command)
+            # Shell 命令替换先执行内层、再执行外层 commit；现有静态展开把
+            # 内层文本附在末尾，不能把它误判为“提交后的 add”而裁掉。
+            ordered_direct = (not any(operation.source_command for operation in root_operations)
+                              and "$(" not in command and "`" not in command)
             lanes_found: set[str] = set()
             extras_found: set[str] = set()
             for source_command, source_cwd in dict.fromkeys(sources):
                 source_lanes, source_extra = staging_intent(
                     source_command, project_root=project_root, cwd=source_cwd,
+                    through_last_commit=ordered_direct,
                 )
                 lanes_found.update(source_lanes)
                 extras_found.update(source_extra)

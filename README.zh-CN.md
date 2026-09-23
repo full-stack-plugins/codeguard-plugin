@@ -70,7 +70,7 @@ Maven 使用 verify 并追加 -DskipTests（测试代码仍编译，仅跳过执
 
 ## Git 内容一致性
 
-纯 commit 检查 index，不会拿未暂存的修复冒充提交内容。已支持的前序 git add 操作叠加预测工作树路径；纯 push 检查 HEAD 和上游差异。无可解析上游时检查 HEAD 树。敏感文件规则采用同一预测范围；删除敏感文件不视为新增入库。
+纯 commit 检查 index，不会拿未暂存的修复冒充提交内容。已支持的前序 git add 操作叠加预测工作树路径；不含 Shell 命令替换的直接命令链里，最后一次 commit 后的 add 不会倒算进此前提交或随后的 push。纯 push 检查 HEAD 和上游差异。无可解析上游时检查 HEAD 树。敏感文件规则采用同一预测范围；删除敏感文件不视为新增入库。
 
 检查在临时目录物化 Git blobs，不 stash、不 checkout、不更改真实 index。精确内容门禁不复用软提醒的工作树缓存。快照缺 ignored 依赖时保持 UNVERIFIED，不改查另一份源码。
 
