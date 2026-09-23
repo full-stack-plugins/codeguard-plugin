@@ -322,3 +322,26 @@
 - CodeGraph 沿 `save_application._failure_context → storage.write_private_text` 审计发现：保存检查的截断诊断仍直接用可预测的临时路径 `write_text`，不同于已收敛的 CLI/MCP/Git 门禁日志。四项真实文件系统测试先 RED，分别覆盖宽松 umask、预置文件链接、临时父目录链接和原子替换失败；现由统一私有原子写入处理，日志故障不改变保存反馈且不返回虚假路径。另以 `evaluate_save` 的应用层用例锁定错误反馈及私有日志路径。
 - 在 0.15.0 main 上本地完整单测 **590/590、0 skipped**，真实 Hook **144/0/0**；Ruff、架构依赖门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。临时索引已同步到 143 文件、2,334 节点、5,263 边；CodeGraph 的受影响测试列表为空，不能替代实际回归。上述只证明本地契约，不证明三宿主现场、Windows、联网 CVE、大型 Java 工程或恶意并发文件系统。
 - 并行的 0.15.0 源码 main `eb5b638` CI 已成功；缺失的 `v0.15.0` 注释 tag 与正式 Release 已补齐，均指向该 main 提交。第三十、三十一批自身仍须另行升级版本、PR/CI、市场同步和发布，不借 0.15.0 的证据声称交付。
+
+## 全目标审计（2026-09-23，5.6 门禁）
+
+独立会话复核，四项证据：
+
+1. `openspec validate refactor-codeguard-architecture --strict` → valid。
+2. `python3 scripts/check_architecture.py` → `Architecture OK: declared core dependencies and first-party import cycles checked`。
+3. 16 条 ADDED Requirement ↔ 模块/测试映射核对：12 组专属模块/测试对全部在位
+   （execution / planning / save_application / hook_state / fingerprint / gate /
+   language_check / java_analysis / cve / git_snapshot / git_staging / dockerfile）；
+   其余 4 条（进程证据、失败可观测、入口兼容、诊断原子）由 execution 与各协议
+   入口 + 既有契约测试覆盖（与任务 2.1–2.4、4.1–4.3 的证据台账一致）。
+4. `tests/run_all.py` 144/0/0。
+
+本地契约边界（如实披露）：本机 `python3 -m unittest discover` 存在 6 个预存
+环境敏感失败（`test_gate_application` ×2——本机未装 ruff 致 F821 输出为空；
+`test_state_storage` ×4——多会话并发共享状态目录干扰），已在共享工作树对照
+复现同红，证明非本审计批引入；CI 钉扎 `ruff==0.16.8` 且状态目录隔离下为绿。
+该 6 项属测试环境隔离债（建议后续 change：state fixture 注入隔离 STATE_DIR、
+ruff 依赖测试按工具可用性自适应），不构成规格/代码不一致。
+
+结论：代码 / 规格 / 证据一致，5.6 满足，change 可归档。三宿主现场安装验收
+仍按 4.3/5.5 声明独立进行，不在此豁免。
