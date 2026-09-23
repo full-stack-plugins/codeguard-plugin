@@ -93,7 +93,8 @@ if __name__ == "__main__":
    放行，归一化修复被 roots 层击穿（0.8.2 实测：`git -C`/`FOO=1 git push`/
    `sudo git push` 三种形态全部穿透）；并且
 2. 仓库级 `git config codeguard.skipGate true` 未设置（命中豁免时记账一次，
-   `gate_lib.record_skip_event`，Stop 汇总可见）；并且
+   `gate_lib.record_skip_event`，Stop 汇总可见；**该豁免只覆盖语言门禁**——
+   入库内容安全扫描不受其覆盖，见下方一致性约束）；并且
 3. 实际跑 linter 后存在非 skipped 的 failures。
 
 出口内容（`gate_lib.gate_directive` 生成）：
@@ -116,6 +117,10 @@ Git 安全路径观察无法读取拟入库路径时，以 JSON additionalContex
 **取消无基线存量归因**：报错在未修改文件上也可能是本次 API 变化造成的，不能凭路径放行。
 
 **一致性约束**：`UserPromptSubmit` 软门禁与本硬门禁共用同一条 skipGate 豁免，
+且**豁免范围仅限语言门禁**：入库内容安全扫描（密钥/凭据类路径）不被任何
+代理可控豁免（仓库配置、内联 `-c codeguard.skipGate=true`、链式）覆盖，恒执行；
+需要完整放行（含安全扫描）只能用进程环境变量 `CODEGUARD_SKIP_GATE`（1/true/yes，
+仅用户可设——宿主内联赋值不会传入钩子进程）。软硬两门在豁免下也照常报告安全违规。
 且**都不得在非 git 目录回退成"扫描 cwd"**——UPS 对非 git 目录输出一行
 `_non_git_note` 说明并 exit 0（工作区根被回退扫描 = 上百无关仓的存量 lint
 变成永久红，实测）。双副本事件去重键：PreToolUse 用 `tool_use_id + 命令`、
@@ -144,7 +149,7 @@ git UNVERIFIED，保持 exit 0 兼容放行；不能被描述为已准确验证�
 UserPromptSubmit 按提示词里的 `push/推送` 选 commit/push 面，但**不传 lanes =
 三路宽口径**——软门禁没有待执行命令可预测，按"工作树有待提交改动就提醒"注入
 （注入非阻断，多提醒不算错；硬门禁少拦才是底线），软硬两门只在 skipGate 豁免
-上严格一致。
+上严格一致（豁免只覆盖语言门禁；安全扫描两边都照常执行）。
 
 PostToolUse 只运行可限定到单文件的检查和 formatter。append_files=false 的项目命令推迟到
 显式 check/Git 门禁；保存不能触发整项目 formatter。工具异常不能自动修复。

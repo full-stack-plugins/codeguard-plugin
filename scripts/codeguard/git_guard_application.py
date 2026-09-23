@@ -106,9 +106,9 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
             if bypass != "skipGate":
                 label = "内联豁免 `-c codeguard.skipGate`" if bypass == "inline-skipGate" else "链式豁免"
                 contexts.append(f"codeguard: {project_root} 的 {operation.mode} 已通过{label}放行（已审计记录）。")
-        if not active:
-            continue
-        root_mode = "push" if any(operation.mode == "push" for operation in active) else "commit"
+        # 豁免只覆盖语言门禁；入库安全扫描需要提交面，必须先算 lanes/extra 再恒执行
+        mode_source = active or root_operations
+        root_mode = "push" if any(operation.mode == "push" for operation in mode_source) else "commit"
         pending_commit = any(operation.mode == "commit" for operation in root_operations)
         try:
             # workspace 兜底创建的是合成仓库目标；暂存观察也必须绑定该目标，
@@ -140,16 +140,17 @@ def evaluate_git_command(command: str, *, cwd: Path, load_config: Callable[[], d
                 contexts.append(f"codeguard: git UNVERIFIED：{message}")
             continue
         root_extra = list(extra)
-        failures, skipped = run_gate(
-            project_root, cfg, mode=root_mode, lanes=lanes, extra=root_extra,
-            exact=True, pending_commit=pending_commit,
-        )
-        if failures:
-            reports.append(gate_directive(failures, project_root=project_root))
-        unknown = [item for item in skipped if "本次改动未涉及" not in item and " SKIPPED:" not in item
-                   and "markdown 风格告警" not in item]
-        if unknown:
-            contexts.append("codeguard: 存在未验证项，不能宣称全部通过：" + "；".join(unknown))
+        if active:
+            failures, skipped = run_gate(
+                project_root, cfg, mode=root_mode, lanes=lanes, extra=root_extra,
+                exact=True, pending_commit=pending_commit,
+            )
+            if failures:
+                reports.append(gate_directive(failures, project_root=project_root))
+            unknown = [item for item in skipped if "本次改动未涉及" not in item and " SKIPPED:" not in item
+                       and "markdown 风格告警" not in item]
+            if unknown:
+                contexts.append("codeguard: 存在未验证项，不能宣称全部通过：" + "；".join(unknown))
         try:
             violations = check_commit_safety(project_root, root_mode, lanes=lanes, extra=root_extra,
                                              pending_commit=pending_commit)

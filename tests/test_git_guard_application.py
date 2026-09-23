@@ -431,7 +431,10 @@ class GitGuardApplicationTests(unittest.TestCase):
                     result = git_guard_application.evaluate_git_command(
                         f"{prefix} git -c codeguard.skipGate=true commit -m x",
                         cwd=repo, load_config=dict)
-                    self.assertEqual(0, result.exit_code, result.stderr)
+                    # 内联豁免只覆盖语言门禁；入库安全扫描仍拦 .env
+                    #（harden-skip-gate-boundary：代理可控豁免不再吞密钥扫描）
+                    self.assertEqual(2, result.exit_code, result.stderr)
+                    self.assertIn("安全检查", result.stderr)
                     self.assertTrue(any("内联豁免" in item for item in result.contexts))
                     gate.assert_not_called()
                     record.assert_called_once_with("inline-skipGate", repo)

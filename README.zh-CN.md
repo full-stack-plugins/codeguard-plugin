@@ -120,7 +120,7 @@ python3 scripts/run_check.py --mcp /path/to/project
 
 注册表含 **54 个 Stable 适配器和 3 个 Planned 项**。“Stable” 不证明全部工具链或项目已验证。Markdown/YAML 需要项目配置，缺配置为 UNVERIFIED；Markdown 违规只告警。生成物和依赖目录从普通 lint 范围排除，不等于允许入库。Python 检查优先使用项目自有 ruff 配置（ruff.toml / .ruff.toml / [tool.ruff]）；项目无自有配置时注入钉扎在 CI 基线（ruff==0.16.8）的默认规则集，判定不随机器上 ruff 版本漂移。完整命令见[语言清单](docs/LANGUAGES.md)。
 
-显式逃生门 git config codeguard.skipGate true 会绕过钩子门禁，并在会话总结中记录。共享状态位于 CODEGUARD_HOME（默认 ~/.codeguard）。
+显式逃生门 git config codeguard.skipGate true 会绕过钩子的语言门禁，并在会话总结中记录。它不覆盖入库内容安全扫描（密钥/凭据类路径）：该扫描不因仓库配置、内联 `-c codeguard.skipGate=true` 或链式豁免而跳过，恒执行；只有进程环境变量 `CODEGUARD_SKIP_GATE`（1/true/yes，仅用户可设，宿主内联赋值不会传入钩子进程）才能完整放行。共享状态位于 CODEGUARD_HOME（默认 ~/.codeguard）。
 Git 门禁静态读取一层 Shell 包装命令，支持可解析的裸环境赋值、env、command 和 sudo 前缀；同一前缀规则也用于 skipGate 状态变更和单次豁免。它不执行或完整解释脚本。
 
 ## 外部技能

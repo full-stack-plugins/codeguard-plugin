@@ -48,9 +48,9 @@ def evaluate_prompt(user_text: str, *, project_root: Path | None,
         return PromptResult()
     if project_root is None or not (project_root / ".git").exists():
         return PromptResult(non_git_note())
-    if skip_gate_via_git_config(project_root):
+    lint_bypassed = skip_gate_via_git_config(project_root)
+    if lint_bypassed:
         record_skip_event("skipGate", project_root)
-        return PromptResult()
 
     cfg = load_config()
     detected = detect_languages(project_root)
@@ -69,8 +69,14 @@ def evaluate_prompt(user_text: str, *, project_root: Path | None,
 
     # 软门没有待执行 git 命令，故保持三路宽口径；硬门另用预测暂存面。
     mode = intent_mode(user_text)
-    failures, skipped = run_gate(project_root, cfg, languages=(subset or None), mode=mode)
+    failures, skipped = (
+        ((), ()) if lint_bypassed
+        else run_gate(project_root, cfg, languages=(subset or None), mode=mode)
+    )
     violations = check_commit_safety(project_root, mode)
+    if lint_bypassed and not violations:
+        # 豁免命中且无安全违规：软门禁静默退出（与硬门禁一致），绕过计数已 +1
+        return PromptResult()
 
     def on_delivered() -> None:
         if event_key == current_event_key():
@@ -82,7 +88,7 @@ def evaluate_prompt(user_text: str, *, project_root: Path | None,
         first_issue = failures[0][1].splitlines()[0][:120] if failures and failures[0][1] else "详见对话"
         headline = (f"{failures[0][0]}: {first_issue}" if failures
                     else f"提交安全: {violations[0][0]}")
-        parts = [gate_directive(failures)]
+        parts = [gate_directive(failures)] if failures else []
         if violations:
             parts.append(format_safety_report(violations))
         parts.append(
@@ -91,7 +97,8 @@ def evaluate_prompt(user_text: str, *, project_root: Path | None,
             " fixture，确认误入库再 git rm --cached + 补 .gitignore；确认并修复后"
             "重新执行提交。"
         )
-        return PromptResult("\n\n".join(parts), (summarize_failures(failures), headline), completion)
+        title = summarize_failures(failures) if failures else "提交安全"
+        return PromptResult("\n\n".join(parts), (title, headline), completion)
 
     skipped_langs = {item.split()[0] for item in skipped}
     checked = sorted(set(detect_languages(project_root)) - skipped_langs)

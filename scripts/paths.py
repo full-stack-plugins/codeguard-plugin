@@ -12,6 +12,7 @@ import contextlib
 import os
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from pathlib import Path
 
@@ -29,6 +30,10 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
     static_dirs = [
         # 运行本进程的解释器自己的 bin 目录：ruff 等工具常装在这里
         # （anaconda、python -m pip install 等），不补就会"装了却报不在 PATH"。
+        # 符号链接解释器（如 /usr/local/bin/python3 → Framework）取 .parent 得到的是
+        # 链接目录，脚本入口在 resolve 后的真实 bin 与 sysconfig scripts 里（实测）。
+        str(Path(sys.executable).resolve().parent),
+        sysconfig.get_path("scripts"),
         str(Path(sys.executable).parent),
         "/opt/homebrew/bin", "/usr/local/bin",
         str(Path.home() / ".local" / "bin"),
@@ -39,7 +44,7 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
     cur = os.environ.get("PATH", "")
     parts = cur.split(os.pathsep)
     for d in reversed(static_dirs):
-        if Path(d).exists() and d not in parts:
+        if d and Path(d).exists() and d not in parts:
             parts.insert(0, d)
     os.environ["PATH"] = os.pathsep.join(parts)
 
