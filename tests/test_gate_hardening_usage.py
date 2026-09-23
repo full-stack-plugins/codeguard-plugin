@@ -171,8 +171,8 @@ class SkipGateReliabilityTests(unittest.TestCase):
             os.environ["CODEGUARD_HOME"] = tmp
             try:
                 with unittest.mock.patch.object(
-                    gate_lib.subprocess, "run",
-                    side_effect=gate_lib.subprocess.TimeoutExpired("git", 10),
+                    subprocess, "run",
+                    side_effect=subprocess.TimeoutExpired("git", 10),
                 ):
                     self.assertFalse(gate_lib.skip_gate_via_git_config(Path("/x")))
                 state = json.loads((Path(tmp) / "session_state.json").read_text(encoding="utf-8"))

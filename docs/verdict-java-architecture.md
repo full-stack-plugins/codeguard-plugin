@@ -1,6 +1,8 @@
 # 判定可信度与 Java 项目感知
 
-版本：0.12.0（本地开发态）。规格事实源：`openspec/specs/`；实施记录归档为 `openspec/changes/archive/2026-09-22-converge-verdicts-java-impact/`。本轮不增加技能，不改外部受管技能。
+> 历史范围：本页记录 v0.12.0 的判定与 Java 感知设计；当前模块职责见[架构及扩展指南](current-architecture.md)。下文默认命令与后续计划仅适用于当时状态，不能代替当前 manifest、OpenSpec 或实测证据。
+
+版本：0.12.0（当时的开发态）。规格事实源：`openspec/specs/`；实施记录归档为 `openspec/changes/archive/2026-09-22-converge-verdicts-java-impact/`。当时未增加技能，也未改外部受管技能。
 
 ## 1. 可执行链路
 

@@ -54,7 +54,10 @@ def overlays(root: Path, lanes=None, extra=None) -> set[str]:
         selected |= names(root, "ls-files", "--others", "--exclude-standard", "-z")
     for name in extra or ():
         path = safe_path(root, name)
-        selected |= names(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", name)
+        # extra 已由暂存意图解析；文件名中的 * / : 不得再触发 pathspec。
+        # --literal-pathspecs 仍让目录参数递归展开，保留旧字面目录调用面。
+        selected |= names(root, "--literal-pathspecs", "ls-files", "--cached", "--others",
+                          "--exclude-standard", "-z", "--", name)
         if path.is_file() or path.is_symlink():
             selected.add(name)
     return selected

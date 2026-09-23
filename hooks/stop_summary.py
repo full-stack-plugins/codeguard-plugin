@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import sys
 from pathlib import Path
@@ -25,15 +24,11 @@ LEGACY_STATE_FILE = PLUGIN_ROOT / ".session_state.json"
 
 
 def load_state() -> dict:
-    from gate_lib import session_state_path
-
-    path = session_state_path()
-    target = path if path.exists() else LEGACY_STATE_FILE
-    if not target.exists():
-        return {}
+    from codeguard.hook_state import state_path
+    from codeguard.storage import read_json
     try:
-        return json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        return read_json(state_path(LEGACY_STATE_FILE))
+    except OSError:
         return {}
 
 
@@ -76,23 +71,20 @@ def _skipgate_left_enabled() -> bool:
 
 
 def main(payload: dict | None = None) -> int:
-    from gate_lib import should_suppress_event
-
+    from codeguard.hook_state import observe_once, session_scope
     session_id = (payload or {}).get("session_id")
-    if session_id and should_suppress_event(f"stop:{session_id}"):
-        # 双副本：统计与清理由第一份完成，第二份静默（避免摘要×2、清两次）。
-        return 0
-    state = load_state()
+    with session_scope(payload or {}):
+        return observe_once(f"stop:{session_id}" if session_id else None, lambda: _main(payload))
+
+
+def _main(payload: dict | None = None) -> int:
+    from codeguard.hook_state import state_path
+    from codeguard.storage import take_json
+    state = take_json(state_path(LEGACY_STATE_FILE))
     print(summarize(state))
     if _skipgate_left_enabled():
         print("[codeguard] ⚠️ git config codeguard.skipGate 仍为 true——该仓门禁处于豁免状态；"
               "若绕过已完成，请执行 git config --unset codeguard.skipGate 恢复")
-    # 会话结束清理状态（新旧两处都清）
-    from gate_lib import session_state_path
-
-    for target in (session_state_path(), LEGACY_STATE_FILE):
-        with contextlib.suppress(OSError):
-            target.unlink(missing_ok=True)
     return 0
 
 

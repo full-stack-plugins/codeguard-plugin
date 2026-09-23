@@ -73,6 +73,12 @@ class ReadmeParityTest(unittest.TestCase):
         self.assertEqual(en_l, zh_l,
                          msg=f"link drift: only_en={en_l - zh_l} only_zh={zh_l - en_l}")
 
+    def test_local_link_targets_exist(self) -> None:
+        for target in _local_links(self.en) | _local_links(self.zh):
+            path = target.split("#", 1)[0]
+            if path:
+                self.assertTrue((ROOT / path).exists(), f"broken README link: {target}")
+
     def test_version_strings_match(self) -> None:
         en_v, zh_v = _versions(self.en), _versions(self.zh)
         self.assertEqual(en_v, zh_v,

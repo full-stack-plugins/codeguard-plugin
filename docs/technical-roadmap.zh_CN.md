@@ -1,6 +1,6 @@
 # PartMe CodeGuard 技术方案与路线
 
-> **历史路线档案，不代表当前验收**：下文的 100% 准确率、<2 秒、零网络等数字未在本轮测量，不能当完成证据。0.12.0 已实现判定可信度与 Java 模块影响规划；当前事实见[架构与下一阶段](verdict-java-architecture.md)和[验证报告](verification-verdict-java.md)。后续优先真实项目验收、符号级影响、基线差分和修复复验，不扩张技能数量。
+> **历史路线档案，不代表当前验收**：下文的 100% 准确率、<2 秒、零网络等数字未在本轮测量，不能当完成证据。当前模块职责见[架构及扩展指南](current-architecture.md)，本次重构进度见[验证记录](../openspec/changes/refactor-codeguard-architecture/verification.md)。后续真实项目、符号级影响与三宿主验收须分别取得证据。
 
 > **文档说明**：本文档描述 partme-codeguard-plugin 插件的技术选型、关键决策、ADR（架构决策记录）和版本路线图。
 >
