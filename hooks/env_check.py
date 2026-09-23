@@ -23,7 +23,6 @@ from detect_lang import (  # ensure_user_path/load_user_config 实际定义：sc
     ensure_user_path,
     find_project_root,
     load_user_config,
-    probe_toolchain,
 )
 
 
@@ -102,14 +101,13 @@ def version_backlog_note(current: str, cache_root: Path) -> str | None:
 
 
 def main(payload: dict | None = None) -> int:
-    # 双副本去重：宿主提供 session_id 时，同会话第二个副本静默（第一份的
-    # 摘要已注入；两份都打 = 同一段"项目记忆"重复两遍）。payload 缺字段
-    # （测试协议/其它宿主）时不去重，保持旧行为。
-    from gate_lib import should_suppress_event
-
+    from codeguard.hook_state import observe_once, session_scope
     session_id = (payload or {}).get("session_id")
-    if session_id and should_suppress_event(f"start:{session_id}"):
-        return 0
+    with session_scope(payload or {}):
+        return observe_once(f"start:{session_id}" if session_id else None, lambda: _main(payload))
+
+
+def _main(payload: dict | None = None) -> int:
     ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录，先补齐再盘点
     project_root = find_project_root(os.getcwd())
     if project_root is None:
@@ -126,12 +124,14 @@ def main(payload: dict | None = None) -> int:
         languages = [lang for lang in languages if lang in enabled]
 
     # linter 盘点：直接复用门禁的探活（比裸 which 准——能发现 npx 包未装、运行时损坏）
+    from codeguard.toolchain import ToolchainProbe
+    probe = ToolchainProbe(project_root)
     ready, missing = [], []
     for lang in languages:
         cmd_def = LANG_COMMANDS.get(lang)
         if not cmd_def:
             continue
-        ok, reason = probe_toolchain(cmd_def)
+        ok, reason = probe.probe(cmd_def)
         if ok:
             ready.append(lang)
         else:

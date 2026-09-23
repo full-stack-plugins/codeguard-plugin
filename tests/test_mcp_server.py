@@ -72,6 +72,44 @@ def _read_until(proc: subprocess.Popen, want_id: int, timeout: float = 30.0) -> 
 
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed (pip install -r requirements.txt)")
 class McpServerTests(unittest.TestCase):
+    def test_bad_project_configuration_is_unverified_and_recoverable(self):
+        """显式 languages 不能绕过配置；坏请求不损坏长驻 stdio 服务。"""
+        proc = _spawn_mcp()
+        try:
+            _send(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2024-11-05", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"}}})
+            _read_until(proc, 1)
+            _send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / ".git").mkdir()
+                (root / "codeguard.json").write_text("{")
+                for request_id, name in enumerate(("check_code_style", "auto_fix"), start=2):
+                    _send(proc, {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": {
+                        "name": name, "arguments": {"path": temp, "languages": ["python"]}}})
+                    response = _read_until(proc, request_id)
+                    payload = json.loads(response["result"]["content"][0]["text"])
+                    self.assertEqual("UNVERIFIED", payload["status"])
+                    self.assertFalse(payload["passed"])
+                    self.assertIn("codeguard.json", payload["error"])
+                (root / "codeguard.json").write_text("{}")
+                _send(proc, {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+                    "name": "check_code_style", "arguments": {"path": temp, "languages": ["cobol"]}}})
+                payload = json.loads(_read_until(proc, 4)["result"]["content"][0]["text"])
+                self.assertEqual("PLANNED", payload[0]["status"])
+                self.assertFalse((root / "out").exists())
+        finally:
+            if proc.stdin:
+                proc.stdin.close()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+            proc.stdout.close()
+            proc.stderr.close()
+
     def test_mcp_boot_lists_four_tools(self):
         """stdio 服务暴露三个兼容工具和 Java 只读分析。"""
         proc = _spawn_mcp()

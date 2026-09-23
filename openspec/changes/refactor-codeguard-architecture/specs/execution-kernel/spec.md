@@ -1,0 +1,208 @@
+# Execution Kernel
+
+## Purpose
+
+为 CLI、MCP、语言检查、Git 门禁和漏洞扫描提供一致且可追溯的外部进程证据，使工具故障不会因入口不同而丢失诊断、冒充通过或被误认成代码违规，同时保留原有用户接口。
+
+## ADDED Requirements
+
+### Requirement: Tool execution SHALL preserve process evidence
+
+执行结果 MUST 保留实际 argv、工作目录、原始退出码、标准输出和标准错误。参数 MUST 以 argv 传递，不隐式增加 shell；工具是否发现代码违规由工具判定策略解释，不能由进程执行器推断。
+
+#### Scenario: A checker exits nonzero
+- **WHEN** 同一检查器经 CLI、保存 hook、Git 门禁或 CVE 执行并以非零退出
+- **THEN** 各入口获得相同的原始进程结果，再使用各自检查契约解释，不擅自改成成功
+
+#### Scenario: An argument contains shell syntax
+- **WHEN** argv 参数包含空格、分号或命令替换字符
+- **THEN** 它作为单个字面参数到达工具，不作为额外 shell 命令执行
+
+### Requirement: Execution failures SHALL remain observable
+
+超时 MUST 保留已捕获输出并记录超时故障；缺失命令与权限/工作目录故障 MUST 返回明确不可验证的执行结果。非 UTF-8 输出 MUST 保留可解码文本并替换非法字节，不能让编码异常吞掉整次检查。不得捕获用户取消或任意编程异常作为成功结果。
+
+#### Scenario: Timeout after useful diagnostics
+- **WHEN** 检查器先输出诊断后超时
+- **THEN** 返回超时标识、124 和已有诊断，不能伪称没有输出或代码通过
+
+#### Scenario: Tool cannot start
+- **WHEN** 命令不存在或文件无执行权限
+- **THEN** 返回启动故障；下游 lint 结论为 UNVERIFIED 而非 FAIL 或 PASS
+
+#### Scenario: Invalid output encoding
+- **WHEN** 检查器输出包含非法 UTF-8 字节
+- **THEN** 保留真实退出码和其余可读输出，不因解码异常丢失结果
+
+### Requirement: Existing entry points SHALL remain compatible
+
+本次重构 MUST 保留原 CLI 子命令、四个 MCP 工具、五类 hook 的路径/JSON/退出语义、用户配置、语言注册表与外部受管技能。执行内核不得导入宿主 SDK 或修改项目文件、Git index、用户环境配置。
+
+#### Scenario: Legacy script invocation
+- **WHEN** 用户或 manifest 从原路径直接执行检查脚本
+- **THEN** 无需安装新包即可使用原有能力，PASS/FAIL/UNVERIFIED 不因协议转换改变
+
+### Requirement: Check plans SHALL retain execution context
+
+检查计划 MUST 显式区分 repo、delta 与 save，保存物化后的命令、工作目录和逐命令环境覆盖。执行 MUST 按序进行，首个非零结果终止普通检查批次，保留已执行证据；未执行的命令不得计为成功。空计划不得生成 PASS。Java 原生计划给出的环境覆盖 MUST 在子进程中生效，不改变宿主环境。修复后的检查 MUST 复用原计划，不重新扩大范围。Git 门禁的逐文件基线豁免是独立策略，不由通用执行器决定。
+
+#### Scenario: Java commands use the selected JDK
+- **WHEN** Java 项目计划选择 JAVA_HOME，且声明多条权威检查命令
+- **THEN** 每条实际运行的命令使用该环境；后续命令失败时返回失败而非首条成功，宿主 JAVA_HOME 不变
+
+#### Scenario: Repair retains the original scope
+- **WHEN** delta 或 save 检查失败并成功运行 formatter
+- **THEN** 复检执行原物化命令，仅包含原检查范围；被跳过的文件不导致漏掉其它文件的复检
+
+#### Scenario: No executable commands
+- **WHEN** 计划没有任何可执行命令
+- **THEN** 规划调用方返回 SKIPPED、PLANNED 或 UNVERIFIED；执行器拒绝将空计划解释为成功
+
+### Requirement: Hook state SHALL preserve concurrent and session ownership
+
+统计、绕过明细、冷却与审计的读改写 MUST 在进程锁内完成并原子替换文件。宿主提供 session_id 时，统计 MUST 绑定会话与当前 worktree；Stop MUST 只消费该作用域的记录，并与并发写入互斥。无 session_id 时保留旧共享状态兼容，MUST 明示不能证明跨会话隔离。去重 MUST NOT 把未完成或 UNVERIFIED 的检查当成已完成检查。
+
+#### Scenario: Concurrent writers preserve all increments
+- **WHEN** 多个 Hook 进程同时更新同一统计、绕过记录或审计日志
+- **THEN** 累计计数与保留上限内的日志项不因覆盖而丢失，读者不会看见半截 JSON
+
+#### Scenario: Stop only drains its own session and worktree
+- **WHEN** 两个会话或两个 worktree 同时有检查记录，其中一个收到 Stop
+- **THEN** 只汇总并清理当前作用域，其余记录保持可供各自 Stop 消费
+
+#### Scenario: Retry follows an unverified save check
+- **WHEN** 相同文件未变化，上次保存检查未能获得结论，紧接着再次触发
+- **THEN** 再次执行检查，不因此前写入的去重标记而静默跳过
+
+### Requirement: Cached observations SHALL bind their input identity
+
+软门禁缓存 MUST 绑定真实 worktree、Git HEAD/index 内容与推送基线、工作树文件内容、检查范围、用户配置和命令定义；不得仅用 mtime/size 推断内容相同。身份采集失败或超过预算 MUST 跳过缓存而继续检查，不能截断后复用。检查前后身份不一致、结果含未验证项或缓存格式无效时 MUST NOT 复用。硬门禁 MUST 始终从准确快照执行，不消费软缓存。保存去重同样 MUST 绑定已检查的内容与适用配置，检查期间变化不得登记成新内容已通过。
+
+#### Scenario: Content changes without timestamp changes
+- **WHEN** 文件内容被等长替换并恢复原 mtime
+- **THEN** 下次检查不复用旧结果
+
+#### Scenario: Configuration or linked worktree index changes
+- **WHEN** 用户配置、项目配置或 linked worktree 的暂存内容变化
+- **THEN** 缓存身份变化，长驻进程也读取新项目配置
+
+#### Scenario: Unknown result or concurrent edit
+- **WHEN** 检查工具第一次未验证后恢复，或执行期间输入变化
+- **THEN** 不记录可复用完成结果，后续实际重跑检查
+
+### Requirement: Gate application SHALL separate checks from host presentation
+
+门禁应用 MUST 不依赖 hooks 导入或宿主 SDK。单个语言检查 MUST 返回独立结果，汇总 MUST 保持输入顺序，不用共享可变备注列表连接并发检查。准确快照的审计 MUST 保留原 worktree 和会话归属，实际执行目录只作为执行上下文，不冒充项目身份。基线比较遇到未验证工具结果 MUST NOT 产生存量豁免。
+基线豁免 MUST 比较逐条诊断内容及出现次数，且基线检查器本身 MUST 确认失败；规则码集合或仅有文本输出不足以证明当前发现已存在。
+
+#### Scenario: Exact snapshot audit retains ownership
+- **WHEN** 带会话 ID 的提交门禁从临时 Git 快照执行检查
+- **THEN** 审计记录归属原 worktree 和当前会话，并记录实际执行命令
+
+#### Scenario: Baseline tool cannot verify
+- **WHEN** 基线检查器输出类似违规文本但退出结果为 UNVERIFIED
+- **THEN** 不因文本相似而豁免当前检查
+
+#### Scenario: Baseline evidence must cover every current finding
+- **WHEN** 基线检查器返回成功码却打印诊断、同一规则新增第二处违规，或规则码相同但诊断内容变化
+- **THEN** 当前违规不得获得存量豁免；只有基线自身确认失败且逐条诊断及出现次数覆盖当前结果时才能豁免
+
+### Requirement: Language services SHALL have explicit input and lifetime
+
+语言注册表 MUST 由同一校验逻辑验证后派生识别与命令表，非法形状和重复 ID 不得静默覆盖。
+项目发现 MUST 使用调用方绑定根的配置，不因扫描到嵌套构建文件而丢失扩展名覆盖。
+项目配置不存在可以使用默认值；存在但无法解析、字段类型错误或排除正则非法时 MUST 明确报
+配置不可验证，不得假装配置不存在。未知扩展字段保留给各领域适配器，不封闭 Java 等现有扩展。
+探活 MUST 在目标项目工作目录执行、不消费宿主标准输入，并通过统一执行器处理编码和启动故障。
+成功探活只可在同一检查批次内去重；失败 MUST 可立即重试，跨批次 MUST 重新执行。
+
+#### Scenario: A long-lived process observes tool recovery
+- **WHEN** 探活失败后工具恢复，或下一批检查前工具环境改变
+- **THEN** 重新探活，不使用进程级永久缓存
+
+#### Scenario: Nested source tree uses root override
+- **WHEN** 显式项目根配置自定义扩展名，源码子目录另有构建标记
+- **THEN** 项目发现仍使用显式根的配置，深层文件可发现其最近的项目根
+
+#### Scenario: Malformed project configuration
+- **WHEN** codeguard.json 存在但内容非法
+- **THEN** CLI/MCP 返回明确 UNVERIFIED，Hook 保持既有 fail-open 并可见告警；不执行自动修复
+
+### Requirement: Java analysis SHALL separate observation from policy
+
+构建解析、纯模块影响闭包、命令选择、Git 版本差异观察与 JDK 探测 MUST 有明确依赖边界。
+影响计算和默认命令选择 MUST 不读取文件、不启动进程；应用层负责验证根内路径、选择
+wrapper、装配配置与环境。CLI/MCP 的既有字典字段和只读规划语义 MUST 保留。
+Maven 默认 `-DskipTests verify`、Gradle 默认 `check -x test` 和显式 argv 权威覆盖 MUST 保留。
+纯版本升级仍可降为 validate/help，但 MUST 有已成功读取的基线和当前内容证明；依赖/插件版本、
+编译配置、脚本逻辑或无法证明差异性质时 MUST 不降级。动态构建/缺失静态边仍保守全量。
+
+#### Scenario: Dependency version is not a release-only bump
+- **WHEN** 仅修改 POM 中 dependency/version 或编译器配置，改动行不含 dependency 标签
+- **THEN** 仍计划 verify，不能仅靠行级关键词降为 validate
+
+#### Scenario: Pure project version update remains lightweight
+- **WHEN** 成功读取的前后构建描述只改变项目自身版本号
+- **THEN** 保留 validate/help 优化，显式 java.commands 仍优先且原样执行
+
+#### Scenario: Pure impact calculation is isolated
+- **WHEN** 独立进程只加载影响与命令策略，输入包含循环依赖与无关模块
+- **THEN** 有限时间内获得完整反向闭包且不修改输入，不加载执行器、文件解析器或宿主服务
+
+### Requirement: CVE scanning SHALL separate report evidence from orchestration
+
+五种扫描器的报告解析与阈值判定 MUST 不依赖进程、文件或宿主。扫描 IO、项目选择与修复复扫、
+CLI 呈现 MUST 各有单一所有者。只有有效报告且执行状态可解释时才能作出 PASS/FAIL；残缺或
+自相矛盾统计、非法分数、缺失发现标识、扫描错误不得伪装为零漏洞。原始退出码、输出和发现
+必须保留。缺严重度的发现遵循现有 LOW/高阈值合同，不得在调用工具时提前过滤 UNKNOWN。
+只在用户允许且本次有效报告确认需要修复时执行 npm audit fix；保留修复进程结果，最终判定
+必须来自同一项目、同一阈值的复扫，不能凭修复命令成功声明已修复。
+
+#### Scenario: Malformed reports never become empty success
+- **WHEN** 工具退出 0 但漏洞统计残缺、报告容器类型非法或 CVSS 分数不合法
+- **THEN** 返回 UNVERIFIED，给出解析原因，不执行自动修复
+
+#### Scenario: Unknown severity remains observable
+- **WHEN** 报告包含有效漏洞标识但没有可比较严重度
+- **THEN** 保留发现；LOW 可判定漏洞，其余阈值不可擅自 PASS 或推断高危
+
+#### Scenario: Fix result is followed by a fresh audit
+- **WHEN** npm 修复命令执行后复扫失败或返回干净报告
+- **THEN** 分别返回 UNVERIFIED 或 PASS，保留修复前报告和实际修复执行证据
+
+### Requirement: Predicted staging SHALL preserve repository and pathspec scope
+
+拟暂存范围 MUST 绑定每个 git add 的实际仓库与工作目录，而非整条命令链的最终 cd 或全局
+路径并集。显式 pathspec MUST 交由只读 Git 查询成组解析，保留目录、glob、literal、exclude、
+引号路径及 -u/-f 的选择差异；展开后的文件名不得再作为 glob 解释。观察 MUST 不改写实际
+index 或工作树；不支持的动态/交互式形态必须明确未验证，不得冒充准确暂存面。
+
+#### Scenario: Two repositories have different staging commands
+- **WHEN** 一条命令链对 A 执行 add -A、对 B 只提交已暂存内容
+- **THEN** B 的未暂存及未跟踪文件不进入拟提交检查面
+
+#### Scenario: Exclusion and literal pathspecs remain exact
+- **WHEN** git add 指定包含与排除 pathspec，或字面文件名包含星号
+- **THEN** 快照只覆盖 Git 实际匹配的文件，排除项及同名 glob 邻居不会被额外暂存
+
+### Requirement: Dockerfile checks SHALL preserve scope and incomplete evidence
+
+hadolint 与 Trivy config 的报告解析 MUST 与进程及 CLI 呈现分离。文本和 JSON MUST 使用同一
+结构化判定。超时、启动故障、无有效报告、非零无发现和自相矛盾报告 MUST 为 UNVERIFIED，
+不能用空发现替代失败。逐文件原始进程结果 MUST 保留，后续工具失败不得删除已有发现。
+沿用 Dockerfile 双工具完整性策略：任一工具未验证时整体 exit 1，已确认风险仍逐项可见；
+两工具均有效且有风险 exit 2，均无风险 exit 0。JSON 保留原 hadolint/trivy 字段并增加总判定。
+显式文件 MUST 只检查该文件，不扫描父目录；不存在的输入和无 Dockerfile MUST 返回可解析
+JSON 未验证。目录发现不得因根部文件数达到内部阈值而静默漏掉子目录。
+
+#### Scenario: A scan produces no usable report
+- **WHEN** hadolint 超时或 Trivy 输出非 JSON，即使没有可显示发现
+- **THEN** 两种 CLI 输出均返回 UNVERIFIED，而非 PASS 或漏洞 FAIL
+
+#### Scenario: One tool fails after another reports a risk
+- **WHEN** 一部分文件/工具已返回有效风险，后续工具无法运行
+- **THEN** 保留既有发现与逐进程退出码，并将整体标记未完整验证
+
+#### Scenario: Explicit file scope is preserved
+- **WHEN** 输入为某个 Dockerfile，旁边还有其它 Dockerfile
+- **THEN** 仅对指定文件执行两个工具，不静默扩大范围

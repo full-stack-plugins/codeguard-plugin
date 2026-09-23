@@ -27,6 +27,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 import re as _re
 
 from detect_lang import (  # # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
+    LANG_COMMANDS,
     detect_languages,
     ensure_user_path,
     find_project_root,
@@ -38,7 +39,6 @@ from gate_lib import (
     gate_directive,
     record_skip_event,
     run_gate,
-    should_suppress_event,
     skip_gate_via_git_config,
     summarize_failures,
 )
@@ -160,15 +160,21 @@ def _non_git_note() -> str:
 
 
 def main() -> int:
+    from codeguard.hook_state import session_scope
     payload = read_payload()
+    with session_scope(payload):
+        return _main(payload)
+
+
+def _main(payload: dict) -> int:
+    from codeguard.fingerprint import check_identity
+    from codeguard.hook_state import completed_event, record_completed_event
+
     user_text = str(payload.get("user_prompt") or payload.get("prompt") or "")
     if not is_trigger(user_text):
         return 0
 
-    # 双副本去重：session_id + 文本 派生事件 key；测试 payload 无该字段→旧行为
     session_id = payload.get("session_id")
-    if session_id and should_suppress_event(f"ups:{session_id}:{user_text[:200]}"):
-        return 0
 
     ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录
     # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
@@ -198,6 +204,15 @@ def main() -> int:
     # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
     detected = detect_languages(project_root)
     subset = _detect_languages_in_text(user_text, detected)
+    def current_event_key():
+        if not session_id:
+            return None
+        identity = check_identity(project_root, cfg,
+                                  {lang: LANG_COMMANDS.get(lang, {}) for lang in (subset or detected)})
+        return f"ups:{session_id}:{user_text}:{identity}" if identity is not None else None
+    event_key = current_event_key()
+    if event_key and completed_event(event_key) is not None:
+        return 0
     # 推送意图走 push 面（含未推送提交），提交意图走 commit 面。
     # 文件面：软门禁**不传 lanes** → 三路宽口径（staged+未暂存+未跟踪）——
     # 此刻还没有待执行命令可预测，按"工作树有待提交改动就提醒"注入；硬门禁
@@ -233,6 +248,8 @@ def main() -> int:
                 "additionalContext": "\n\n".join(parts)
             }
         }, ensure_ascii=False))
+        if event_key and not skipped and event_key == current_event_key():
+            record_completed_event(event_key, 0, "", "")
         return 0
 
     # 通过：注入明确的成功确认（无此行用户会以为门禁根本没跑）；
@@ -252,6 +269,8 @@ def main() -> int:
             )
         }
     }, ensure_ascii=False))
+    if event_key and not skipped and event_key == current_event_key():
+        record_completed_event(event_key, 0, "", "")
     return 0
 
 

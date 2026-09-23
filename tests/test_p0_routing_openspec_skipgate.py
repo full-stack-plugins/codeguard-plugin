@@ -52,25 +52,21 @@ def _fresh_repo() -> Path:
 class TimeoutRoutingTests(unittest.TestCase):
 
     def test_timeout_expired_is_routed_as_skipped_not_failure(self):
-        """_run_one 捕获 TimeoutExpired → 返回 (124, "", "timeout after Ns")。
+        """实跑两类超时，断言不拦截且明确未验证；不依赖内部实现位置。"""
+        from unittest.mock import patch
 
-        上游 run_gate 把 124 视为 SKIPPED；本测锁定"超时不阻塞硬门禁"的契约。
-        """
-        # 通过反射检查：try 块有 TimeoutExpired 分支且 return 含 124。
-        import ast
-        import inspect
-        src = Path(inspect.getfile(gate_lib)).read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "_run_one":
-                body_src = ast.unparse(node.body)
-                self.assertIn("TimeoutExpired", body_src)
-                # 必须是 tuple 形式（return (124, ...)），不是裸 124
-                self.assertRegex(body_src, r"return\s*\(124\b")
-                # 必须同时处理 subprocess exit 124（避免 TimeoutExpired + 子进程 124 二者漏一种）
-                self.assertIn("proc.returncode == 124", body_src)
-                return
-        self.fail("_run_one not found in gate_lib.py")
+        for code in ("import time; time.sleep(30)", "raise SystemExit(124)"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                command = {"lint": [sys.executable, "-c", code]}
+                with patch.dict(gate_lib.LANG_COMMANDS, {"python": command}), \
+                        patch.dict(os.environ, {"CODEGUARD_HOME": str(root / "state")}):
+                    failures, skipped = gate_lib._run_gate_uncached(
+                        root, {"lint_timeout_seconds": 0.1}, ["python"])
+                self.assertEqual([], failures)
+                self.assertEqual(1, len(skipped))
+                self.assertIn("未验证", skipped[0])
+                self.assertIn("124", skipped[0])
 
     def test_default_timeout_bumped_to_300s(self):
         """user_config 默认 lint_timeout_seconds 从 120 提到 300——Maven install 冷缓存普遍超时 2 分钟。

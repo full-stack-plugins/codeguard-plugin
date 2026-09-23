@@ -289,11 +289,10 @@ def test_unit():
         ok("probe shellcheck 通过", probe_toolchain({"lint": ["shellcheck"]})[0] is True)
 
     # run_gate：{file} 无 gate 的语言必须归 skipped（防字面量当文件名）
-    gate_lib.detect_languages = lambda root: ["sql"]
-    gate_lib.LANG_COMMANDS["sql"] = {"lint": ["sqlfluff", "lint", "{file}"], "install_hint": "pip install sqlfluff"}
-    gate_lib.project_uses_linter = lambda c, r: True
-    gate_lib.probe_toolchain = lambda c, timeout=10: (True, "")
-    failures, skipped = gate_lib.run_gate(Path(tmp), {})
+    from unittest.mock import patch
+    with patch.dict(gate_lib.LANG_COMMANDS, {"sql": {
+            "lint": ["sqlfluff", "lint", "{file}"], "install_hint": "pip install sqlfluff"}}):
+        failures, skipped = gate_lib.run_gate(Path(tmp), {}, languages=["sql"])
     ok("{file} 无 gate → skipped 不拦提交", not failures and any("gate" in s for s in skipped),
        f"failures={failures}")
 
@@ -325,19 +324,13 @@ def test_unit():
     ok("markdown 探活语义正确（装了→可用；没装→不可用且原因含探活退出）",
        md_available or "探活" in _dl.probe_toolchain(cfg_md)[1])
     bare = Path(tempfile.mkdtemp())
-    _dl._TOOL_CACHE.clear()
-    # 前面 {file} 用例遗留的 monkeypatch 会让 requiresConfig 分支永不可达——先还原真身
-    gate_lib.detect_languages = lambda root: ["markdown", "yaml"]
-    gate_lib.project_uses_linter = _dl.project_uses_linter
-    gate_lib.probe_toolchain = _dl.probe_toolchain
     try:
-        f1, s1 = _run_gate(bare, {})
+        f1, s1 = _run_gate(bare, {}, languages=["markdown", "yaml"])
         ok("未接入→未验证且不阻塞", not f1 and any("未接入" in x for x in s1),
            f"failures={f1} skipped={s1}")
         (bare / ".markdownlint-cli2.jsonc").write_text("{}")
         (bare / "bad.md").write_text("text   \n")  # 行尾空格 → MD009，配置在→真跑
-        _dl._TOOL_CACHE.clear()
-        f2, s2 = _run_gate(bare, {})
+        f2, s2 = _run_gate(bare, {}, languages=["markdown", "yaml"])
         if md_available:
             ok("已接入→markdown 真跑（advisory 告警进 skipped）",
                not f2 and any(x.startswith("markdown") and "告警" in x for x in s2),
@@ -350,7 +343,6 @@ def test_unit():
         ok("已接入→yaml 仍未接入（无 .yamllint 配置）",
            any(x.startswith("yaml") and "未接入" in x for x in s2))
     finally:
-        _dl._TOOL_CACHE.clear()
         shutil.rmtree(bare, ignore_errors=True)
 
     # ── C2-3.5：未声明前置条件的语言不受影响（typescript 原有声明保持）──
@@ -531,41 +523,46 @@ def test_field_regressions():
 def test_perf():
     print("\n[5] 性能与健壮性（缓存/去重/兜底/冷却）")
 
-    # ── 探活去重：eslint 系 4 语言只真探 1 次 ──
-    import detect_lang as dl
-    calls = []
-    orig = dl._run_probe_cmd
-    dl._run_probe_cmd = lambda probe, t: (calls.append(tuple(probe)), orig(probe, t))[1]
-    try:
-        for lid in ("typescript", "vue", "svelte", "astro"):
-            dl.probe_toolchain(dl.LANG_COMMANDS[lid])
-    finally:
-        dl._run_probe_cmd = orig
-    ok("探活去重（4 语言共享 eslint → 1 次执行）", len(calls) == 1, f"实际 {len(calls)} 次")
+    # ── 同批共享探活真实执行一次；不依赖机器上安装了哪个 npx 包 ──
+    from codeguard.toolchain import ToolchainProbe
+    with tempfile.TemporaryDirectory() as temp:
+        probe_root = Path(temp)
+        probe = ToolchainProbe(probe_root)
+        definition = {"probe": [sys.executable, "-c", (
+            "from pathlib import Path; p=Path('count'); "
+            "p.write_text(p.read_text()+'x' if p.exists() else 'x')")]}
+        results = [probe.probe(definition) for _ in range(4)]
+        count = (probe_root / "count").read_text()
+        ok("探活去重（同批 4 语言共享工具 → 1 次执行）",
+           all(result[0] for result in results) and count == "x", f"实际 {len(count)} 次")
 
     # ── 门禁跨进程缓存：同状态 60s 内复用；index 变化即失效 ──
     import gate_lib
+    from codeguard import gate as gate_application
     repo = make_repo()
+    # 缓存完整的实际检查结果，而不是“没有改动未检查”的 skipped。
+    (repo / "scripts" / "deploy.sh").write_text("#!/bin/bash\nprintf 'ok\\n'\n")
     exec_count = []
-    orig_uncached = gate_lib._run_gate_uncached
+    orig_uncached = gate_application.run_batch
     def counting(root, cfg, langs, **kw):
         exec_count.append(1)
         return orig_uncached(root, cfg, langs, **kw)
-    gate_lib._run_gate_uncached = counting
+    gate_application.run_batch = counting
     try:
-        f1, _s1 = gate_lib.run_gate(repo, {})
+        f1, _s1 = gate_lib.run_gate(repo, {}, languages=["shell"])
+        ok("缓存夹具确实完成检查而非跳过", not _s1, str(_s1))
         n_after_first = len(exec_count)
-        f2, _s2 = gate_lib.run_gate(repo, {})
+        f2, _s2 = gate_lib.run_gate(repo, {}, languages=["shell"])
         ok("门禁缓存命中（第二次零执行）", len(exec_count) == n_after_first == 1,
            f"执行 {len(exec_count)} 次")
         ok("缓存结果一致", [x[0] for x in f1] == [x[0] for x in f2])
         # index 变化 → 键变 → 重新执行
         (repo / "scripts" / "more.sh").write_text("# ok\n")
         git(repo, "add", "-A")
-        gate_lib.run_gate(repo, {})
+        gate_lib.run_gate(repo, {}, languages=["shell"])
         ok("暂存区变化即缓存失效（重跑）", len(exec_count) == 2, f"执行 {len(exec_count)} 次")
     finally:
-        gate_lib._run_gate_uncached = orig_uncached
+        gate_application.run_batch = orig_uncached
 
     # ── 异常兜底：钩子内部错误 fail-open（exit 0，无 traceback） ──
     code = (
@@ -586,6 +583,7 @@ def test_perf():
     ok("有一行降级说明", "fail-open" in r.stderr or "内部错误" in r.stderr)
 
     # ── PATH 继承缓存：第二次不再 spawn 登录 shell ──
+    from paths import ensure_user_path
     spawns = []
     real_run = subprocess.run
     def counting_run(cmd, *a, **kw):
@@ -594,9 +592,9 @@ def test_perf():
         return real_run(cmd, *a, **kw)
     subprocess.run = counting_run
     try:
-        dl.ensure_user_path(from_login_shell=True)
+        ensure_user_path(from_login_shell=True)
         n1 = len(spawns)
-        dl.ensure_user_path(from_login_shell=True)
+        ensure_user_path(from_login_shell=True)
         ok("PATH 缓存：第二次零 spawn", len(spawns) == n1, f"spawn {len(spawns)} 次")
     finally:
         subprocess.run = real_run
@@ -630,6 +628,8 @@ def run_cve(args: list[str], cwd: Path):
 def test_cve():
     print("\n[6] CVE 生态标识与参数校验")
     import cve_check as cve
+    from codeguard import cve as cve_app
+    from codeguard import cve_scanners
 
     tmp = Path(tempfile.mkdtemp())
 
@@ -679,26 +679,26 @@ def test_cve():
     ok("HIGH 默认两档", cve.severities_at_and_above("HIGH") == ["HIGH", "CRITICAL"])
     ok("CRITICAL 单档", cve.severities_at_and_above("CRITICAL") == ["CRITICAL"])
     captured = {}
-    orig_run = cve.run
-    cve.run = lambda cmd, cwd, timeout=600: (captured.update(cmd=cmd), (0, "", ""))[1]
+    orig_run = cve_scanners.run
+    cve_scanners.run = lambda cmd, cwd, timeout=600: (captured.update(cmd=cmd), (0, "", ""))[1]
     try:
         cve.scan_trivy(tmp, "MEDIUM")
     finally:
-        cve.run = orig_run
+        cve_scanners.run = orig_run
     ok("trivy 收到完整级别集合",
-       captured.get("cmd", []).count("MEDIUM,HIGH,CRITICAL") == 1, str(captured.get("cmd")))
+       captured.get("cmd", []).count("MEDIUM,HIGH,CRITICAL,UNKNOWN") == 1, str(captured.get("cmd")))
 
     # ── C1-3.2：maven 数值阈值与其余扫描器同一 intent（HIGH⇒CVSS 7，不是旧映射的 3）──
     seen = {}
-    orig_mv = cve.scan_maven
-    cve.scan_maven = lambda root, th, _s=seen: (_s.update(th=th), {"ecosystem": "maven", "tool": "fake", "exit": 0})[1]
+    orig_mv = cve_app.scan_maven
+    cve_app.scan_maven = lambda root, th, _s=seen: (_s.update(th=th), {"ecosystem": "maven", "tool": "fake", "exit": 0})[1]
     try:
         cve._scan_maven_ecosystem(tmp, "HIGH", False)
         ok("HIGH ⇒ failBuildOnCVSS=7", seen.get("th") == 7, f"th={seen.get('th')}")
         cve._scan_maven_ecosystem(tmp, "MEDIUM", False)
         ok("MEDIUM ⇒ failBuildOnCVSS=4", seen.get("th") == 4, f"th={seen.get('th')}")
     finally:
-        cve.scan_maven = orig_mv
+        cve_app.scan_maven = orig_mv
 
     # ── C1-5.6：四个原生生态派发不回归（mock 扫描器，不依赖真实工具/网络）──
     for eco, marker in (("maven", "pom.xml"), ("node", "package.json"),
@@ -708,7 +708,7 @@ def test_cve():
         calls = []
         orig_scan = cve.ECOSYSTEM_SCANNERS[eco]["scan"]
         cve.ECOSYSTEM_SCANNERS[eco]["scan"] = (
-            lambda root, sev, fix, _c=calls, _e=eco: (_c.append(sev), {"ecosystem": _e, "tool": "fake", "exit": 0})[1])
+            lambda root, sev, fix, _c=calls, _e=eco: (_c.append(sev), {"ecosystem": _e, "tool": "fake", "exit": 0, "status": "PASS"})[1])
         old_argv = sys.argv
         try:
             sys.argv = ["cve_check.py", "--ecosystem", eco, str(d)]

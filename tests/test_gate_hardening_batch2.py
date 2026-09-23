@@ -20,6 +20,8 @@ sys.path[:0] = [str(PLUGIN / "scripts"), str(PLUGIN / "hooks")]
 import gate_lib
 import pre_tool_git_guard
 import scope
+from codeguard import spec_validation
+from git_snapshot import validation_tree
 from verdict import FAIL, UNVERIFIED, finding_signatures, lint_verdict
 
 
@@ -83,7 +85,8 @@ class BaselineStalenessTests(GitRepoCase):
     def checker(self):
         return [sys.executable, "-c",
                 ("import sys,pathlib;t=pathlib.Path(sys.argv[1]).read_text();"
-                 "sys.stdout.write('CODE1 bad\\n') if 'BAD' in t else None"),
+                 "sys.stdout.write('CODE1 bad\\n') if 'BAD' in t else None;"
+                 "sys.exit('BAD' in t)"),
                 "{file}"]
 
     def test_pre_existing_finding_is_stale_with_baseline(self):
@@ -117,6 +120,38 @@ class BaselineStalenessTests(GitRepoCase):
         )
         self.assertIsNone(stale, "无基线证据绝不豁免（verdict-integrity 既有原则）")
 
+    def test_second_occurrence_of_same_rule_is_not_stale(self):
+        self.put("lib.sh", "BAD\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        self.put("lib.sh", "BAD\nBAD\n")
+        checker = [sys.executable, "-c",
+                   ("import sys,pathlib; lines=pathlib.Path(sys.argv[1]).read_text().splitlines();"
+                    "print('\\n'.join('CODE1 bad' for line in lines if line == 'BAD')) or "
+                    "sys.exit(any(line == 'BAD' for line in lines))"), "{file}"]
+        self.assertIsNone(gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, "CODE1 bad\nCODE1 bad\n"))
+
+    def test_same_rule_with_different_diagnostic_is_not_stale(self):
+        self.put("lib.sh", "BAD old\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        self.put("lib.sh", "BAD new\n")
+        checker = [sys.executable, "-c",
+                   ("import sys,pathlib; value=pathlib.Path(sys.argv[1]).read_text().split()[1];"
+                    "print(f'{sys.argv[1]}:1:1: F401 `{value}` imported but unused');"
+                    "sys.exit(1)"), "{file}"]
+        self.assertIsNone(gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, "lib.sh:1:1: F401 `new` imported but unused"))
+
+    def test_successful_baseline_command_cannot_prove_a_failure(self):
+        self.put("lib.sh", "BAD\n")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        checker = [sys.executable, "-c", "print('CODE1 bad')", "{file}"]
+        self.assertIsNone(gate_lib.baseline_stale_finding(
+            self.root, "lib.sh", checker, "CODE1 bad"))
+
 
 class GateDecisionLogTests(GitRepoCase):
     """门禁决策必须落盘可回溯（哪个语言、什么命令、rc、结论）。"""
@@ -143,33 +178,34 @@ class GateDecisionLogTests(GitRepoCase):
 
 
 class PathspecResolutionTests(GitRepoCase):
-    """git add 的 pathspec 必须用 git 自己的解析（glob/目录/等价语法）。
+    """从命令意图到真实 Git 快照验证范围，不依赖从未存在的 helper。"""
 
-    实现已让位：pre_tool_git_guard.py 正被并行会话活跃修改（其 chain_skip_gate
-    与本批 inline_skip_gate 互补），避免竞争写入；待其稳定后把 match_pathspec
-    接进 staging_intent 再解除跳过。
-    """
+    def matched(self, pathspec):
+        import shlex
+        command = f"git -C {shlex.quote(str(self.root))} add {shlex.quote(pathspec)} && git -C {self.root} commit -m x"
+        lanes, extra = pre_tool_git_guard.staging_intent(command)
+        with validation_tree(self.root, lanes=lanes, extra=extra) as (snapshot, changed):
+            for name in changed:
+                self.assertEqual((self.root / name).read_bytes(), (snapshot / name).read_bytes())
+            return changed
 
-    @unittest.skip("pending: pre_tool_git_guard.py 并行修改中，match_pathspec 待接线")
     def test_glob_pathspec_expands_to_real_files(self):
         self.put("a.py", "print(1)\n")
         self.put("pkg/b.py", "print(2)\n")
-        matched = pre_tool_git_guard.match_pathspec(self.root, self.root, "*.py")
+        matched = self.matched("*.py")
         self.assertCountEqual(["a.py", "pkg/b.py"], matched, "basename glob 命中任意层级")
-        matched = pre_tool_git_guard.match_pathspec(self.root, self.root, "pkg/*.py")
+        matched = self.matched("pkg/*.py")
         self.assertEqual(["pkg/b.py"], matched)
 
-    @unittest.skip("pending: pre_tool_git_guard.py 并行修改中，match_pathspec 待接线")
     def test_directory_pathspec_expands(self):
         self.put("pkg/a.py", "x=1\n")
         self.put("pkg/sub/b.py", "y=2\n")
-        matched = pre_tool_git_guard.match_pathspec(self.root, self.root, "pkg")
+        matched = self.matched("pkg")
         self.assertCountEqual(["pkg/a.py", "pkg/sub/b.py"], matched)
 
-    @unittest.skip("pending: pre_tool_git_guard.py 并行修改中，match_pathspec 待接线")
     def test_nonmatching_pathspec_returns_empty(self):
         self.put("a.py", "print(1)\n")
-        self.assertEqual([], pre_tool_git_guard.match_pathspec(self.root, self.root, "*.rs"))
+        self.assertEqual([], self.matched("*.rs"))
 
 
 class RuffTargetVersionTests(GitRepoCase):
@@ -195,11 +231,9 @@ class RuffTargetVersionTests(GitRepoCase):
 class EscapeHatchNoticeTests(GitRepoCase):
     """内联豁免放行时必须向用户明示，不得静默绕过。
 
-    同样待 pre_tool_git_guard.py 并行修改稳定后接线（提醒输出在 main() 的
-    inline_skip_gate 分支加 hookSpecificOutput）。
+    主入口已具备提醒输出，真实执行通过后恢复为常规回归，不再保留历史 skip。
     """
 
-    @unittest.skip("pending: pre_tool_git_guard.py 并行修改中，豁免提醒待接线")
     def test_inline_skip_emits_user_visible_notice(self):
         self.put("a.py", "print(1)\n")
         _git(self.root, "add", "-A")
@@ -233,8 +267,8 @@ class OpenspecValidateResilienceTests(GitRepoCase):
     def test_unexpected_exception_is_skipped_not_raised(self):
         self.put("openspec/config.yaml", "schema: spec-driven\n")
         from unittest.mock import patch
-        with patch.object(gate_lib.shutil, "which", return_value="/usr/bin/fake-openspec"), \
-             patch.object(gate_lib.subprocess, "run", side_effect=NameError("boom")):
+        with patch.object(spec_validation.shutil, "which", return_value="/usr/bin/fake-openspec"), \
+             patch.object(subprocess, "run", side_effect=NameError("boom")):
             result = gate_lib._openspec_validate(self.root)
         self.assertIn("skipped", result)
         self.assertTrue(result["failures"] == [])
@@ -247,18 +281,18 @@ class SkipGateRetryTests(GitRepoCase):
     def test_retry_after_timeout_then_success(self):
         _git(self.root, "config", "codeguard.skipGate", "true")
         calls = {"n": 0}
-        real_run = gate_lib.subprocess.run
+        real_run = subprocess.run
 
         def flaky(*args, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:
-                raise gate_lib.subprocess.TimeoutExpired("git", 3)
+                raise subprocess.TimeoutExpired("git", 3)
             return real_run(*args, **kwargs)
 
         from unittest.mock import patch
         os.environ["CODEGUARD_HOME"] = str(Path(self._td.name) / "home")
         try:
-            with patch.object(gate_lib.subprocess, "run", side_effect=flaky):
+            with patch.object(subprocess, "run", side_effect=flaky):
                 self.assertTrue(gate_lib.skip_gate_via_git_config(self.root),
                                 "第一次超时后重试成功必须算豁免")
             state = (Path(self._td.name) / "home" / "session_state.json")
@@ -271,8 +305,8 @@ class SkipGateRetryTests(GitRepoCase):
         home = Path(self._td.name) / "home"
         os.environ["CODEGUARD_HOME"] = str(home)
         try:
-            with patch.object(gate_lib.subprocess, "run",
-                              side_effect=gate_lib.subprocess.TimeoutExpired("git", 3)):
+            with patch.object(subprocess, "run",
+                              side_effect=subprocess.TimeoutExpired("git", 3)):
                 self.assertFalse(gate_lib.skip_gate_via_git_config(self.root))
             state = json.loads((home / "session_state.json").read_text(encoding="utf-8"))
             self.assertIn("skipGate-read-error", state["_skip"]["kinds"])

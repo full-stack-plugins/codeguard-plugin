@@ -23,31 +23,18 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# 构建产物/依赖快照的**单一事实源**——"哪些目录不需要检测"由这里回答。
-# 语义边界：gate_lib.GUARD_EXCLUDE_DIRS 管"能否入库"（= 本清单 + IDE 目录，
-# 从本清单派生），本清单管"扫不扫"；两侧永不漂移（改这里即两侧同变）。
-# 为什么必须完备（两类实测永久红）：target/ 下 maven-javadoc 生成的
-# javadoc.sh 让 shell 门禁必红（java 与 shell 两个 gate 步骤互相矛盾）；
-# target/site/jacoco 与 target/apidocs 的生成 HTML 让 html 门禁必红——生成物
-# 不会被"修复"，下次构建就重写，扫描它们得到的永远是与仓库内容无关的红。
-# vendor/upstream 是供应链依赖快照，内容不可编辑，同理只产"永久红"。
-# 生效通道必须四条全覆盖（缺一条就漏一类门禁）：
-#   1) ruff --exclude（全量）
-#   2) find 型 gate 注入 -not -path（-print0/-exec/无 NUL 锚三形态）
-#   3) PostToolUse 对产物路径静默跳过（写 target/ 的生成物不检查）
-#   4) changed_files 过滤产物路径（force-add 的 target 文件不进 delta 面）
-FULL_SCAN_EXCLUDES = (
-    ".venv", "venv", "env", "node_modules", "vendor", "upstream",
-    "build", "dist", "target", "out", ".next", ".nuxt", ".gradle",
-    "coverage", ".terraform", ".tox", ".eggs", "htmlcov", ".turbo",
-    ".parcel-cache", "__pycache__", ".pytest_cache", ".mypy_cache",
-    ".ruff_cache",
-    # Agent/宿主工具工作目录：会话实测 .mimosa/（含源码快照）与 .worktrees/
-    # （git 子工作树）曾被 git add -A 带进暂存区——既不该入库，也不该被全量
-    # 扫描重复检查（子工作树是同一份源码，扫两遍 = 双份误报）。
-    ".mimosa", ".worktrees", ".code-review-graph", ".kimi-code",
-    ".zcode", ".codex-plugin", ".agents",
-)
+from codeguard.path_policy import FULL_SCAN_EXCLUDES, is_build_artifact
+
+__all__ = [
+    "DEFAULT_LANES",
+    "FULL_SCAN_EXCLUDES",
+    "changed_files",
+    "child_git_repo_names",
+    "is_build_artifact",
+    "is_git_repo",
+    "ruff_config_args",
+    "scope_cmd",
+]
 
 
 def is_git_repo(root: str | Path) -> bool:
@@ -75,16 +62,6 @@ def child_git_repo_names(root: str | Path) -> list[str]:
     return out
 
 
-def is_build_artifact(path: str | Path) -> bool:
-    """路径是否落在构建产物/依赖快照目录下（任一段命中即算）。
-
-    单一事实源的谓词形态，供 PostToolUse（生成物不检查）与 changed_files
-    （产物不进 delta 面）复用同一份认知，避免两处各写一遍目录名。
-    注意不能用 lstrip("./")——会把 `.tox` 的点一起剥掉（实测踩点）。
-    """
-    parts = [seg for seg in str(path).replace("\\", "/").split("/")
-             if seg not in ("", ".")]
-    return any(seg in FULL_SCAN_EXCLUDES for seg in parts)
 _RUFF_SNIPPET = Path(__file__).resolve().parents[1] / "linters" / "ruff" / "ruff.toml"
 
 
@@ -218,8 +195,13 @@ def scope_cmd(
         if full_excludes:
             for d in scan_excludes:
                 out += ["--exclude", d]
-    elif full_excludes:
-        out = [_inject_find_excludes(c, scan_excludes) if isinstance(c, str) else c for c in out]
+    elif full_excludes and Path(out[0]).name in {"bash", "sh", "dash", "zsh", "ksh"}:
+        # 只改 Shell 的命令体；普通 argv/Python -c 中的 "find " 是字面数据，不能注入语法。
+        for index in range(1, len(out) - 1):
+            flag = out[index]
+            if flag.startswith("-") and flag[1:].isalpha() and "c" in flag[1:]:
+                out[index + 1] = _inject_find_excludes(out[index + 1], scan_excludes)
+                break
     scan_idx = [i for i, tok in enumerate(out[1:], 1) if tok == "." or "**" in tok]
     if targets and scan_idx:
         flags = [tok for i, tok in enumerate(out) if i not in scan_idx and not tok.startswith("#")]

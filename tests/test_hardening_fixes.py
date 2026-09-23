@@ -197,25 +197,12 @@ class ExitTwoTests(unittest.TestCase):
         (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
         _git(repo, "add", "-A")
 
-        class _Fake:
-            returncode = 2
-            stdout = "npm warn junk\n"
-            stderr = "Error: cannot find module\n"
-
-        original_run = gate_lib.subprocess.run
-        original_probe = gate_lib.probe_toolchain
-        original_uses = gate_lib.project_uses_linter
-        gate_lib.subprocess.run = lambda *a, **k: _Fake()
-        gate_lib.probe_toolchain = lambda *a, **k: (True, "")
-        gate_lib.project_uses_linter = lambda *a, **k: True
-        try:
+        from unittest.mock import patch
+        command = {"lint": [sys.executable, "-c", "print('Error: cannot find module');raise SystemExit(2)"]}
+        with patch.dict(gate_lib.LANG_COMMANDS, {"python": command}):
             failures, skipped = gate_lib._run_gate_uncached(
                 repo, {"lint_timeout_seconds": 5}, ["python"], scope="repo", changed=None,
             )
-        finally:
-            gate_lib.subprocess.run = original_run
-            gate_lib.probe_toolchain = original_probe
-            gate_lib.project_uses_linter = original_uses
         self.assertEqual(failures, [])
         self.assertTrue(any("工具链异常未验证" in s and "exit 2" in s for s in skipped), skipped)
 
@@ -441,46 +428,32 @@ class PushFaceTests(unittest.TestCase):
 
 
 class UnverifiedParityTests(unittest.TestCase):
-    """rc2/127 按场景分流：rc2 = unverified（两处一致）；rc127 = 故意分歧。
+    """工具缺失与 exit 2 均未验证，CLI 不能把它们算通过。
 
-    check CLI 是 CI/健康面——工具缺失必须红（环境无关性由 test_mcp_server
-    的失败日志/安静模式用例依赖）；交互钩子对 127 归 skipped 不挡工作。
-    这是有意设计，本测试锁住它，防止再被"统一"。
+    使用真实进程和明确命令；不再依赖旧编排器内部的 subprocess 导入。
     """
 
-    @staticmethod
-    def _fake_run(returncode: int):
-        import run_per_language as rpl
-
-        class _Fake:
-            pass
-
-        _Fake.returncode = returncode
-        _Fake.stdout = ""
-        _Fake.stderr = "boom" if returncode != 0 else ""
-        original = rpl.subprocess.run
-        rpl.subprocess.run = lambda *a, **k: _Fake()
-        return original
-
     def test_rc_127_is_failure_in_cli(self) -> None:
+        from unittest.mock import patch
+
         import run_per_language as rpl
 
-        original = self._fake_run(127)
-        try:
-            results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-127-")))
-        finally:
-            rpl.subprocess.run = original
+        with tempfile.TemporaryDirectory(prefix="cg-127-") as td:
+            command = {"lint": [str(Path(td) / "missing-checker")]}
+            with patch.dict(rpl.LANG_COMMANDS, {"python": command}):
+                results = rpl.run_check(["python"], Path(td))
         self.assertFalse(results[0]["passed"], "CLI 面工具缺失不能通过")
         self.assertEqual(results[0]["status"], "UNVERIFIED")
 
     def test_rc_2_is_unverified_in_cli(self) -> None:
+        from unittest.mock import patch
+
         import run_per_language as rpl
 
-        original = self._fake_run(2)
-        try:
-            results = rpl.run_check(["python"], Path(tempfile.mkdtemp(prefix="cg-2-")))
-        finally:
-            rpl.subprocess.run = original
+        command = {"lint": [sys.executable, "-c", "raise SystemExit(2)"]}
+        with tempfile.TemporaryDirectory(prefix="cg-2-") as td, \
+                patch.dict(rpl.LANG_COMMANDS, {"python": command}):
+            results = rpl.run_check(["python"], Path(td))
         self.assertFalse(results[0]["passed"])
         self.assertEqual(results[0]["status"], "UNVERIFIED")
         self.assertTrue(results[0].get("reason"))

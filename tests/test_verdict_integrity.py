@@ -22,6 +22,7 @@ import post_tool_lint
 import pre_tool_git_guard
 import run_check
 import run_per_language
+from codeguard import cve_scanners
 from detect_lang import LANG_COMMANDS
 
 # auto_fix 用例需真实 ruff 执行 format/check——工具缺失时断言的修复路径无法覆盖。
@@ -184,10 +185,12 @@ class ContentTests(RepoCase):
         self.assertNotIn("untracked", lanes)
 
     def test_scoped_add_all_keeps_directory_scope(self):
+        self.put("src/a.py", "x = 1\n")
+        self.put("other.py", "x = 2\n")
         with patch.object(Path, "cwd", return_value=self.root):
             lanes, extra = pre_tool_git_guard.staging_intent("git add -A src && git commit -m t")
         self.assertNotIn("untracked", lanes)
-        self.assertIn("src", extra)
+        self.assertEqual(["src/a.py"], extra)
 
     def exact_gate(self, mode="commit", lanes=("staged",), extra=None):
         self.assertIn("exact", inspect.signature(gate_lib.run_gate).parameters,
@@ -250,7 +253,7 @@ class ContentTests(RepoCase):
 class CveEvidenceTests(RepoCase):
     def test_bad_severity_is_usage_not_vulnerability(self):
         with patch.object(sys, "argv", ["cve_check.py", "--severity", "invalid"]), \
-                contextlib.redirect_stderr(io.StringIO()), patch.object(cve_check, "run") as runner:
+                contextlib.redirect_stderr(io.StringIO()), patch.object(cve_scanners, "run") as runner:
             try:
                 code = cve_check.main()
             except SystemExit as exc:
@@ -260,7 +263,7 @@ class CveEvidenceTests(RepoCase):
 
     def invoke(self, rc, stdout, stderr, severity="HIGH"):
         self.put("package.json", "{}")
-        with patch.object(cve_check, "run", return_value=(rc, stdout, stderr)), \
+        with patch.object(cve_scanners, "run", return_value=(rc, stdout, stderr)), \
                 patch.object(sys, "argv", ["cve_check.py", "--ecosystem", "node",
                                            "--severity", severity, str(self.root)]):
             out = io.StringIO()
@@ -289,8 +292,9 @@ class CveEvidenceTests(RepoCase):
 
     def test_json_output_is_one_machine_readable_document(self):
         self.put("package.json", "{}")
-        report = json.dumps({"metadata": {"vulnerabilities": {"high": 0}}})
-        with patch.object(cve_check, "run", return_value=(0, report, "")), \
+        report = json.dumps({"metadata": {"vulnerabilities": {
+            "info": 0, "low": 0, "moderate": 0, "high": 0, "critical": 0, "total": 0}}})
+        with patch.object(cve_scanners, "run", return_value=(0, report, "")), \
                 patch.object(sys, "argv", ["cve_check.py", "--json", "--ecosystem", "node", str(self.root)]):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
@@ -310,10 +314,10 @@ class CveEvidenceTests(RepoCase):
                 {"vulnerabilities": [{"name": "CVE-2026-0000", "cvssv3": {"baseScore": 9.1}}]}]}))
             return 1, "threshold exceeded", ""
         # 只有具备结构化输出配置后才启动 fake，缺特性作为断言失败。
-        with patch.object(cve_check, "run", return_value=(1, "network timeout", "")):
+        with patch.object(cve_scanners, "run", return_value=(1, "network timeout", "")):
             unavailable = cve_check.scan_maven(self.root, 7)
         self.assertEqual(unavailable.get("status"), "UNVERIFIED")
-        with patch.object(cve_check, "run", side_effect=fake):
+        with patch.object(cve_scanners, "run", side_effect=fake):
             found = cve_check.scan_maven(self.root, 7)
         self.assertEqual(found["status"], "FAIL")
 
@@ -324,20 +328,20 @@ class CveEvidenceTests(RepoCase):
         def scan(cmd, **kwargs):
             seen.append(cmd)
             return 1, report, ""
-        with patch.object(cve_check, "run", side_effect=scan):
+        with patch.object(cve_scanners, "run", side_effect=scan):
             result = cve_check.scan_pip(self.root)
         self.assertEqual(result.get("status"), "FAIL")
         self.assertIn("--requirement", seen[0])
 
     def test_cargo_json_failure_without_advisories_is_unverified(self):
-        with patch.object(cve_check, "run", side_effect=[(0, "cargo-audit", ""), (1, "", "network error")]):
+        with patch.object(cve_scanners, "run", side_effect=[(0, "cargo-audit", ""), (1, "", "network error")]):
             result = cve_check.scan_cargo(self.root)
         self.assertEqual(result.get("status"), "UNVERIFIED")
 
     def test_cargo_json_advisory_is_not_lost(self):
         report = json.dumps({"vulnerabilities": {"found": True, "count": 1,
                             "list": [{"advisory": {"id": "RUSTSEC-TEST-0001"}}]}})
-        with patch.object(cve_check, "run", side_effect=[(0, "cargo-audit", ""), (1, report, "")]):
+        with patch.object(cve_scanners, "run", side_effect=[(0, "cargo-audit", ""), (1, report, "")]):
             result = cve_check.scan_cargo(self.root)
         self.assertEqual(result.get("status"), "FAIL")
 

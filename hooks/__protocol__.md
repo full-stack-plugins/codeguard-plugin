@@ -21,9 +21,24 @@
 实现定位（**符号而非行号**——行号随每次重构腐烂，符号不腐；v0.8.0 起弃用行号指针）：
 - SessionStart 摘要：`hooks/env_check.py::main`（含双副本告警段）。
 - UserPromptSubmit JSON：`hooks/user_prompt_validator.py::main`（非 git 目录跳过说明 `_non_git_note`）与 `::is_trigger`。
-- PreToolUse stderr：`hooks/pre_tool_git_guard.py::main`；拦截判定 `::is_guarded`（直接 + `_command_indirect` 一层间接）。
+- PreToolUse stderr：`hooks/pre_tool_git_guard.py::main`；静态语法在 `scripts/codeguard/git_syntax.py`，仓库观察与 `is_guarded/_guarded_mode` 在 `scripts/codeguard/git_context.py`；旧 Hook helper 导入继续兼容。一层脚本观察共用 `_indirect_bodies`。
 - PostToolUse JSON：`hooks/post_tool_lint.py::main`（通过/自动修复后通过/失败 additionalContext 三处 print）。
 - Stop 摘要：`hooks/stop_summary.py::main`（含绕过计数 `summarize` 与 skipGate 遗留告警）。
+
+门禁内部边界：`hooks/gate_lib.py` 只保留兼容导出；`scripts/codeguard/gate.py` 选择内容面与保序汇总，
+`gate_checks.py` 返回各语言独立 `GateOutcome`；`repository_policy.py` 检查路径安全和显式豁免，
+`baseline.py` 核验存量证据，`spec_validation.py` 适配可选 OpenSpec 校验，`reporting.py` 保留反馈格式。
+应用服务无需 hooks 路径或宿主 SDK 即可运行；兼容面不承担第二份业务实现。
+
+语言服务边界：`registry_schema` 的纯校验同时服务注册表 CLI 与运行时加载，`registry` 派生
+识别/命令表；`config` 读取配置，`discovery` 只做项目发现，`toolchain` 负责探活。
+SessionStart 与每轮门禁各持有独立 `ToolchainProbe`，在目标目录执行且 stdin=DEVNULL；
+同批同命令成功探活去重，不同命令仍并行，失败与下一批检查都重新探测。
+探活成功不代表 lint 通过。`detect_lang`、`user_config` 的原公开导入继续兼容。
+
+`codeguard.json` 缺失时保留默认值；存在但 JSON/字段类型/扩展语言 ID/排除正则无效时，
+CLI/MCP 明确返回 UNVERIFIED，自动修复不执行。门禁以未验证说明放行而非报告通过；
+其它 Hook 的配置异常仍遵循既有 fail-open 和 stderr 告警，不把它变成代码违规。
 
 ---
 
@@ -100,16 +115,26 @@ if __name__ == "__main__":
 **一致性约束**：`UserPromptSubmit` 软门禁与本硬门禁共用同一条 skipGate 豁免，
 且**都不得在非 git 目录回退成"扫描 cwd"**——UPS 对非 git 目录输出一行
 `_non_git_note` 说明并 exit 0（工作区根被回退扫描 = 上百无关仓的存量 lint
-变成永久红，实测）。双副本事件去重键（四个钩子同一规则）：PreToolUse 用 `tool_use_id`、
-UserPromptSubmit 用 `session_id + 文本前缀`、SessionStart/Stop 用 `session_id`；
-payload 不带这些字段（测试协议/其它宿主）时不去重，保持旧行为。
+变成永久红，实测）。双副本事件去重键：PreToolUse 用 `tool_use_id + 命令`、
+UserPromptSubmit 用 `session_id + 完整文本 + 检查输入身份`、SessionStart/Stop 用 `session_id`；
+这些键同时绑定当前会话/worktree。payload 不带对应字段时不做事件去重。
+去重仅记录**已经完成**的结果：SessionStart/Stop 异常后可重试；软门禁有跳过或未验证项
+时不记录完成。硬门禁只短时重放已完成的拒绝（保留 exit 2 与诊断），绝不缓存放行；
+第一份仍在执行时第二份可以重复检查，不可因“事件见过”直接返回 0。
+这不是 exactly-once 执行保证，也不能代替当前代码快照。
 推送语义：门禁面由 `_guarded_mode` 统一判定——直接命令与一层间接共用同一套
 扫描；**commit 面 = 按命令链预测的实际提交面**（`pre_tool_git_guard.staging_intent`：
-纯 `git commit` → 仅暂存区；`git add -A/-a/-u` 或 `commit -a` → 相应扩到
-未暂存/未跟踪；`git add <paths>` → 并入这些路径——add 在 PreToolUse 时**尚未执行**，
+纯 `git commit` → 仅暂存区；`git add -A` → 含未跟踪；`git add -u` 或 `commit -a` → 仅已跟踪改动；
+`git add <paths>` → 并入这些路径——add 在 PreToolUse 时**尚未执行**，
 不并入会漏检"即将暂存"的文件；并行会话留在工作树的未暂存 WIP 不属于本次提交，
 曾因此被误拦）；纯 push 在 HEAD 快照中检查未推送差异（`up...HEAD`），无上游时检查 HEAD 树。
 commit+push 使用预测提交快照并合并未推送范围。删除文件进入影响分析，不作为新增敏感文件。
+`git_staging` 将每段 cd/-C、pathspec 与其 worktree 根绑定；硬门禁逐仓传入目标身份，
+另一仓的 add -A 不得扩张本仓的纯 commit。Git ls-files 成组解析 glob/目录/literal/exclude；
+`-u` 不包含未跟踪文件，`-f` 可包含指定忽略文件，解析后的名字在快照中按字面处理。
+子目录 add . 不扩到兄弟目录；路径含空格与连续相对 cd/-C 保留上下文。
+动态路径、交互暂存和 pathspec-from-file 等未支持形态返回 JSON additionalContext 的
+git UNVERIFIED，保持 exit 0 兼容放行；不能被描述为已准确验证，也不冒充程序内部异常。
 硬门禁从 Git blobs 物化一次性目录，不借真实 .git，不修改原 index/工作树，也不复用软门禁缓存。
 符号链接/子模块/冲突、超限、依赖不可用都明确 UNVERIFIED。快照是内容隔离，不是执行沙箱；
 复杂命令链、非 HEAD refspec、并发修改仍需独立 CI 验证。
@@ -122,6 +147,44 @@ PostToolUse 只运行可限定到单文件的检查和 formatter。append_files=
 显式 check/Git 门禁；保存不能触发整项目 formatter。工具异常不能自动修复。
 CLI/MCP 共用 PASS/FAIL/UNVERIFIED/SKIPPED/PLANNED，只有 PASS 的 passed=true。
 CLI 的 0/1/2 与 hook 的 fail-open 退出码是不同协议，不能混用。
+
+Java 计划由 `java_analysis` 装配：`java_build` 读描述，`java_impact` 计算模块反向闭包，
+`java_planning` 选择命令，`java_environment` 选择 wrapper/JDK，`java_changes` 观察版本差异。
+`java_project.py` 保留原 CLI/导入面。默认 skipTests/check -x test 不变，权威命令不加默认参数；
+纯版本降级必须由正确 Git 基线与当前描述证明，依赖版本和编译配置变化不得降为 validate/help。
+根与变更路径先规范化；分析仍是模块级，不等于完整符号或任意构建脚本语义验证。
+
+### 状态归属与持久化
+
+`scripts/codeguard/hook_state.py` 负责会话归属、统计、冷却、审计和已完成结果；
+`scripts/codeguard/storage.py` 负责跨进程锁与原子文件替换。锁覆盖整个读改写，
+使用独立且不随数据替换的 `.lock` 文件，不能只有原子写而没有读改写互斥。
+
+- 宿主提供 `session_id` 时，统计保存在 `CODEGUARD_HOME/sessions/<会话与worktree哈希>.json`；
+  同一 session 在不同 Git worktree 也分开。Stop 只原子消费当前作用域，后续并发写入保留。
+- 无 `session_id` 时沿用 `session_state.json` 与旧插件内状态的兼容读取；此模式**没有跨会话隔离保证**。
+  旧全局记录不分配给任意一个带 ID 的新会话，不能把兼容读取称为可信归属迁移。
+- 门禁审计由调用线程汇总后写入，`worktree` 是原仓根，`execution_root` 是实际检查目录
+  （可能为临时快照），`session_scope` 保留会话归属；`cmd` 为已物化的执行 argv，不再写未展开模板。
+  存量豁免记录为 SKIPPED 而非检查通过；当前或基线为 UNVERIFIED 时均不得授予豁免。
+- 保存检查只在获得 PASS/FAIL 后登记去重，UNVERIFIED 后允许立即重试。
+  去重同时校验文件内容和配置/命令身份；检查前后身份不一致不登记，不把执行中产生的新内容当作已检查。
+- 本批真实并发与 worktree 验证在 macOS 完成；Windows 锁实现尚未在 Windows 实机验证。
+
+### 缓存身份与失效
+
+`scripts/codeguard/fingerprint.py` 采集输入身份，`scripts/codeguard/cache.py` 只读写和校验完整软结果。
+缓存保存在 `CODEGUARD_HOME/gate-cache/<worktree哈希>.json`；旧 `/tmp` 条目不读取、不自动删除。
+
+- 身份包含真实 worktree 路径、HEAD、Git index 的内容条目、upstream、受版本控制及非忽略工作树文件的内容、
+  常见根 linter 配置/注册表声明的配置、用户配置、命令定义和本地工具身份；不再用 mtime/size 代替源码内容。
+- Git 文件名按 NUL 分隔，linked worktree 不假设 `.git` 是目录。项目 `codeguard.json` 不保留永不过期的进程副本。
+- 预算为 10,000 个文件名、64 MiB 内容；符号链接/特殊文件、预算超限、读取失败或非 Git 目录时禁用该身份缓存，
+  仍实际检查。预算不截断成一个看似完整的键；非 Git 保存也仍检查，但不采用仓库身份去重。
+- 只保存检查前后身份一致且 `skipped` 为空的软结果；损坏格式、未来时间戳和未知结果均重跑。
+  硬门禁不读取软缓存，事件去重亦不缓存放行。
+- 这是有明确输入范围的软观察优化，不是原子安全快照或可移植验收凭据；任意外部动态配置、远程依赖和未声明环境变化
+  不在完整性证明范围内。准确提交验证和 CI 仍独立运行，不得以软缓存证明整个项目已通过。
 
 ---
 

@@ -10,7 +10,7 @@
 
 CodeGuard provides native check evidence and guards supported Git commit/push calls from AI coding assistants. PostToolUse gives feedback, not blocking. Verified violations block the Git call; unavailable checks remain explicitly UNVERIFIED. Passing a configured check is not proof of complete code correctness.
 
-Current development version: **0.12.0**. No new skills were added for this release: priority is verdict integrity and Java project awareness.
+The installed plugin version is recorded in its manifests. The architecture refactor keeps the existing 68 managed skills and focuses on reliable evidence, clear module ownership and Java project awareness.
 
 ### Runtime boundaries
 
@@ -138,12 +138,13 @@ python3 scripts/vendor/skill_vendor.py check
 python3 -m unittest discover -s tests -q
 python3 tests/run_all.py
 python3 scripts/validate_languages_json.py
+python3 scripts/check_architecture.py
 ruff check hooks scripts tests
 ```
 
 Tests include real temporary Git repositories, native subprocess fixtures and official-SDK stdio MCP calls. Fixture wrapper success is not a real Maven/Gradle integration build. Live Codex/ZCode/Kimi loading, real project builds, online CVE scanner runs and precision/recall benchmarks require separate acceptance.
 
-Current implementation and evidence: [architecture](docs/verdict-java-architecture.md), [verification report](docs/verification-verdict-java.md). Earlier design documents remain historical context: [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
+Current implementation and evidence: [architecture and extension guide](docs/current-architecture.md), [refactor verification](openspec/changes/refactor-codeguard-architecture/verification.md). Earlier documents remain historical context: [verdict and Java architecture](docs/verdict-java-architecture.md), [prior verification](docs/verification-verdict-java.md), [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
 
 ## License and privacy
 

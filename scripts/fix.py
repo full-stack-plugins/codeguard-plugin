@@ -15,7 +15,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import run_per_language
+from codeguard import language_check as run_per_language
+from codeguard.config import ConfigurationError
 from detect_lang import (
     detect_languages,
     find_project_root,
@@ -33,7 +34,11 @@ def main() -> int:
     args = parser.parse_args()
 
     project_root = find_project_root(args.path) or Path(args.path).resolve()
-    languages = detect_languages(project_root)
+    try:
+        languages = detect_languages(project_root)
+    except ConfigurationError as exc:
+        print(f"[codeguard] UNVERIFIED: {exc}", file=sys.stderr)
+        return 1
     if args.lang:
         languages = [lang for lang in languages if lang == args.lang]
 

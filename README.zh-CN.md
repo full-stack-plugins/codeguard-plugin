@@ -10,7 +10,7 @@
 
 CodeGuard 为 AI 编程助手提供原生检查证据，守护已支持的 Git 提交/推送调用。PostToolUse 只反馈、不阻断；确定违规会拦截 Git 调用；检查无法完成时明确 UNVERIFIED。某项检查通过，不等于代码完全正确。
 
-当前开发版本：**0.12.0**。本版没有增加技能数量，重点是判定可信度与 Java 项目感知。
+已安装插件的版本以各清单为准。本次架构重构保留现有 68 个受管技能，重点收敛判定证据、模块职责与 Java 项目感知。
 
 ### 运行边界
 
@@ -138,12 +138,13 @@ python3 scripts/vendor/skill_vendor.py check
 python3 -m unittest discover -s tests -q
 python3 tests/run_all.py
 python3 scripts/validate_languages_json.py
+python3 scripts/check_architecture.py
 ruff check hooks scripts tests
 ```
 
 测试包含真实临时 Git 仓库、原生子进程 fixture 与官方 SDK stdio MCP 调用。fixture wrapper 成功不是真实 Maven/Gradle 集成构建。Codex/ZCode/Kimi 当前版本加载、真实项目构建、在线漏洞扫描与准确率/召回率基准仍需独立验收。
 
-当前实现与证据：[架构](docs/verdict-java-architecture.md)、[验证报告](docs/verification-verdict-java.md)。早期设计保留为历史参考：[原架构](docs/partme-codeguard-plugin-Architecture.zh_CN.md)、[路线图](docs/technical-roadmap.zh_CN.md)。
+当前实现与证据：[架构及扩展指南](docs/current-architecture.md)、[重构验证记录](openspec/changes/refactor-codeguard-architecture/verification.md)。旧文档保留为历史参考：[判定与 Java 架构](docs/verdict-java-architecture.md)、[此前验证报告](docs/verification-verdict-java.md)、[原架构](docs/partme-codeguard-plugin-Architecture.zh_CN.md)、[路线图](docs/technical-roadmap.zh_CN.md)。
 
 ## 许可与隐私
 
