@@ -207,17 +207,34 @@ class GitGuardApplicationTests(unittest.TestCase):
             gate.assert_called_once()
             self.assertEqual(second, gate.call_args.args[0])
 
-    def test_non_shell_indirect_git_text_is_explicitly_unverified(self):
+    def test_non_shell_indirect_git_call_is_explicitly_unverified(self):
+        # 2026-09-23 归因收紧：纯文本（帮助/文档样例）不再触发——bump-plugin.mjs
+        # 帮助文本实测误报；**调用形态**（exec/subprocess）仍判不可建模并阻断。
         from codeguard import git_guard_application
 
         with tempfile.TemporaryDirectory(prefix="cg-indirect-unknown-") as tmp:
             repo = self._initialized_repo(Path(tmp).resolve(), "repo")
-            (repo / "opaque.py").write_text("git commit -m x\n", encoding="utf-8")
+            (repo / "opaque.py").write_text(
+                'import subprocess\nsubprocess.run(["git", "commit", "-m", "x"])\n',
+                encoding="utf-8")
             with patch.object(git_guard_application, "run_gate") as gate:
                 result = git_guard_application.evaluate_git_command(
                     "python3 opaque.py", cwd=repo, load_config=dict)
             self.assertEqual(2, result.exit_code)
             self.assertIn("Git 意图 UNVERIFIED", result.stderr)
+            gate.assert_not_called()
+
+    def test_non_shell_indirect_git_text_no_longer_triggers(self):
+        # 同类文本（帮助/样例）不再触发门禁；真实调用形态见上一用例
+        from codeguard import git_guard_application
+
+        with tempfile.TemporaryDirectory(prefix="cg-indirect-text-") as tmp:
+            repo = self._initialized_repo(Path(tmp).resolve(), "repo")
+            (repo / "opaque.py").write_text("git commit -m x\n", encoding="utf-8")
+            with patch.object(git_guard_application, "run_gate") as gate:
+                result = git_guard_application.evaluate_git_command(
+                    "python3 opaque.py", cwd=repo, load_config=dict)
+            self.assertEqual(0, result.exit_code)
             gate.assert_not_called()
 
     def test_indirect_skip_gate_mutation_cannot_borrow_persisted_bypass(self):

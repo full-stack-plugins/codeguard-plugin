@@ -72,13 +72,17 @@ class IndirectGuardTests(unittest.TestCase):
         self.assertFalse(guard.is_guarded(f"bash {script}"))
 
     def test_documented_boundary_subprocess_construction(self) -> None:
-        """静态扫描的能力边界（docstring 已声明）：拼接式 subprocess 不在承诺内。"""
+        """静态扫描边界（2026-09-23 归因收紧后）：调用形态命中、纯文本不命中。
+
+        拼接式/动态构造的 subprocess 仍不在承诺内（docstring 边界不变）。
+        """
         script = Path(tempfile.mkdtemp(prefix="cg-ind-")) / "crafted.py"
+        # 调用形态现在命中（此前漏报）
         script.write_text('import subprocess\nsubprocess.run(["git", "push"])\n', encoding="utf-8")
-        self.assertFalse(guard.is_guarded(f"python3 {script}"))
-        # 但直接命令词形态仍然命中
-        script.write_text("git push origin main\n", encoding="utf-8")
         self.assertTrue(guard.is_guarded(f"python3 {script}"))
+        # 纯文本行不再命中（帮助/文档样例，bump-plugin.mjs 误报同源）
+        script.write_text("git push origin main\n", encoding="utf-8")
+        self.assertFalse(guard.is_guarded(f"python3 {script}"))
 
 
 class WholeCallNoticeTests(unittest.TestCase):

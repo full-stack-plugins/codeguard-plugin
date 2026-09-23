@@ -295,6 +295,36 @@ def chain_skip_gate(command: str) -> bool:
                for seg, _separator in split_shell_segments(text))
 
 
+_DYNAMIC_GIT_CALL = re.compile(
+    r"(?:^|[^\w.])(?:os\.(?:system|popen)|subprocess\.(?:run|call|Popen|check_call|check_output)"
+    r"|(?:exec|execFile|execSync|execFileSync|spawn|spawnSync))\s*\(\s*\[?\s*[\"\'\x60]git(?:[\"\'\x60]|\s)"
+)
+_DYNAMIC_GIT_WINDOW = 200
+_DYNAMIC_SUB_QUOTED = re.compile(r"[\"\'\x60\[\s,](commit|push|add|config)[\"\'\x60\],\s]")
+_DYNAMIC_SUB_TEXT = re.compile(r"\bgit\s+(commit|push|add|config)\b")
+
+
+def dynamic_git_effects(text: str) -> tuple[list[str], bool | None]:
+    """非 Shell 源码正文中 git 副作用的高精度识别：只认调用形态。
+
+    `execFileSync("git", …)`、`subprocess.run(["git", …])`、`os.system("…")`
+    这类调用点才是可归因信号；帮助文本/模板字符串里的 git 字面量样例不是调用
+    （bump-plugin.mjs 帮助文本实测被 shell 切段误报）。命中调用点后在邻近窗口
+    收集子命令与 skipGate 配置变更。不承诺分析动态拼接的 subprocess。
+    """
+    subs: list[str] = []
+    skip: bool | None = None
+    for match in _DYNAMIC_GIT_CALL.finditer(text):
+        window = text[match.start(): match.start() + _DYNAMIC_GIT_WINDOW]
+        found = set(_DYNAMIC_SUB_TEXT.findall(window)) | set(_DYNAMIC_SUB_QUOTED.findall(window))
+        for name in ("commit", "push", "add"):
+            if name in found and name not in subs:
+                subs.append(name)
+        if "config" in found and re.search(r"codeguard\.skipgate", window, re.IGNORECASE):
+            skip = not re.search(r"--unset", window)
+    return subs, skip
+
+
 def _segment_is_git_side_effect(seg: str) -> bool:
     return _git_side_effect_sub(seg) is not None
 
