@@ -67,11 +67,63 @@ class GitSnapshotProtocolTests(unittest.TestCase):
 
         return run
 
+    @staticmethod
+    def corrupt_listing(variant: str):
+        real_run = subprocess.run
+
+        def run(argv, *args, **kwargs):
+            result = real_run(argv, *args, **kwargs)
+            if argv not in (["git", "ls-files", "--stage", "-z"],
+                            ["git", "ls-tree", "-r", "-z", "HEAD"]):
+                return result
+            raw = result.stdout
+            first = raw.split(b"\0", 1)[0]
+            if variant == "missing_terminator":
+                raw = raw[:-1]
+            elif variant == "duplicate":
+                raw += first + b"\0"
+            elif variant == "missing_complete_record":
+                raw = first + b"\0"
+            elif variant == "empty":
+                raw = b""
+            elif variant == "empty_record":
+                raw = raw.replace(b"\0", b"\0\0", 1)
+            elif variant == "empty_name":
+                raw = first.split(b"\t", 1)[0] + b"\t\0"
+            elif variant == "invalid_oid":
+                metadata, name = first.split(b"\t", 1)
+                fields = metadata.split()
+                oid_index = 2 if argv[1] == "ls-tree" else 1
+                fields[oid_index] = b"z" * len(fields[oid_index])
+                raw = b" ".join(fields) + b"\t" + name + raw[len(first):]
+            elif variant == "invalid_header":
+                raw = b"bogus\t" + first.split(b"\t", 1)[1] + raw[len(first):]
+            return subprocess.CompletedProcess(result.args, result.returncode, raw, result.stderr)
+
+        return run
+
     def test_real_binary_blob_is_preserved_without_index_mutation(self):
         before = (self.root / ".git/index").read_bytes()
         with git_snapshot.validation_tree(self.root) as (snapshot, changed):
             self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
             self.assertEqual(["sample.bin"], changed)
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_empty_index_remains_a_valid_empty_snapshot(self):
+        with tempfile.TemporaryDirectory(prefix="cg-snapshot-empty-") as directory:
+            root = Path(directory).resolve()
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+            with git_snapshot.validation_tree(root) as (snapshot, changed):
+                self.assertEqual([], list(snapshot.iterdir()))
+                self.assertEqual([], changed)
+
+    def test_push_snapshot_reads_head_not_dirty_worktree(self):
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qm", "fixture"], cwd=self.root, check=True, capture_output=True)
+        (self.root / "sample.bin").write_bytes(b"dirty worktree\n")
+        before = (self.root / ".git/index").read_bytes()
+        with git_snapshot.validation_tree(self.root, mode="push") as (snapshot, _changed):
+            self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
         self.assertEqual(before, (self.root / ".git/index").read_bytes())
 
     def test_sha256_repository_uses_its_object_format(self):
@@ -101,6 +153,67 @@ class GitSnapshotProtocolTests(unittest.TestCase):
                   git_snapshot.validation_tree(self.root)):
                 pass
             self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_incomplete_index_listing_never_yields_a_snapshot(self):
+        (self.root / "second.txt").write_text("another file\n", encoding="utf-8")
+        subprocess.run(["git", "add", "second.txt"], cwd=self.root,
+                       check=True, capture_output=True)
+        before = (self.root / ".git/index").read_bytes()
+        variants = ("missing_terminator", "duplicate", "missing_complete_record",
+                    "empty", "empty_record", "empty_name", "invalid_oid", "invalid_header")
+        for variant in variants:
+            with (self.subTest(variant=variant),
+                  patch.object(git_snapshot.subprocess, "run",
+                               side_effect=self.corrupt_listing(variant)),
+                  self.assertRaises(git_snapshot.SnapshotError),
+                  git_snapshot.validation_tree(self.root)):
+                pass
+            self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_incomplete_head_listing_never_yields_a_push_snapshot(self):
+        (self.root / "second.txt").write_text("another file\n", encoding="utf-8")
+        subprocess.run(["git", "add", "second.txt"], cwd=self.root,
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qm", "fixture"], cwd=self.root, check=True, capture_output=True)
+        for variant in ("missing_terminator", "missing_complete_record", "empty",
+                        "duplicate", "invalid_oid"):
+            with (self.subTest(variant=variant),
+                  patch.object(git_snapshot.subprocess, "run",
+                               side_effect=self.corrupt_listing(variant)),
+                  self.assertRaises(git_snapshot.SnapshotError),
+                  git_snapshot.validation_tree(self.root, mode="push")):
+                pass
+
+    def test_incomplete_path_name_response_is_not_treated_as_empty(self):
+        real_run = subprocess.run
+
+        def run(argv, *args, **kwargs):
+            result = real_run(argv, *args, **kwargs)
+            if argv[:4] == ["git", "diff", "--cached", "--name-only"]:
+                return subprocess.CompletedProcess(result.args, result.returncode,
+                                                   result.stdout[:-1], result.stderr)
+            return result
+
+        with (patch.object(git_snapshot.subprocess, "run", side_effect=run),
+              self.assertRaises(git_snapshot.SnapshotError)):
+            git_snapshot.proposed_paths(self.root)
+
+    def test_malformed_listing_is_visible_to_exact_gate(self):
+        with patch.object(git_snapshot.subprocess, "run",
+                          side_effect=self.corrupt_listing("missing_terminator")):
+            failures, skipped = run_gate(self.root, {}, ["python"], exact=True)
+        self.assertEqual([], failures)
+        self.assertTrue(any("git UNVERIFIED" in item for item in skipped), skipped)
+
+    def test_special_filename_is_preserved_by_nul_listing(self):
+        name = "tab\tline\n.txt"
+        (self.root / name).write_text("content\n", encoding="utf-8")
+        subprocess.run(["git", "add", name], cwd=self.root,
+                       check=True, capture_output=True)
+        with git_snapshot.validation_tree(self.root) as (snapshot, changed):
+            self.assertEqual("content\n", (snapshot / name).read_text(encoding="utf-8"))
+            self.assertIn(name, changed)
 
     def test_exact_gate_reports_corrupt_blob_as_unverified(self):
         with patch.object(git_snapshot.subprocess, "run",

@@ -92,6 +92,18 @@ CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原�
 - **WHEN** 计划没有任何可执行命令
 - **THEN** 规划调用方返回 SKIPPED、PLANNED 或 UNVERIFIED；执行器拒绝将空计划解释为成功
 
+### Requirement: MCP auto-fix SHALL observe changed files within a bounded safe scope
+
+MCP `auto_fix` 在运行 formatter 之前 MUST 验证所有拟修复路径仍位于项目根内、不是符号链接或特殊文件，并以有总量预算的流式内容身份记录修复前状态，不得整份载入任意大小文件。路径逃逸、读取故障、并发替换或超预算 MUST 明确 UNVERIFIED 且不启动修复。修复后身份无法可靠采集时 MUST 保留实际修复与复检证据，但不得声称已确认 `fixed`。已确认的内容或权限变化仍按既有 `fixed` 字段呈现。
+
+#### Scenario: Changed path escapes through a parent symlink
+- **WHEN** Git 改动路径经父目录符号链接指向仓外普通文件
+- **THEN** `auto_fix` 不读取仓外内容、不运行 formatter，返回明确 UNVERIFIED
+
+#### Scenario: Changed file exceeds the observation budget or changes during reading
+- **WHEN** 改动文件超出身份预算、读取失败或被并发替换
+- **THEN** 修复前故障不启动 formatter；修复后故障保留已执行结果但不宣称 `fixed`
+
 ### Requirement: Hook state SHALL preserve concurrent and session ownership
 
 统计、绕过明细、冷却与审计的读改写 MUST 在进程锁内完成并原子替换文件。宿主提供 session_id 时，统计 MUST 绑定会话与当前 worktree；Stop MUST 只消费该作用域的记录，并与并发写入互斥。无 session_id 时保留旧共享状态兼容，MUST 明示不能证明跨会话隔离。去重 MUST NOT 把未完成或 UNVERIFIED 的检查当成已完成检查。
@@ -233,6 +245,10 @@ CLI 呈现 MUST 各有单一所有者。只有有效报告且执行状态可解�
 
 ### Requirement: Accurate Git snapshots SHALL validate object transport
 
+index/HEAD 对象列表 MUST 是完整的 NUL 分隔记录：每项有合法模式、对象格式对应的 ID、
+阶段/类型与非空路径，重复路径或不完整末项不得静默跳过。准确快照 MUST 用独立的
+Git 路径列举核对对象列表的路径集合；单次列表在记录边界被截断时也不能交付部分树。
+这些协议故障 MUST 归一化为快照 UNVERIFIED，而不是入口异常或空树 PASS。
 Git 准确快照 MUST 对 index/HEAD 列出的每个对象，逐项核对 `cat-file --batch-check` 与
 `--batch` 响应的对象 ID、blob 类型、非负大小、顺序和完整字节边界。响应缺项、重复项、
 内容截断或多余尾部字节 MUST 报告快照 UNVERIFIED，不得把错误对象或部分内容交给语言检查器。
@@ -244,6 +260,10 @@ Git 准确快照 MUST 对 index/HEAD 列出的每个对象，逐项核对 `cat-f
 #### Scenario: Git batch response disagrees with the requested objects
 - **WHEN** 批量读取的对象 ID、类型、大小、数量或顺序与已列出的 Git 对象不一致
 - **THEN** 准确快照不可交付，门禁报告 Git UNVERIFIED，而不是检查错位或部分内容
+
+#### Scenario: Git object listing is malformed or incomplete
+- **WHEN** `ls-files --stage` 或 `ls-tree -r` 缺少终止 NUL、含畸形/重复记录，或虽在完整记录边界结束却漏掉另一列举可见的路径
+- **THEN** 准确快照不可交付，门禁报告 Git UNVERIFIED；真实 index 不变
 
 #### Scenario: Batch payload has an invalid boundary or identity
 - **WHEN** 对象内容截断、缺少协议分隔符、尾随额外数据或同长度内容与对象哈希不符

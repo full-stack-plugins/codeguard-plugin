@@ -262,3 +262,14 @@
 - 最新 main 的隔离临时 CodeGraph 索引沿 `validation_tree → cat-file --batch-check/--batch → gate.run_gate` 追到准确快照的信任边界：旧实现只汇总大小，再以 `--batch` 头部长度切片，未逐项核对 ID、类型、数量、大小、尾部边界或 payload 哈希。独立故障注入证明错误对象 ID 的内容仍被接受；新增测试中 9 类协议错位/截断及门禁 UNVERIFIED 场景先 RED，真实二进制 blob 对照保持通过。
 - `git_snapshot` 的字节型 Git 入口统一执行错误归一化；批量大小响应和内容响应按 index/HEAD 的同一对象顺序验证。每段 blob 按 SHA-1 或 SHA-256 Git 对象格式重新计算哈希，因此同长度替换也不能通过伪造响应头被接受；有效包含换行/NUL 的内容仍原样重建。错误响应转 `SnapshotError`，准确门禁返回 `git UNVERIFIED`，真实 index 字节不变。进一步用应用层集成用例确认：同批已经暂存的 `.env` 仍被安全规则 exit 2 拦截，未知快照不会抹掉已知违规；既有未知项 fail-open/可见告警政策未改。
 - 隔离 worktree 本地完整单测 **526/526、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。当前只证明本地静态/故障注入契约与真实 SHA-1/SHA-256 仓库，不等于三宿主已安装现场、Windows、在线 CVE、大型 Maven/Gradle 或恶意 Git 进程沙箱验收。第二十五批尚未 bump、提交、推送或发布。
+
+- 第二十五批随后发布为 v0.14.11：源码 PR #57 合并到 `e3b4262f1b5b5ef8d1c8ad2952a3012f47e42fbd`，市场 PR #15 合并到 `799c0369121c794bbb99fbdcd29fedf6e048aec0`；源码 PR 与合并后 main 的 `vendor-check` 成功。远端注释 tag `v0.14.11` 解引用到源码合并提交，正式 Release 非 draft、非 prerelease，市场 Codex/ZCode/Kimi 清单全量与远端 tag/Release 校验通过。市场 PR 无 CI 检查，不称其 CI 已通过。宿主安装/运行仍未验收。
+
+## 第二十六批本地验证：Git 对象列表完整性
+
+- 最新 v0.14.11 main 的隔离 CodeGraph 索引追踪 `validation_tree → git` 及准确门禁调用者：blob 哈希已验证，但 `ls-files --stage` / `ls-tree -r` 的对象列举仍以宽松 `split(NUL)` 读取，缺少终止符、重复/空记录或在完整记录边界漏项时可交付不完整树；畸形头会抛裸 `ValueError`。故障注入先 RED：10 个部分树错误接受，1 个异常类型不符。
+- 当前实现把 `-z` 帧解析集中为 `_nul_records`，对象列表另验证模式、类型/阶段、对象格式长度和十六进制 ID、非空唯一安全路径，并与独立 Git 路径列举交叉核对。两种列表不一致或 index 并发变化均转 `SnapshotError`；准确门禁可见 `git UNVERIFIED`，不改真实 index。包含制表符/换行的合法文件名仍逐字节物化。CodeGraph `affected` 对本次文件返回无测试，但真实新增故障注入与既有集成测试覆盖较广，故不把图谱空结果当作无影响证明。
+- 隔离 worktree 本地完整单测 **533/533、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。还正向覆盖空 index、有效 SHA-1/SHA-256、push HEAD 与脏工作树分离。临时 CodeGraph 索引同步后为 139 文件、2,181 节点、4,931 边；源仓仍未初始化索引。本批尚未 bump、推送或发布；宿主现场、Windows、在线 CVE、大型仓库与恶意 Git 进程仍不在已验证范围。
+
+- 同批跨入口 CodeGraph 审查沿 `mcp_tool_payload → auto_fix → run_fix/run_check` 发现，旧 `auto_fix` 在作用域校验前对 Git 改动路径 `read_bytes`：父目录符号链接可先读仓外文件，大文件无内存预算，读取故障直接越过 MCP 结果边界。新增三种故障注入先 RED（仓外读取、超预算缺 UNVERIFIED、修复后身份故障缺 UNVERIFIED），另覆盖循环链接。应用服务现复用 `fingerprint.file_content` 的流式身份与 64 MiB/10,000 文件预算，修复前不可靠则不运行 formatter；修复后不可靠仍保留修复/复检证据，但顶层 `fixed=false` 且明确 UNVERIFIED。架构白名单只增加应用到 fingerprint 基础设施的有向依赖，反向导入与环仍受检。
+- 补充后全量单测 **537/537、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。MCP `auto_fix` 的私有日志/公开投影及真实 formatter 回归仍通过；这不等于三宿主实际安装或恶意并发文件系统的完整沙箱证明。

@@ -1,6 +1,6 @@
 {
   "name": "codeguard",
-  "version": "0.14.11+codex.20260923",
+  "version": "0.14.12+codex.20260923",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
