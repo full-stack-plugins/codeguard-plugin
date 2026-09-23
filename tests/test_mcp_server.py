@@ -72,6 +72,54 @@ def _read_until(proc: subprocess.Popen, want_id: int, timeout: float = 30.0) -> 
 
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed (pip install -r requirements.txt)")
 class McpServerTests(unittest.TestCase):
+    def test_java_multi_command_trace_survives_stdio_tool_call(self):
+        with tempfile.TemporaryDirectory(prefix="cg-mcp-trace-") as tmp:
+            root = Path(tmp).resolve()
+            secret = "CG_TEST_SECRET_TOKEN_4c98f1"
+            (root / "src").mkdir()
+            (root / "src/A.java").write_text("class A {}", encoding="utf-8")
+            (root / "pom.xml").write_text(
+                "<project><modelVersion>4.0.0</modelVersion><groupId>demo</groupId>"
+                "<artifactId>app</artifactId><version>1</version></project>", encoding="utf-8")
+            commands = [
+                [sys.executable, "-c", "import sys; print('first check ' + sys.argv[1])",
+                 f"--token={secret}"],
+                [sys.executable, "-c", "import sys; print('second failed'); sys.exit(1)"],
+                [sys.executable, "-c", "from pathlib import Path; Path('unexpected').touch()"],
+            ]
+            (root / "codeguard.json").write_text(
+                json.dumps({"java": {"commands": commands}}), encoding="utf-8")
+            proc = _spawn_mcp()
+            try:
+                _send(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                    "protocolVersion": "2024-11-05", "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0"}}})
+                _read_until(proc, 1)
+                _send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+                _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                    "name": "check_code_style", "arguments": {"path": tmp, "languages": ["java"]}}})
+                payload = json.loads(_read_until(proc, 2)["result"]["content"][0]["text"])
+                self.assertEqual("FAIL", payload[0]["status"])
+                trace = payload[0]["execution_trace"]
+                self.assertEqual([0, 1], [item["exit_code"] for item in trace])
+                self.assertEqual(["check", "check"], [item["phase"] for item in trace])
+                self.assertEqual([1, 2], [item["number"] for item in trace])
+                self.assertEqual([Path(sys.executable).name] * 2,
+                                 [item["program"] for item in trace])
+                self.assertNotIn(secret, json.dumps(payload))
+                self.assertFalse((root / "unexpected").exists())
+                self.assertIn("first check", Path(payload[0]["log_path"]).read_text())
+            finally:
+                if proc.stdin:
+                    proc.stdin.close()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                proc.stdout.close()
+                proc.stderr.close()
+
     def test_bad_project_configuration_is_unverified_and_recoverable(self):
         """显式 languages 不能绕过配置；坏请求不损坏长驻 stdio 服务。"""
         proc = _spawn_mcp()

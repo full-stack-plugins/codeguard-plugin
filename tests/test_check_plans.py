@@ -18,7 +18,7 @@ sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "hooks")]
 import gate_lib
 import post_tool_lint
 import run_per_language
-from codeguard import execution, save_application
+from codeguard import check_application, execution, save_application
 from detect_lang import LANG_COMMANDS
 
 
@@ -49,6 +49,9 @@ class CheckPlanIntegrationTests(unittest.TestCase):
             result = run_per_language.run_check(["java"], self.root, files=["src/A.java"])[0]
             self.assertEqual("FAIL", result["status"])
             self.assertEqual(commands[1], result["command"])
+            self.assertEqual(["check", "check"],
+                             [item["phase"] for item in result["execution_trace"]])
+            self.assertNotIn(selected, json.dumps(result["execution_trace"]))
             self.assertEqual("host-jdk", os.environ["JAVA_HOME"])
             self.assertEqual([selected, selected], (self.root / "jdk.log").read_text().splitlines())
             (self.root / "jdk.log").unlink()
@@ -57,6 +60,65 @@ class CheckPlanIntegrationTests(unittest.TestCase):
             self.assertEqual(1, len(failures))
             self.assertEqual([], skipped)
             self.assertEqual([selected, selected], (self.root / "jdk.log").read_text().splitlines())
+
+    def test_java_multi_command_evidence_survives_result_mcp_and_failure_log(self):
+        self.put("pom.xml", "<project><modelVersion>4.0.0</modelVersion><groupId>demo</groupId>"
+                 "<artifactId>app</artifactId><version>1</version></project>")
+        self.put("src/A.java", "class A {}")
+        commands = [
+            [sys.executable, "-c", "print('x' * 2000 + 'preflight diagnostic')"],
+            [sys.executable, "-c", "import sys; print('compile failed', file=sys.stderr); sys.exit(1)"],
+            [sys.executable, "-c", "from pathlib import Path; Path('unexpected').touch()"],
+        ]
+        self.put("codeguard.json", json.dumps({"java": {"commands": commands}}))
+        with patch("codeguard.java_analysis.resolve_java_home", return_value=(None, None)):
+            result = run_per_language.run_check(
+                ["java"], self.root, files=["src/A.java"], log_dir=self.root / "out")[0]
+        self.assertEqual("FAIL", result["status"])
+        self.assertEqual(commands[1], result["command"])
+        self.assertFalse((self.root / "unexpected").exists())
+        trace = result["execution_trace"]
+        self.assertEqual(commands[:2], [item["command"] for item in trace])
+        self.assertEqual([0, 1], [item["exit_code"] for item in trace])
+        self.assertEqual([str(self.root)] * 2, [item["cwd"] for item in trace])
+        self.assertIn("preflight diagnostic", trace[0]["stdout_tail"])
+        self.assertLessEqual(len(trace[0]["stdout_tail"]), 1000)
+        self.assertIn("compile failed", trace[1]["stderr_tail"])
+        self.assertIsNone(trace[0]["failure"])
+        public_trace = check_application.result_envelope([result])[0]["execution_trace"]
+        self.assertEqual([0, 1], [item["exit_code"] for item in public_trace])
+        self.assertEqual([1, 2], [item["number"] for item in public_trace])
+        self.assertEqual([Path(sys.executable).name] * 2,
+                         [item["program"] for item in public_trace])
+        self.assertGreater(public_trace[0]["stdout_chars"], 2000)
+        self.assertNotIn("preflight diagnostic", json.dumps(public_trace))
+        self.assertNotIn("command", public_trace[0])
+        with patch("codeguard.java_analysis.resolve_java_home", return_value=(None, None)):
+            mcp_payload = check_application.mcp_tool_payload(
+                "check_code_style", {"path": str(self.root), "languages": ["java"]}, self.root)
+        self.assertEqual(public_trace, mcp_payload[0]["execution_trace"])
+        log_text = Path(result["log_path"]).read_text()
+        self.assertIn("preflight diagnostic", log_text)
+        self.assertIn("x" * 2000, log_text)
+
+    def test_mcp_auto_fix_does_not_echo_new_trace_command_or_output(self):
+        self.put("src/A.java", "class A {}")
+        secret = "CG_TEST_SECRET_TOKEN_8b7f"
+        trace = [{"phase": "fix", "command": ["formatter", f"--token={secret}"],
+                  "cwd": str(self.root), "exit_code": 0, "failure": None,
+                  "stdout_chars": len(secret), "stderr_chars": 0,
+                  "stdout_tail": secret, "stderr_tail": ""}]
+        fix_result = {"language": "java", "fixed": True, "exit_code": 0,
+                      "stderr_tail": "", "execution_trace": trace}
+        check_result = {"language": "java", "passed": True, "status": "PASS",
+                        "reason": "", "exit_code": 0, "execution_trace": trace}
+        with patch.object(check_application, "changed_files", return_value=["src/A.java"]), \
+                patch.object(check_application, "run_fix", return_value=[fix_result]), \
+                patch.object(check_application, "run_check", return_value=[check_result]):
+            payload = check_application.auto_fix(self.root, ["java"])
+        self.assertNotIn(secret, json.dumps(payload))
+        self.assertEqual("formatter", payload["fix_results"][0]["execution_trace"][0]["program"])
+        self.assertEqual("formatter", payload["check"][0]["execution_trace"][0]["program"])
 
     def test_mixed_zsh_fix_rechecks_the_shell_plan_without_touching_other_files(self):
         self.put("a.sh", "GOOD")
@@ -77,6 +139,8 @@ class CheckPlanIntegrationTests(unittest.TestCase):
             result = run_per_language.run_check(
                 ["shell"], self.root, files=["a.sh", "b.sh", "skip.zsh"], fix=True)[0]
         self.assertEqual("PASS", result["status"], result)
+        self.assertEqual(["check", "check", "fix", "fix", "recheck", "recheck", "recheck"],
+                         [item["phase"] for item in result["execution_trace"]])
         self.assertEqual(["a.sh", "b.sh", "a.sh", "b.sh", "skip.zsh"],
                          (self.root / "checked.log").read_text().splitlines())
         self.assertEqual("GOOD", (self.root / "b.sh").read_text())

@@ -45,10 +45,19 @@
 ### Requirement: Check plans SHALL retain execution context
 
 检查计划 MUST 显式区分 repo、delta 与 save，保存物化后的命令、工作目录和逐命令环境覆盖。执行 MUST 按序进行，首个非零结果终止普通检查批次，保留已执行证据；未执行的命令不得计为成功。空计划不得生成 PASS。Java 原生计划给出的环境覆盖 MUST 在子进程中生效，不改变宿主环境。修复后的检查 MUST 复用原计划，不重新扩大范围。Git 门禁的逐文件基线豁免是独立策略，不由通用执行器决定。
+语言检查与修复的应用结果 MUST 保留实际运行的每条命令身份、目录、退出码、故障标识和有界输出摘要；MCP 适配不得只保留终止命令，但其公开执行轨迹 MUST 只包含阶段、序号、程序名、退出码、故障标识和输出长度，不得新增暴露原始 argv、命令环境覆盖或任意检查器输出。失败日志 MUST 保留同一检查批次中此前已执行命令的完整输出，不能只记录最后一条。证据不得把尚未运行的计划命令写成已执行。
 
 #### Scenario: Java commands use the selected JDK
 - **WHEN** Java 项目计划选择 JAVA_HOME，且声明多条权威检查命令
 - **THEN** 每条实际运行的命令使用该环境；后续命令失败时返回失败而非首条成功，宿主 JAVA_HOME 不变
+
+#### Scenario: Multi-command result retains prior execution evidence
+- **WHEN** Java 权威计划的第一条命令输出诊断后通过，第二条命令失败，第三条未执行
+- **THEN** 内部检查结果保留前两条的 argv、目录、退出码、有界输出摘要和故障标识；MCP 返回对应的安全元数据与失败日志路径，不回显原始参数或输出；第三条不得出现于执行证据
+
+#### Scenario: Configured command includes a credential argument
+- **WHEN** 权威命令的 argv 含凭据文本，且检查器输出也包含该文本
+- **THEN** 真实子进程仍收到原始 argv，MCP 的 `check_code_style` 和 `auto_fix` 执行轨迹不回显凭据；日志仍按既有本地路径保存原始诊断
 
 #### Scenario: Repair retains the original scope
 - **WHEN** delta 或 save 检查失败并成功运行 formatter

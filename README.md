@@ -19,7 +19,7 @@ The installed plugin version is recorded in its manifests. The architecture refa
 | PostToolUse | Edited file, for file-scoped tools | Feedback, exit 0; project-level checks deferred |
 | UserPromptSubmit | Working-tree changes relevant to commit intent | Advisory, never blocks the user message |
 | PreToolUse Git gate | Proposed index snapshot or HEAD snapshot for push | Verified violations exit 2; uncertain checks report UNVERIFIED and fail open |
-| CLI check / MCP check_code_style | Project checks, including Java build verification | Explicit status, reason, raw exit code and output log |
+| CLI check / MCP check_code_style | Project checks, including Java build verification | Explicit status, reason, raw exit code, ordered execution trace and output log |
 | pre-commit / CI | Independently configured checks | Separate acceptance; not replaced by hook success |
 
 Hooks do not run in every host command surface automatically. Historical V0.5.4 installation evidence is not acceptance of this version in Codex, ZCode or Kimi.
@@ -107,12 +107,12 @@ python3 scripts/run_check.py --mcp /path/to/project
 
 | Tool | Contract |
 |---|---|
-| check_code_style | Per-language status/reason/passed/raw exit code and full output log path |
+| check_code_style | Per-language status/reason/passed/raw exit code, per-command status metadata and full failure log path |
 | auto_fix | Format Git-changed files and recheck the same scope; refuse unbounded project formatters; fixed means actual modifications |
 | list_languages | Registry ids and display names |
 | analyze_java_impact | Read-only plan; accepts path and optional changed array |
 
-Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables log writing. MCP auto_fix does not write when a Git scope cannot be established.
+Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables log writing. A failed multi-command check logs output from every executed check. The MCP execution trace reports phase, sequence, program, exit/failure and output lengths; it does not echo argv, environment overrides or captured output. Local logs can contain sensitive checker output: keep them out of version control. MCP auto_fix does not write when a Git scope cannot be established.
 
 ## Configuration and coverage
 

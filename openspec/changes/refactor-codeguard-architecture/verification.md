@@ -213,3 +213,13 @@
 - `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **498 unittest、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。CodeGraph 的 `affected` 对本次核心文件返回空，但真实目标测试存在且已运行，故不把空图谱结果当无影响证明。受管技能和 lock 未改；本批尚未版本升级、提交或发布，三宿主现场/Windows/在线漏洞库仍未验收。
 - 同步最新 CodeGraph 后继续追踪 `git_syntax` 发现：`inline_skip_gate` 和 `skip_gate_config_change` 仍用原始空白分词，与已共用的直接 Git/解释器前缀语义分叉。真实仓库 RED 证明已有持久 `skipGate=true` 时，`env FOO=1 git config codeguard.skipGate false && git commit` 被错误放行；带前缀的 `git -c` 单次豁免则被错误阻断且失去审计。二者现复用同一 `_segment_tokens`，目标测试转绿；此证据补充前述批内回归，不将早先 498 项计数当最终全量结果。
 - 最终本地完整回归：`/opt/anaconda3/bin/python3` 3.13.5 执行 **500 unittest、0 skipped**，真实 Hook **143/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。两项新 RED 场景及既有豁免/引号边界均转绿。本批已准备 v0.14.6 元数据；在 PR/CI/tag/Release/市场主线核对前，不能用 v0.14.5 的证据证明新改动已发布。
+
+- 第二十批随后发布为 v0.14.6：源码 PR #52 合并为 `e32b10648b2d3e048b30ee6fc04f7945affa44fc`，市场 PR #9 合并为 `9430df2e24095dbb50eb65dde3e9df670853c9e8`；源码 PR 和合并后 main 的 `skills-check` 成功，远端注释 tag 解引用到源码 main 合并提交，GitHub Release 非 draft、非 prerelease。市场三宿主清单与 README 导航同步到 0.14.6，合并后远端 tag/Release 校验通过；市场 PR 没有报告 CI 检查，不能声称市场 CI 已通过。此发布不覆盖以下第二十一批工作树。
+
+## 第二十一批实际验证：逐命令执行证据不在应用层丢失
+
+- 将 v0.14.6 的当前源码同步到临时 CodeGraph 索引（136 文件；源仓未初始化索引），沿 `execute_plan → language_check.run_check/run_fix → check_application.result_envelope` 追踪。内核 `PlanExecution` 保留全部已执行命令，但应用只读取 `terminal`；Java 第一条命令通过并输出诊断、第二条失败时，前者从结果和失败日志消失。真实 Python 子进程测试先 RED（缺少 `execution_trace`），不是模拟返回值。
+- 语言检查现保留检查、修复和复检各阶段的实际命令、目录、退出码、故障标识及有界 stdout/stderr 尾部；MCP 的既有字段不变，附加逐命令安全元数据。失败日志记录所有已执行检查的完整输出，未执行的第三条命令不进入证据。Java 选定的 `JAVA_HOME` 进入子进程但不出现在公开 trace，宿主环境不变；`.zsh` 仍跳过 formatter，但修复后的复检保持原范围。
+- 真实 MCP stdio RED 复现：`codeguard.json` 权威命令中的哨兵 token 经原始 argv 和检查器输出进入新增轨迹，扩大了公开面。`check_application` 现将 `check_code_style` 与 `auto_fix` 的新增轨迹压成阶段/序号/程序名/退出与故障/输出长度，不回显 argv、环境覆盖或输出文本；原始证据仍由内部执行结果和本地失败日志保留。后者可能含敏感内容，文档明确要求排除版本控制，不宣称日志已脱敏。
+- 新目标测试经真实 `mcp_tool_payload` 路径转绿；进一步通过官方 MCP SDK 的 stdio 客户端从 `check_code_style` 收到两条实际命令状态与完整失败日志路径，token 未出现在 JSON 响应。加入 `auto_fix` 轨迹收敛测试后完整本地单测 **503/503、0 skipped**，Hook 回归 **143/0/0**，Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线/在线、本 change strict 与 diff whitespace 通过。受管技能与 lock 未改；这仍是本地证据，当前发布的 v0.14.6 不含本批修改，三宿主安装现场、真实 Maven/Gradle、在线漏洞库及 Windows 未验收。
+- 宿主安装登记只读抽查：本机 ZCode 的 `installed_plugins.json` 将 `codeguard@full-stack-plugins` 指向 `v0.12.1` 与其缓存目录；它不能证明 v0.14.6 或本批在 ZCode 的加载/触发。当前抽查的 Codex/Kimi 缓存路径未提供当前版证据，但不能据路径缺失推断所有宿主环境均未安装。宿主安装和真实加载需在后续有权限的独立验收中验证，不由源码测试、市场 ref 或旧缓存替代。

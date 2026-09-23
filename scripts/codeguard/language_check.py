@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import ConfigurationError, get_overrides
 from .discovery import detect_language, project_uses_linter
 from .execution import execute, execute_plan
-from .models import CheckPlan, Command
+from .models import CheckPlan, Command, PlanExecution
 from .planning import scoped_plan
 from .registry import LANG_COMMANDS
 
@@ -26,6 +26,28 @@ __all__ = ["run_check", "run_fix"]
 def _run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str, str]:
     """兼容入口；进程执行与故障证据由统一内核负责。"""
     return execute(cmd, cwd, timeout).as_tuple()
+
+
+def _execution_trace(execution: PlanExecution, phase: str) -> list[dict]:
+    """将实际运行的命令转成应用层有界证据；宿主适配再收敛公开字段。"""
+    return [{"phase": phase, "command": list(item.argv), "cwd": str(item.cwd),
+             "exit_code": item.returncode, "failure": item.failure,
+             "stdout_chars": len(item.stdout), "stderr_chars": len(item.stderr),
+             "stdout_tail": item.stdout[-1000:], "stderr_tail": item.stderr[-2000:]}
+            for item in execution.attempts]
+
+
+def _execution_output(executions: list[tuple[str, PlanExecution]]) -> str:
+    """失败日志保留所有已执行检查的完整输出，不写计划中未运行的命令。"""
+    blocks = []
+    for phase, execution in executions:
+        for number, item in enumerate(execution.attempts, start=1):
+            output = item.stdout
+            if item.stderr:
+                output += ("\n" if output and not output.endswith("\n") else "") + item.stderr
+            if output:
+                blocks.append(f"[{phase} #{number} exit={item.returncode}]\n{output}")
+    return "\n".join(blocks)
 
 
 def run_check(languages: list[str], project_root: Path,
@@ -86,30 +108,34 @@ def run_check(languages: list[str], project_root: Path,
                 continue
             plan = scoped_plan(lint_cmd, project_root, scope="repo" if lang_files is None else "delta",
                                files=lang_files, append_files=cmd_def.get("append_files", True))
-        outcome = execute_plan(plan, timeout).terminal
+        execution = execute_plan(plan, timeout)
+        check_executions = [("check", execution)]
+        trace = _execution_trace(execution, "check")
+        outcome = execution.terminal
         rc, out, err = outcome.as_tuple()
         lint_cmd = list(outcome.argv)
         status, reason = lint_verdict(rc, lint_cmd, out + err)
         if status == FAIL and fix:
             repairs = run_fix([lang], project_root, timeout=timeout + 60, files=files)
+            for repair in repairs:
+                trace.extend(repair.get("execution_trace", []))
             if any(r.get("fixed") and not r.get("dry_run") for r in repairs):
-                outcome = execute_plan(plan, timeout).terminal
+                execution = execute_plan(plan, timeout)
+                check_executions.append(("recheck", execution))
+                trace.extend(_execution_trace(execution, "recheck"))
+                outcome = execution.terminal
                 rc, out, err = outcome.as_tuple()
                 lint_cmd = list(outcome.argv)
                 status, reason = lint_verdict(rc, lint_cmd, out + err)
         results.append(result(lang, status, reason, exit_code=rc,
                               unverified=reason if status == UNVERIFIED else "",
                               command=lint_cmd, java_plan=java_plan,
-                              stderr_tail=err[-2000:], stdout_tail=out[-1000:]))
-        if status != PASS and (err or out):
-            combined = ""
-            if out:
-                combined += out
-            if err:
-                if combined and not combined.endswith("\n"):
-                    combined += "\n"
-                combined += err
-            log_entries.append((lang, rc, combined))
+                              stderr_tail=err[-2000:], stdout_tail=out[-1000:],
+                              execution_trace=trace))
+        if status != PASS:
+            combined = _execution_output(check_executions)
+            if combined:
+                log_entries.append((lang, rc, combined))
     if log_dir is not None and log_entries:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / ".codeguard-last.log"
@@ -186,11 +212,13 @@ def run_fix(languages: list[str], project_root: Path,
             continue
         plan = scoped_plan(fmt, project_root, scope="repo" if lang_files is None else "delta",
                            files=lang_files, append_files=cmd_def.get("append_files", True))
-        rc, _out, err = execute_plan(plan, timeout).terminal.as_tuple()
+        execution = execute_plan(plan, timeout)
+        rc, _out, err = execution.terminal.as_tuple()
         results.append({
             "language": lang,
             "fixed": rc == 0,
             "exit_code": rc,
             "stderr_tail": err[-2000:] if err else "",
+            "execution_trace": _execution_trace(execution, "fix"),
         })
     return results
