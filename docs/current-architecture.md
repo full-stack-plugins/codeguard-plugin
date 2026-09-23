@@ -35,7 +35,7 @@ flowchart TD
 | `bin/codeguard`、`scripts/run_check.py`、`scripts/fix.py` | CLI 参数、输出与 MCP stdio 注册 | 不复制扫描器或判定逻辑 |
 | `hooks/` | 宿主 JSON、会话事件、通知与退出协议 | 五类 Hook 将检查编排委托应用服务；入口保留旧导入兼容面及 fail-open 协议 |
 | `scripts/codeguard/check_application.py`、`language_check.py` | 语言选择、检查与修复请求、MCP 工具分发 | 不导入 MCP SDK；旧 `run_per_language.py` 仅再导出 |
-| `startup_application.py`、`session_application.py`、`prompt_application.py`、`git_guard_application.py`、`save_application.py` | 五类 Hook 的盘点、状态消费、软提示、Git 守卫及保存反馈编排 | 返回结构化结果，不打印或调用宿主通知；Hook 控制输出、通知与 fail-open。Stop 在 stdout 刷新后才确认消费；若同时有新统计，为避免丢记录，后续 Stop 可能重复展示旧统计 |
+| `startup_application.py`、`session_application.py`、`prompt_application.py`、`git_guard_application.py`、`save_application.py` | 五类 Hook 的盘点、状态消费、软提示、Git 守卫及保存反馈编排 | 返回结构化结果，不打印或调用宿主通知；Hook 控制输出、通知与 fail-open。Stop、软提示与保存反馈在 stdout 刷新后确认状态；Git 已知拦截在输出故障时仍拦截但不缓存。并发或交付重试可能重复反馈，不得丢掉未交付记录 |
 | `gate.py`、`gate_checks.py`、`repository_policy.py`、`baseline.py` | Git 门禁、单语言结果、安全规则及有证据的存量比较 | 只有准确基线失败且逐条诊断的文件归属、内容及次数覆盖当前结果才可豁免；基线临时路径映射回被检查文件 |
 | `java_build.py`、`java_impact.py`、`java_planning.py` 等 | 构建读取、纯影响闭包、命令选择与环境观察 | 默认保留跳过测试的行为；复杂构建保守扩大检查范围 |
 | `cve_reports.py`、`cve_policy.py`、`cve_scanners.py`、`cve.py` | 漏洞报告、阈值、进程适配与复扫编排 | 无有效结构化报告就没有安全通过结论 |
@@ -66,4 +66,4 @@ python3 scripts/vendor/skill_vendor.py check
 openspec validate refactor-codeguard-architecture --strict
 ```
 
-真实 Maven/Gradle 大型项目、联网漏洞数据库、57 种工具链、Windows 与三宿主已安装运行均需要独立证据。临时 Git 快照不是执行沙箱；构建和扫描命令以当前用户权限运行。当前重构的任务进度和本地证据见 `openspec/changes/refactor-codeguard-architecture/verification.md`。v0.13.0 的源码、CI、tag、Release 和市场已核对；其后工作树变更仍需独立发布，宿主安装运行尚未验收。
+真实 Maven/Gradle 大型项目、联网漏洞数据库、57 种工具链、Windows 与三宿主已安装运行均需要独立证据。临时 Git 快照不是执行沙箱；构建和扫描命令以当前用户权限运行。当前重构的任务进度和本地证据见 `openspec/changes/refactor-codeguard-architecture/verification.md`。v0.14.1 的源码、CI、tag、Release 和市场已核对；其后工作树变更仍需独立发布，宿主安装运行尚未验收。

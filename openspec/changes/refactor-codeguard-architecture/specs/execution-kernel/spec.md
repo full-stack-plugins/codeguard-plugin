@@ -62,6 +62,7 @@
 
 统计、绕过明细、冷却与审计的读改写 MUST 在进程锁内完成并原子替换文件。宿主提供 session_id 时，统计 MUST 绑定会话与当前 worktree；Stop MUST 只消费该作用域的记录，并与并发写入互斥。无 session_id 时保留旧共享状态兼容，MUST 明示不能证明跨会话隔离。去重 MUST NOT 把未完成或 UNVERIFIED 的检查当成已完成检查。
 Stop MUST 在宿主输出成功刷新后才确认消费；输出失败时记录必须保留供重试。若确认前有并发新写入，允许后续 Stop 重复展示旧统计，但不得删除未展示的新记录。
+UserPromptSubmit 与 PostToolUse 的已完成事件、文件去重和会话统计 MUST 在相应 stdout 成功刷新后才登记；写入或刷新失败时不得把未交付反馈标记为已交付。PreToolUse 已得到拦截结论时，即使宿主输出失败也 MUST 保留拦截退出码，并且不得缓存该次未交付结果。
 
 #### Scenario: Concurrent writers preserve all increments
 - **WHEN** 多个 Hook 进程同时更新同一统计、绕过记录或审计日志
@@ -74,6 +75,14 @@ Stop MUST 在宿主输出成功刷新后才确认消费；输出失败时记录�
 #### Scenario: Stop output fails or state changes during delivery
 - **WHEN** Stop 已准备总结但宿主 stdout 写入或刷新失败，或在输出期间有新统计写入
 - **THEN** 输出失败时旧统计可在重试中再次展示；并发新统计不得被确认消费误删，允许为了不丢记录而在后续 Stop 重复展示旧统计
+
+#### Scenario: Buffered host feedback fails before delivery
+- **WHEN** UserPromptSubmit 或 PostToolUse 已写入反馈，但 stdout 刷新失败
+- **THEN** 不登记已完成事件、文件去重或会话统计；下次触发仍可重新检查并交付反馈
+
+#### Scenario: Hard Git block survives host output failure
+- **WHEN** PreToolUse 已判定需要拦截，但 stdout 或 stderr 写入或刷新失败
+- **THEN** 保持拦截退出码且不缓存该次结果，不能因宿主输出故障改为放行
 
 #### Scenario: Retry follows an unverified save check
 - **WHEN** 相同文件未变化，上次保存检查未能获得结论，紧接着再次触发

@@ -112,6 +112,7 @@ def _main(payload: dict) -> int:
         if result.system_message is not None:
             message["systemMessage"] = result.system_message
         print(json.dumps(message, ensure_ascii=False))
+    sys.stdout.flush()
     result.acknowledge()
     if result.notification:
         lang, title, message = result.notification
