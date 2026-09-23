@@ -116,7 +116,7 @@ python3 scripts/run_check.py --mcp /path/to/project
 
 ## 配置与覆盖
 
-仓根 codeguard.json 的 gate_scope 可选 delta/repo，也可定制扩展名和排除规则。用户设置保留 enabled_languages、auto_fix_on_save、lint_timeout_seconds。strict_mode 是保留字段，不会令 PostToolUse 阻断，详见[钩子协议](hooks/__protocol__.md)。
+仓根 codeguard.json 的 gate_scope 可选 delta/repo，也可定制扩展名和排除规则。用户设置保留 enabled_languages、auto_fix_on_save、lint_timeout_seconds。详见[钩子协议](hooks/__protocol__.md)。
 
 注册表含 **54 个 Stable 适配器和 3 个 Planned 项**。“Stable” 不证明全部工具链或项目已验证。Markdown/YAML 需要项目配置，缺配置为 UNVERIFIED；Markdown 违规只告警。生成物和依赖目录从普通 lint 范围排除，不等于允许入库。Python 检查优先使用项目自有 ruff 配置（ruff.toml / .ruff.toml / [tool.ruff]）；项目无自有配置时注入钉扎在 CI 基线（ruff==0.16.8）的默认规则集，判定不随机器上 ruff 版本漂移。完整命令见[语言清单](docs/LANGUAGES.md)。
 

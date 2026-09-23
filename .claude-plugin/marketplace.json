@@ -1,0 +1,14 @@
+{
+  "name": "codeguard-plugin",
+  "owner": {
+    "name": "full-stack-plugins"
+  },
+  "plugins": [
+    {
+      "name": "codeguard",
+      "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+      "version": "0.16.0",
+      "source": "./"
+    }
+  ]
+}

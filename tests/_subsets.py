@@ -692,7 +692,7 @@ def test_cve():
     (d / "main.go").write_text("package main\n")
     r = run_cve([str(d)], d)
     out = r.stdout + r.stderr
-    ok("go 项目自动走 universal 兜底", "ecosystems: ['universal']" in r.stdout, r.stdout.strip()[:120])
+    ok("go.lock-only 目录（无 .go 文件）走 universal 兜底", "ecosystems: ['universal']" in r.stdout, r.stdout.strip()[:120])
     ok("trivy 缺失 → 无法验证(1) 而非漏洞(2)", r.returncode == 1, f"rc={r.returncode}")
     ok("兜底路径不误报「有漏洞」", "有漏洞" not in out)
 

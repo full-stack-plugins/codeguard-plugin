@@ -37,18 +37,18 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
         str(Path.home() / ".local" / "pipx" / "bin"),
     ]
     cur = os.environ.get("PATH", "")
-    parts = cur.split(":")
+    parts = cur.split(os.pathsep)
     for d in reversed(static_dirs):
         if Path(d).exists() and d not in parts:
             parts.insert(0, d)
-    os.environ["PATH"] = ":".join(parts)
+    os.environ["PATH"] = os.pathsep.join(parts)
 
     # node/npx 不可用且静态目录未覆盖时，自动降级登录 shell 继承一次
     # （覆盖 nvm/fnm/Kimi runtime 等非标准 node 安装；约 100-300ms）
     def _node_available() -> bool:
         return any(
             d and (Path(d) / "node").exists()
-            for d in os.environ.get("PATH", "").split(":")
+            for d in os.environ.get("PATH", "").split(os.pathsep)
         )
 
     if not from_login_shell and not _node_available():
@@ -66,7 +66,7 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
         try:
             age = now - cache_file.stat().st_mtime
             cached = cache_file.read_text().strip()
-            if age < 600 and ":" in cached:
+            if age < 600 and os.pathsep in cached:
                 os.environ["PATH"] = cached
                 return
         except OSError:
@@ -83,7 +83,7 @@ def ensure_user_path(from_login_shell: bool = False) -> None:
                 # 即使登录 shell 没提供更丰富的 PATH，也缓存这次探测结果。
                 # Linux CI 的 login shell 常与当前 PATH 等价；若不写缓存，
                 # 每次钩子都会重复 spawn shell，违背十分钟缓存契约。
-                resolved = inherited[-1] if inherited[-1].count(":") > cur.count(":") else os.environ["PATH"]
+                resolved = inherited[-1] if inherited[-1].count(os.pathsep) > cur.count(os.pathsep) else os.environ["PATH"]
                 os.environ["PATH"] = resolved
                 with contextlib.suppress(OSError):
                     cache_file.write_text(resolved)
