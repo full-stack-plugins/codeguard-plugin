@@ -111,6 +111,94 @@ class GitSnapshotProtocolTests(unittest.TestCase):
             self.assertEqual(["sample.bin"], changed)
         self.assertEqual(before, (self.root / ".git/index").read_bytes())
 
+    def test_restage_same_path_during_capture_rejects_old_blob(self):
+        original_paths = git_snapshot.proposed_paths
+
+        def restage(*args, **kwargs):
+            (self.root / "sample.bin").write_bytes(b"replacement content\n")
+            subprocess.run(["git", "add", "sample.bin"], cwd=self.root,
+                           check=True, capture_output=True)
+            return original_paths(*args, **kwargs)
+
+        with (patch.object(git_snapshot, "proposed_paths", side_effect=restage),
+              self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root)):
+            pass
+
+    def test_restage_during_checker_rejects_previously_built_snapshot(self):
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root) as (snapshot, _)):
+            self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
+            (self.root / "sample.bin").write_bytes(b"replacement content\n")
+            subprocess.run(["git", "add", "sample.bin"], cwd=self.root,
+                           check=True, capture_output=True)
+
+    def test_new_head_during_push_check_rejects_old_snapshot(self):
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qm", "fixture"], cwd=self.root, check=True, capture_output=True)
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root, mode="push") as (snapshot, _)):
+            self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
+            (self.root / "sample.bin").write_bytes(b"replacement content\n")
+            subprocess.run(["git", "add", "sample.bin"], cwd=self.root,
+                           check=True, capture_output=True)
+            subprocess.run(["git", "-c", "user.name=Test", "-c",
+                            "user.email=test@example.invalid", "commit", "-qm", "updated"],
+                           cwd=self.root, check=True, capture_output=True)
+
+    def test_new_head_with_same_tree_during_push_check_is_still_unverified(self):
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qm", "fixture"], cwd=self.root, check=True, capture_output=True)
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root, mode="push")):
+            subprocess.run(["git", "-c", "user.name=Test", "-c",
+                            "user.email=test@example.invalid", "commit", "--allow-empty",
+                            "-qm", "same tree"], cwd=self.root, check=True, capture_output=True)
+
+    def test_new_head_with_same_tree_during_commit_check_is_unverified(self):
+        subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qm", "fixture"], cwd=self.root, check=True, capture_output=True)
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root)):
+            subprocess.run(["git", "-c", "user.name=Test", "-c",
+                            "user.email=test@example.invalid", "commit", "--allow-empty",
+                            "-qm", "same tree"], cwd=self.root, check=True, capture_output=True)
+
+    def test_first_head_created_during_commit_check_is_unverified(self):
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "index/HEAD.*变化"),
+              git_snapshot.validation_tree(self.root) as (snapshot, changed)):
+            self.assertEqual(["sample.bin"], changed)
+            self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
+            subprocess.run(["git", "-c", "user.name=Test", "-c",
+                            "user.email=test@example.invalid", "commit", "-qm", "first"],
+                           cwd=self.root, check=True, capture_output=True)
+
+    def test_exact_gate_reports_restage_during_capture_as_unverified(self):
+        original_paths = git_snapshot.proposed_paths
+
+        def restage(*args, **kwargs):
+            (self.root / "sample.bin").write_bytes(b"replacement content\n")
+            subprocess.run(["git", "add", "sample.bin"], cwd=self.root,
+                           check=True, capture_output=True)
+            return original_paths(*args, **kwargs)
+
+        with patch.object(git_snapshot, "proposed_paths", side_effect=restage):
+            failures, skipped = run_gate(self.root, {}, ["python"], exact=True)
+        self.assertEqual([], failures)
+        self.assertTrue(any("git UNVERIFIED" in item for item in skipped), skipped)
+
+    def test_exact_gate_discards_checker_result_when_index_changes(self):
+        def restage_during_check(*args, **kwargs):
+            (self.root / "sample.bin").write_bytes(b"replacement content\n")
+            subprocess.run(["git", "add", "sample.bin"], cwd=self.root,
+                           check=True, capture_output=True)
+            return [], []
+
+        with patch("codeguard.gate.run_batch", side_effect=restage_during_check):
+            failures, skipped = run_gate(self.root, {}, ["python"], exact=True)
+        self.assertEqual([], failures)
+        self.assertTrue(any("git UNVERIFIED" in item for item in skipped), skipped)
+
     def test_git_binary_response_over_limit_never_returns_partial_records(self):
         before = (self.root / ".git/index").read_bytes()
         with self.assertRaisesRegex(git_snapshot.SnapshotError, "output_limit"):

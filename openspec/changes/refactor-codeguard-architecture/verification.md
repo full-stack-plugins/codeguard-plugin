@@ -307,3 +307,18 @@
 - 最终本地完整单测 **559/559、0 skipped**，真实 Hook **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。仍是隔离工作树未发布代码，不能用 v0.14.14 的远端 CI、Release 或旧宿主安装证明它已经交付。
 
 - 第二十九批随后发布为 v0.14.15：源码 PR #64 合并到 `ee2e29a92a53f32724d511fa75db77cfc7aa1d2b`，市场 PR #19 合并到 `097075966e6239b1b549ce72a7fe22b83b8527f5`，中英文导航 PR #20 合并到 `905d24442a5591967ccf1804c24121f5e2433960`。源码 PR 的 `vendor-check` 和该合并提交在 main 的 `skills-check` 均成功；市场 PR/导航 PR 无 CI 检查，不称其 CI 通过。远端注释 tag `v0.14.15` 解引用到源码合并提交，GitHub Release 非 draft、非 prerelease；市场 7 个可安装插件的清单校验通过，CodeGuard 的 Codex/ZCode/Kimi ref 与中英文导航均为 0.14.15。本次发布不等于三宿主已安装运行，也不证明 Windows、在线 CVE、大型 Maven/Gradle 或并发恶意文件系统；task 5.6 全目标审计、规格同步与归档仍未完成。
+
+## 第三十批本地验证：准确 Git 快照的观察窗口
+
+- 以远端 v0.14.15 main 的隔离 worktree 建立临时 CodeGraph 索引（141 文件、2,265 节点、5,104 边），沿 `git_snapshot.validation_tree → gate.run_gate` 审查：原实现只在开始时取得 index/HEAD 对象列表；之后路径计算、物化和语言检查期间，同名文件可以被重新暂存，旧 blob 仍被作为当前结果交付。CodeGraph 受影响测试提示为空，但实际已有 `test_git_snapshot_protocol.py` 和准确门禁集成用例；未将图谱空结果当作无测试证明。
+- 真实临时 Git 仓新增三项 RED：同名文件在路径计算期间重新暂存、检查器期间重新暂存、准确门禁缺少 Git UNVERIFIED。快照现于交付前和检查器正常返回后复核对象路径、模式与 ID；三项转 GREEN。推送面另复核 HEAD 提交 ID：即使新提交文件树与旧提交相同，也可能改变待推送范围；对应真实 Git 用例先 RED 后 GREEN。原有 SHA-1/SHA-256、二进制内容、特殊路径与 index 不改写测试继续通过。
+- 准确门禁应用再加一项真实 Git 变化测试：检查器返回原本空失败列表时若 index 已变，`run_gate` 的 context 退出复核必须丢弃该结果并返回 Git UNVERIFIED。最终本地完整单测 **565/565、0 skipped**，`test_git_snapshot_protocol.py` **26/26**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。该增量目前仅在隔离工作树，未 bump、提交、推送或发布；不能用 v0.14.15 的 CI/Release 证明它已经交付。
+- 两次复核之间仍有观察间隙；工作树覆盖层在复制后的变化、并发引用更新/回滚、跨进程文件系统对手，以及三宿主已安装运行、Windows、在线 CVE 与大型 Maven/Gradle 项目仍需独立证据。
+- 验证期间并行的点前缀默认忽略 PR #59 合并到源码 main `eb5b638db31db0535d269c0a0b8aed1c4b4bd6b2`，市场 catalog 同步为 0.15.0。本批本地提交重基到该 main 后重新执行完整单测 **583/583、0 skipped**，真实 Hook **144/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。该次源码 main CI 也成功，但截至本次只读核对 0.15.0 尚无远端 tag/Release；本批本身仍未 bump、推送或发布，不能借并行变更的 main CI 充作本批 PR/CI 证据。
+- 继续自查发现提交模式同样以 HEAD 为暂存差异基线，原先只在推送模式复核 HEAD 会漏掉“检查期间产生同树空提交”和“unborn 仓首次提交”。两项真实 Git 测试先 RED，现统一复核存在/不存在的 HEAD 身份；对象列表与 HEAD 的两次复核覆盖 commit/push，协议测试 **28/28**。最终基于 0.15.0 main 的本地完整单测 **585/585、0 skipped**，真实 Hook **144/0/0**；Ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。仍不声称两次观察之间是原子事务，本批仍未远端发布。
+
+## 第三十一批本地验证：保存 Hook 诊断日志边界
+
+- CodeGraph 沿 `save_application._failure_context → storage.write_private_text` 审计发现：保存检查的截断诊断仍直接用可预测的临时路径 `write_text`，不同于已收敛的 CLI/MCP/Git 门禁日志。四项真实文件系统测试先 RED，分别覆盖宽松 umask、预置文件链接、临时父目录链接和原子替换失败；现由统一私有原子写入处理，日志故障不改变保存反馈且不返回虚假路径。另以 `evaluate_save` 的应用层用例锁定错误反馈及私有日志路径。
+- 在 0.15.0 main 上本地完整单测 **590/590、0 skipped**，真实 Hook **144/0/0**；Ruff、架构依赖门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 均通过。临时索引已同步到 143 文件、2,334 节点、5,263 边；CodeGraph 的受影响测试列表为空，不能替代实际回归。上述只证明本地契约，不证明三宿主现场、Windows、联网 CVE、大型 Java 工程或恶意并发文件系统。
+- 并行的 0.15.0 源码 main `eb5b638` CI 已成功；缺失的 `v0.15.0` 注释 tag 与正式 Release 已补齐，均指向该 main 提交。第三十、三十一批自身仍须另行升级版本、PR/CI、市场同步和发布，不借 0.15.0 的证据声称交付。

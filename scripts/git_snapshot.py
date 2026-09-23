@@ -240,10 +240,34 @@ def _copy_overlay(source: Path, dest: Path, remaining_bytes: int) -> int:
         raise SnapshotError(f"工作树覆盖层无法读取: {source}: {exc}") from exc
 
 
+def _head_revision(root: Path) -> bytes:
+    """返回 HEAD 提交 ID；尚无 HEAD 提交（如首次提交前）用空字节表示。"""
+    proc = execute_bytes(["git", "rev-parse", "--verify", "-q", "HEAD"], root, 30,
+                         stdin_null=True, max_output_bytes=1024)
+    if proc.failure:
+        raise SnapshotError(f"Git HEAD 身份未验证 ({proc.failure})")
+    if proc.returncode == 1 and not proc.stdout and not proc.stderr:
+        return b""
+    identity = proc.stdout.strip()
+    if proc.returncode or not re.fullmatch(rb"(?:[0-9a-f]{40}|[0-9a-f]{64})", identity):
+        raise SnapshotError("Git HEAD 身份读取失败")
+    return identity
+
+
+def _verify_object_list_unchanged(root: Path, head: bool,
+                                  expected: list[tuple[str, str, str]],
+                                  head_oid: bytes) -> None:
+    """复核路径、模式、对象 ID 和 HEAD 比较基线；不改真实 index。"""
+    if (_snapshot_entries(root, head) != expected
+            or _head_revision(root) != head_oid):
+        raise SnapshotError("Git index/HEAD 对象列表在快照检查期间变化")
+
+
 @contextlib.contextmanager
 def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pending_commit=False):
     """原始 Git blobs 构成快照；拒绝外链、submodule、冲突和超限内容。"""
     head = mode == "push" and not pending_commit
+    head_oid = _head_revision(root)
     entries = _snapshot_entries(root, head)
     object_ids = "".join(oid + "\n" for _, oid, _ in entries).encode()
     sizes = _batch_sizes(git(root, "cat-file", "--batch-check", input_data=object_ids,
@@ -279,4 +303,6 @@ def validation_tree(root: Path, mode="commit", *, lanes=None, extra=None, pendin
                     raise SnapshotError(f"工作树覆盖层包含特殊文件: {name}")
                 elif dest.is_file():
                     dest.unlink()
+        _verify_object_list_unchanged(root, head, entries, head_oid)
         yield target, changed
+        _verify_object_list_unchanged(root, head, entries, head_oid)

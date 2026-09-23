@@ -12,6 +12,7 @@
 Git 快照使用同一有界进程边界的原始字节模式，MUST 保留 NUL 与 blob 字节且不在协议校验前解码；路径列举、大小响应及对象内容 MUST 各有明确捕获预算。任何超限或执行故障 MUST 阻止交付快照并成为 SnapshotError，不能以截断数据继续门禁。对象总量预算必须在读取 batch 内容之前由大小响应确定。
 工作树预测暂存覆盖层 MUST 以有界缓冲复制普通文件，并同时限制文件数量、单文件与累计字节数；检查期间文件超出预算、变成特殊文件或读取失败 MUST 拒绝交付临时树，不能把不完整覆盖层当准确 Git 快照。删除及文件与目录之间双向转换的预测语义必须保留，不能因覆盖路径迭代顺序不同而改变快照。
 同一次准确快照中，拟提交路径与实际物化的覆盖层 MUST 使用同一份已列举的路径集合；不得分别查询两次 Git 工作树后把不同时点的路径清单拼成一个已验证结论。
+准确快照 MUST 在交付临时树前及检查器返回后复核所用的 index/HEAD 对象列表身份与 HEAD 提交身份；提交模式的 HEAD 是暂存差异比较基线，推送模式的 HEAD 决定待推送范围，即使文件树相同也不能忽略提交变化。首次提交前须允许不存在的 HEAD，但若检查期间产生首次提交，MUST 报告 Git UNVERIFIED。若路径、模式、对象 ID 或 HEAD 提交在观察窗口内变化，MUST 报告 Git UNVERIFIED，不得把旧 blob 的检查结果称为当前拟提交内容的结论。此复核不声称工作树与 Git 引用具备原子事务语义。
 
 #### Scenario: A checker exits nonzero
 - **WHEN** 同一检查器经 CLI、保存 hook、Git 门禁或 CVE 执行并以非零退出
@@ -36,6 +37,10 @@ Git 快照使用同一有界进程边界的原始字节模式，MUST 保留 NUL 
 #### Scenario: Overlay listing changes between observations
 - **WHEN** Git 工作树路径列举在两次调用之间返回不同集合
 - **THEN** 单次快照只使用一次列举结果来计算 changed 与构建临时树；不能把第一份 changed 与第二份物化内容配对
+
+#### Scenario: Index or HEAD changes during an exact check
+- **WHEN** 已列举对象之后，同名路径被重新暂存为另一个 blob，或检查器运行期间 index/HEAD 的路径、模式、对象 ID 或 HEAD 提交发生变化（即使提交文件树相同，或首次提交刚被创建）
+- **THEN** 快照不交付旧内容，或在检查器返回时将该次结论标为 Git UNVERIFIED；不得把两个时点的内容拼成 PASS，观察过程自身不改写真实 index
 
 #### Scenario: A predicted path is a special file
 - **WHEN** 拟暂存路径在快照复制时变成 FIFO、socket 或其它非普通文件
@@ -101,7 +106,7 @@ MCP `auto_fix` 的 `fix_results` 公开面 MUST 同样只保留状态、退出�
 
 ### Requirement: Diagnostic logs SHALL be private and atomic
 
-CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原始敏感输出。写入 MUST 使用同一基础设施边界，创建的文件在支持 POSIX 权限的平台上 MUST 仅允许当前用户读写；替换 MUST 原子可见，不能跟随预置的日志文件符号链接覆盖其它文件。默认 `out` 日志目录若本身是符号链接，MUST 不向链接目标写入。日志写入失败 MUST 不掩盖已经得出的检查状态，且不得返回并不存在的日志路径。既有日志路径与内容格式保持不变；这不承诺抵御并发替换父目录的完整文件系统竞态。
+CLI/MCP 失败日志、Git 门禁与 PostToolUse 保存检查的截断诊断日志都可能包含检查器的原始敏感输出。写入 MUST 使用同一基础设施边界，创建的文件在支持 POSIX 权限的平台上 MUST 仅允许当前用户读写；替换 MUST 原子可见，不能跟随预置的日志文件符号链接覆盖其它文件。默认 `out` 日志目录若本身是符号链接，MUST 不向链接目标写入；保存 Hook 的临时日志目录若是符号链接也不得写入。日志写入失败 MUST 不掩盖已经得出的检查状态，且不得返回并不存在的日志路径。既有日志路径与内容格式保持不变；这不承诺抵御并发替换父目录的完整文件系统竞态。
 
 #### Scenario: A pre-existing diagnostic log is a symlink
 - **WHEN** 项目或临时目录里预置的日志文件指向另一文件，检查器随后产生失败诊断
