@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,8 @@ class GateApplicationTests(unittest.TestCase):
         return subprocess.run(["git", *args], cwd=self.repo, check=True,
                               text=True, capture_output=True).stdout
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_application_runs_without_hook_directory_or_host_modules(self):
         script = ("import sys,json;from pathlib import Path;sys.path.insert(0,sys.argv[1]);"
                   "from codeguard.gate import run_gate;"
@@ -48,6 +51,8 @@ class GateApplicationTests(unittest.TestCase):
         self.assertFalse(legacy_imported)
         self.assertFalse(host_imported)
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_snapshot_audit_has_original_worktree_session_and_actual_argv(self):
         (self.repo / "a.py").write_text("undefined_name()\n")
         self.git("add", "a.py")

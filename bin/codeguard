@@ -47,8 +47,9 @@ case "$cmd" in
   3. 从 linters/pre-commit/.pre-commit-config.template.yaml 拷贝并裁剪
   4. pip install pre-commit && pre-commit install
 或直接对 AI 说 /init，由 AI 按步骤完成。
+以上仅为引导清单，本命令不执行任何变更。
 EOF
-    exit 1
+    exit 0
     ;;
   *)
     echo "codeguard: 未知子命令 '$cmd'" >&2

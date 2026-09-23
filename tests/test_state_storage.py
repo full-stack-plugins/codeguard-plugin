@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -78,6 +79,8 @@ class StateStorageTests(unittest.TestCase):
         (repo / "a.py").write_text("print(1)\n")
         return repo
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_stop_does_not_consume_another_sessions_statistics(self):
         repo = self.repo("repo")
         for session in ("first", "second"):
@@ -89,6 +92,8 @@ class StateStorageTests(unittest.TestCase):
         self.assertIn("共 1 次检查", first)
         self.assertIn("共 1 次检查", second)
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_same_session_in_two_worktrees_has_separate_statistics(self):
         left, right = self.repo("left"), self.root / "right"
         for args in (("config", "user.name", "fixture"), ("config", "user.email", "test@example.invalid"),
@@ -124,6 +129,8 @@ class StateStorageTests(unittest.TestCase):
             self.assertIn("UNVERIFIED", out.getvalue())
             self.assertIn("passed", out.getvalue())
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_duplicate_hard_gate_event_cannot_turn_a_rejection_into_permission(self):
         repo = self.repo("repo")
         (repo / "a.py").write_text("undefined_variable()\n")
@@ -153,6 +160,8 @@ class StateStorageTests(unittest.TestCase):
         self.assertEqual({"count": 3}, json.loads(path.read_text()))
         self.assertEqual([], list(self.root.glob("*.tmp")))
 
+    @unittest.skipIf(shutil.which("ruff") is None,
+                     "ruff 不在 PATH：本用例依赖真实 python lint 判定（见 requirements-dev.txt）")
     def test_same_hard_event_rechecks_changed_content_after_permission(self):
         repo = self.repo("repo")
         payload = {"session_id": "one", "tool_use_id": "same-event",
