@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit 钩子：用户说"提交/push/部署"时先跑 linter 门禁。
-
-失败时【不阻断 prompt】（exit 2 会把用户消息弹回去，AI 收不到任何指令，
-用户被卡死在输入框）——而是 exit 0 + stdout JSON additionalContext：
-AI 收到「门禁未通过 + 修复指令」后自动修复、修完自己重新提交，形成闭环。
-
-硬保证由 PreToolUse 钩子（pre_tool_git_guard.py）承担：AI 真去执行
-git commit/push 时被拦下，工具级 stderr 会作为结果反馈给 AI 继续修。
-"""
+"""UserPromptSubmit 宿主适配器：软提醒注入，不阻断用户消息。"""
 from __future__ import annotations
 
 import contextlib
@@ -16,24 +8,20 @@ import os
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根（不依赖宿主环境变量）
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
-# 触发此钩子的关键词（中英）
-# 英文按词边界匹配（防止 pushed/deployment 误命中），中文子串即可。
-# 2026-09-22 实测回归：`我刚才 pushed 了`、`关于 deployment 策略的讨论`
-# 必须静默（子串匹配曾把它们当提交意图跑全仓 lint）。
-import re as _re
-
-from detect_lang import (  # # ensure_user_path/load_user_config 实际定义：scripts/paths.py、scripts/user_config.py
+from codeguard import prompt_application, prompt_policy
+from codeguard.hook_state import session_scope
+from detect_lang import (  # 兼容原有 Python 导入接口
     LANG_COMMANDS,
     detect_languages,
     ensure_user_path,
     find_project_root,
     load_user_config,
 )
-from gate_lib import (
+from gate_lib import (  # 兼容原有 Python 导入接口
     check_commit_safety,
     format_safety_report,
     gate_directive,
@@ -43,100 +31,38 @@ from gate_lib import (
     summarize_failures,
 )
 
-TRIGGER_PATTERNS = [
-    "commit", "push", "deploy", "提交", "发布", "部署",
+__all__ = [
+    "LANG_COMMANDS", "QUESTION_MARKERS", "TRIGGER_PATTERNS", "check_commit_safety",
+    "detect_languages", "ensure_user_path", "find_project_root", "format_safety_report",
+    "gate_directive", "is_trigger", "load_user_config", "main", "notify", "read_payload",
+    "read_user_text", "record_skip_event", "run_gate", "skip_gate_via_git_config",
+    "summarize_failures",
 ]
-_TRIGGER_RE = _re.compile(
-    r"\b(?:commit|push|deploy)\b|提交|发布|部署",
-    _re.IGNORECASE,
-)
-# 行动意图短语：触发词出现且（句首祈使 或 命中行动短语）才进门禁。
-_ACTION_INTENT_RE = _re.compile(
-    r"请帮我|帮我|请|马上|立刻|现在|下一步|继续|please|now|next|proceed|go ahead|"
-    r"commit this|push this|deploy this",
-    _re.IGNORECASE,
-)
+
+TRIGGER_PATTERNS = prompt_policy.TRIGGER_PATTERNS
+QUESTION_MARKERS = prompt_policy.QUESTION_MARKERS
+is_trigger = prompt_policy.is_trigger
+_detect_languages_in_text = prompt_policy.detect_languages_in_text
+_non_git_note = prompt_application.non_git_note
 
 
 def notify(title: str, message: str) -> None:
-    """macOS 系统通知（非 darwin 静默；仅失败时打扰，通过靠注入文本确认）"""
+    """macOS 系统通知；其他宿主仅依赖对话上下文。"""
     if sys.platform != "darwin":
         return
     import subprocess
-    safe_t = title.replace('"', "'")
-    safe_m = message.replace('"', "'")[:200]
+    safe_title = title.replace('"', "'")
+    safe_message = message.replace('"', "'")[:200]
     with contextlib.suppress(OSError):
         subprocess.Popen(
             ["osascript", "-e",
-             f'display notification "{safe_m}" with title "{safe_t}" sound name "Pop"'],
+             f'display notification "{safe_message}" with title "{safe_title}" sound name "Pop"'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 
 
-# 疑问句特征：在询问功能/做法，不是真的要提交（实测误触发：
-# 「git 提交和推送，是不能把 .venv 排除掉么」被当成提交意图跑了全仓门禁）
-QUESTION_MARKERS = ("？", "?", "么", "吗", "如何", "怎么", "有没有", "是不是", "什么是", "哪些")
-
-
-def is_trigger(user_text: str) -> bool:
-    """触发条件：(1) 命中触发词（英文按词边界）(2) 非疑问句 (3) 行动意图或句首祈使。
-
-    (3) 缺一不可：`我刚才 pushed 了` 有触发词但无行动意图 → 静默；
-    `commit this now` 句首祈使 → 触发；`请帮我 commit` 行动短语 → 触发。
-    """
-    if not user_text:
-        return False
-    # 问句抑制按**句子粒度**：`这个方案 OK 吗？帮我提交` 问句与祈使混排时，
-    # 整条文本级的问号判断会把祈使句一起静默（软门缺失，硬门兜底，但漏提醒
-    # 不符合"软门多提醒不算错"的既定原则）。
-    # 切分时用捕获组保留定界符并附回句尾——"Should I commit this?" 的问号
-    # 在句尾，若把定界符当纯分隔符吃掉，句内标记消失会误触发（CI 实测）。
-    parts = _re.split(r"([。！!？?\n\r]+)", user_text)
-    sentences = []
-    for i in range(0, len(parts) - 1, 2):
-        seg = (parts[i] + parts[i + 1]).strip()
-        if seg:
-            sentences.append(seg)
-    tail = parts[-1].strip() if len(parts) % 2 == 1 else ""
-    if tail:
-        sentences.append(tail)
-    trigger_sentences = [seg for seg in sentences if _TRIGGER_RE.search(seg)]
-    if not trigger_sentences:
-        return False
-    non_question = [seg for seg in trigger_sentences
-                    if not any(q in seg for q in QUESTION_MARKERS)]
-    if not non_question:
-        return False
-    m = _TRIGGER_RE.search(non_question[0])
-    if not m:
-        return False
-    # 句首祈使：触发词本身（或前面只有空白/常见介词）位于句首。
-    stripped = non_question[0].lstrip()
-    leading = stripped[: m.start()].strip().lower()
-    if leading in ("", "git", "to", "the", "a", "an", "帮我", "请", "请帮我"):
-        return True
-    return bool(_ACTION_INTENT_RE.search(user_text))
-
-
-def _detect_languages_in_text(user_text: str, language_ids: list[str]) -> list[str]:
-    """从用户消息中提取提到的语言子集（2.1/2.2/2.3）。
-
-    与 `languages.json` 的 `id` 字段做大小写无关匹配；没有命中返回空列表，
-    由调用方回退到 `detect_languages()` 全量探测（保持原有能力）。
-    """
-    if not user_text or not language_ids:
-        return []
-    text = user_text.lower()
-    hits = []
-    for lang_id in language_ids:
-        # 词边界避免 go 命中 gone/going、c 命中 cmake 等子串误命中。
-        if _re.search(rf"\b{_re.escape(lang_id.lower())}\b", text):
-            hits.append(lang_id)
-    return hits
-
-
 def read_payload() -> dict:
-    """读一次 stdin payload（text 与 session_id 都从中取，stdin 只能读一次）。"""
+    """stdin 只读取一次，兼容 user_prompt 与 prompt 字段。"""
     if sys.stdin.isatty():
         return {}
     try:
@@ -151,126 +77,32 @@ def read_user_text() -> str:
     return str(payload.get("user_prompt") or payload.get("prompt") or "")
 
 
-def _non_git_note() -> str:
-    return (
-        "codeguard：当前目录不是 git 仓库，提交门禁已跳过"
-        "（门禁只对 git 仓生效；非 git 目录曾被回退成工作区根全仓扫描——"
-        "一个临时目录即可把上百个无关仓的存量 lint 变成永久红）。"
-    )
-
-
 def main() -> int:
-    from codeguard.hook_state import session_scope
     payload = read_payload()
     with session_scope(payload):
         return _main(payload)
 
 
 def _main(payload: dict) -> int:
-    from codeguard.fingerprint import check_identity
-    from codeguard.hook_state import completed_event, record_completed_event
-
     user_text = str(payload.get("user_prompt") or payload.get("prompt") or "")
     if not is_trigger(user_text):
         return 0
-
-    session_id = payload.get("session_id")
-
-    ensure_user_path(from_login_shell=True)   # GUI 宿主 PATH 不含用户级工具目录
-    # 逃生门：设置此环境变量后跳过提交门禁（用于确实需要绕过的场景）
-    if os.environ.get("CODEGUARD_SKIP_GATE"):
-        record_skip_event("env")
-        return 0
-
-    root = find_project_root(os.getcwd())
-    if root is None or not (root / ".git").exists():
-        # 非 git 目录绝不回退成"扫这个目录"——曾经的 find_project_root or cwd
-        # 让工作区根成了全仓扫描对象（永久红且不可合法修复）。显式说明+跳过。
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": _non_git_note(),
-            }
-        }, ensure_ascii=False))
-        return 0
-    project_root = root
-    if skip_gate_via_git_config(project_root):
-        # 软门禁与硬门禁共用同一条仓库级豁免：此前 UPS 不认 skipGate，
-        # 出现过"硬门放行、软门仍喊禁止提交"的自相矛盾。
-        record_skip_event("skipGate", project_root)
-        return 0
-
-    cfg = load_user_config()
-    # 2.2: 消息里提到了具体语言时只跑子集；没提到则回退全量探测（2.3）。
-    detected = detect_languages(project_root)
-    subset = _detect_languages_in_text(user_text, detected)
-    def current_event_key():
-        if not session_id:
-            return None
-        identity = check_identity(project_root, cfg,
-                                  {lang: LANG_COMMANDS.get(lang, {}) for lang in (subset or detected)})
-        return f"ups:{session_id}:{user_text}:{identity}" if identity is not None else None
-    event_key = current_event_key()
-    if event_key and completed_event(event_key) is not None:
-        return 0
-    # 推送意图走 push 面（含未推送提交），提交意图走 commit 面。
-    # 文件面：软门禁**不传 lanes** → 三路宽口径（staged+未暂存+未跟踪）——
-    # 此刻还没有待执行命令可预测，按"工作树有待提交改动就提醒"注入；硬门禁
-    # （PreToolUse）知道真实命令形态，按 staging_intent 收窄到实际提交面。
-    # 两者可以分歧：软门多提醒不算错（注入非阻断），硬门少拦才是底线。
-    mode = "push" if _re.search(r"\bpush\b|推送", user_text, _re.IGNORECASE) else "commit"
-    failures, skipped = run_gate(project_root, cfg, languages=(subset or None), mode=mode)
-    # 提交内容安全检查：.venv/node_modules/.env/密钥等不应入库
-    violations = check_commit_safety(project_root, mode)
-
-    if failures or violations:
-        # 软引导：prompt 正常送达 AI，且注入修复指令，AI 自动修复后重新提交。
-        # 注意：可能"只有安全违规、零 lint 失败"——此前 notify 直接取
-        # failures[0][0] 越界，fail-open 吞成空输出（实测复现），两路都要兜。
-        _first_issue = failures[0][1].splitlines()[0][:120] if failures and failures[0][1] else "详见对话"
-        _headline = (
-            f"{failures[0][0]}: {_first_issue}" if failures
-            else (f"提交安全: {violations[0][0]}" if violations else "提交门禁发现违规")
-        )
-        notify(summarize_failures(failures), _headline)
-        parts = [gate_directive(failures)]
-        if violations:
-            parts.append(format_safety_report(violations))
-        parts.append(
-            "**给 AI 的强制指令**：**密钥/凭据类**必须 git rm --cached 并提醒用户"
-            "轮换密钥；**非密钥类**先与用户确认是否为有意入库的第一方代码或合法"
-            " fixture，确认误入库再 git rm --cached + 补 .gitignore；确认并修复后"
-            "重新执行提交。"
-        )
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": "\n\n".join(parts)
-            }
-        }, ensure_ascii=False))
-        if event_key and not skipped and event_key == current_event_key():
-            record_completed_event(event_key, 0, "", "")
-        return 0
-
-    # 通过：注入明确的成功确认（无此行用户会以为门禁根本没跑）；
-    # 即使宿主把它渲染成提示条，文案也是明确的「✅ 通过」语义
-    skipped_langs = {s.split()[0] for s in skipped}
-    checked = sorted(set(detect_languages(project_root)) - skipped_langs)
-    skipped_note = f"；跳过 {len(skipped)} 项（{'；'.join(skipped)}）" if skipped else ""
-    unknown = [s for s in skipped if "本次改动未涉及" not in s and " SKIPPED:" not in s
-               and "markdown 风格告警" not in s]
-    print(json.dumps({
-        "hookSpecificOutput": {
+    ensure_user_path(from_login_shell=True)
+    result = prompt_application.evaluate_prompt(
+        user_text,
+        project_root=find_project_root(os.getcwd()),
+        session_id=payload.get("session_id"),
+        load_config=load_user_config,
+        bypass_env=bool(os.environ.get("CODEGUARD_SKIP_GATE")),
+    )
+    if result.notification:
+        notify(*result.notification)
+    if result.additional_context is not None:
+        print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": (
-                ("codeguard ⚠️ 检查范围存在未验证项，不能宣称全部通过" if unknown
-                 else f"codeguard ✅ 提交门禁通过：已检查 {len(checked)} 个语言生态 + 暂存区安全")
-                + f"（{', '.join(checked) or '无'}）{skipped_note}。"
-            )
-        }
-    }, ensure_ascii=False))
-    if event_key and not skipped and event_key == current_event_key():
-        record_completed_event(event_key, 0, "", "")
+            "additionalContext": result.additional_context,
+        }}, ensure_ascii=False))
+    result.acknowledge()
     return 0
 
 
@@ -279,6 +111,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open：traceback 绝不进 AI 上下文/阻断工作流
+    except Exception as exc:  # noqa: BLE001 — 内部错误 fail-open，不阻断用户消息
         print(f"[codeguard] 内部错误已忽略（fail-open）: {exc!r}", file=sys.stderr)
         sys.exit(0)

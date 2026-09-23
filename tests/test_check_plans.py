@@ -18,7 +18,7 @@ sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "hooks")]
 import gate_lib
 import post_tool_lint
 import run_per_language
-from codeguard import execution
+from codeguard import execution, save_application
 from detect_lang import LANG_COMMANDS
 
 
@@ -157,7 +157,7 @@ class CheckPlanIntegrationTests(unittest.TestCase):
                 patch.object(post_tool_lint, "read_payload", return_value={"file_path": str(target)}), \
                 patch.object(post_tool_lint, "find_project_root", return_value=self.root), \
                 patch.object(post_tool_lint, "load_user_config", return_value={"auto_fix_on_save": True}), \
-                patch.object(post_tool_lint, "should_suppress_duplicate", return_value=False), \
+                patch.object(save_application, "should_suppress_duplicate", return_value=False), \
                 patch.dict(os.environ, {"CODEGUARD_HOME": str(self.root / "state")}), \
                 contextlib.redirect_stdout(output):
             self.assertEqual(0, post_tool_lint.main())
