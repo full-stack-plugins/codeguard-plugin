@@ -30,12 +30,91 @@ _QUERY_CONFIG_FLAGS = ("--get", "--get-all", "--get-regexp", "--unset", "--unset
                        "--list", "-l")
 
 
+_HEREDOC_START = re.compile(
+    r"(?<![<])<<(?!<)-?\s*(?:'([^']+)'|\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_]*))"
+)
+_SHELL_INTERPRETER_NAMES = ("bash", "sh", "zsh", "dash", "ksh")
+_NON_SHELL_INTERPRETER_NAMES = ("python", "python3", "node")
+
+
+def _heredoc_owner_program(command: str, start: int) -> str:
+    """heredoc 重定向所在段的程序名（回溯到最近的控制符边界）。"""
+    seg_start = 0
+    for i in range(start - 1, -1, -1):
+        if command[i] in (";", "\n"):
+            seg_start = i + 1
+            break
+        if i >= 1 and command[i - 1:i + 1] in ("&&", "||"):
+            seg_start = i + 1
+            break
+    head = command[seg_start:start]
+    tokens = head.replace("&&", " ").split()
+    return tokens[0].rsplit("/", 1)[-1].strip("\"'") if tokens else ""
+
+
+def mask_heredoc_bodies(command: str) -> str:
+    """heredoc 正文按语义遮蔽为保留换行的空白（fix-release-chain 遗留敞口）。
+
+    三类语义（2026-09-23 实测区分，别混）：
+    - 数据程序 + 引号定界符（`cat <<'EOF'`）：正文全字面量 → 全遮蔽——
+      模板字符串/帮助文本/文档样例的 git 字面量曾被切段误伤成真实副作用；
+    - 数据程序 + 无引号（`cat <<EOF`）：正文会做命令替换展开，
+      `$(git push)`/反引号**会被外层真实执行**（既有实测静默放行向量）——
+      遮蔽正文但保留替换跨度，交给 _flatten_substitutions 展开扫描；
+    - 解释器定界：bash/sh 正文是内层 shell 代码（不遮蔽，保留切段建模）；
+      python/node 正文不是 shell 语法（全遮蔽杀误报；其 subprocess 调用形态
+      由 dynamic_git_effects 在脚本文件路径上归因，stdin 形态为已声明边界）。
+    幂等：已遮蔽的正文不再含定界符结构。
+    """
+    out = list(command)
+    for match in _HEREDOC_START.finditer(command):
+        delim = match.group(1) or match.group(2) or match.group(3)
+        owner = _heredoc_owner_program(command, match.start())
+        if owner in _SHELL_INTERPRETER_NAMES:
+            continue
+        body_start = command.find("\n", match.end())
+        if body_start < 0:
+            continue
+        end_match = re.compile(rf"(?m)^[ \t]*{re.escape(delim)}[ \t]*$").search(
+            command, body_start + 1)
+        body_end = end_match.start() if end_match else len(command)
+        keep_subs = (match.group(1) is None and match.group(2) is None
+                     and owner not in _NON_SHELL_INTERPRETER_NAMES)
+        if keep_subs:
+            # 无引号数据正文：保留 $(...) 与反引号跨度（其内层文本会被真实执行）
+            i = body_start + 1
+            while i < body_end:
+                if command[i:i + 2] == "$(":
+                    depth, j = 1, i + 2
+                    while j < body_end and depth:
+                        if command[j] == "(":
+                            depth += 1
+                        elif command[j] == ")":
+                            depth -= 1
+                        j += 1
+                    i = j
+                    continue
+                if command[i] == "`":
+                    j = command.find("`", i + 1, body_end)
+                    i = (j + 1) if j >= 0 else body_end
+                    continue
+                if out[i] != "\n":
+                    out[i] = " "
+                i += 1
+        else:
+            for i in range(body_start + 1, body_end):
+                if out[i] != "\n":
+                    out[i] = " "
+    return "".join(out)
+
+
 def split_shell_segments(command: str) -> list[tuple[str, str | None]]:
     """只按未引用、未转义的 Shell 控制符切段，保留前置分隔符。
 
     这不是完整 Shell 解释器；嵌套替换由 `_flatten_substitutions` 另行展开。
     引号内的 `;`/`&&` 和 `\\;` 是参数数据，不能合成 git config 豁免。
     """
+    command = mask_heredoc_bodies(command)
     segments: list[tuple[str, str | None]] = []
     start = 0
     before: str | None = None
@@ -79,6 +158,7 @@ def _flatten_substitutions(command: str) -> str:
     能力边界：单引号内的字面量（`'$(git push)'` 不执行）不做引号语义区分，
     宁可多拦不漏拦——误拦方向由 lint 门禁自身的 delta 面兜底（不改文件不红）。
     """
+    command = mask_heredoc_bodies(command)
     parts: list[str] = []
     queue: list[str] = [command]
     seen = 0

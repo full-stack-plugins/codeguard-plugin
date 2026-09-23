@@ -78,5 +78,30 @@ class DetectionTests(unittest.TestCase):
             resolve_git_operations(f"node {script}")
 
 
+class HeredocSemanticsTests(unittest.TestCase):
+    """heredoc 正文按归属语义归因（2026-09-23 fix-heredoc-git-attribution 五态）。"""
+
+    def test_python_heredoc_sample_text_not_guarded(self) -> None:
+        cmd = "python3 - <<'PY'\ns = '''cd a && git add && git commit && git push%'''\nprint(s)\nPY"
+        self.assertFalse(is_guarded(cmd))
+
+    def test_unquoted_data_heredoc_substitution_guarded(self) -> None:
+        self.assertTrue(is_guarded("cat <<EOF\n$(git push origin b)\nEOF"))
+
+    def test_quoted_data_heredoc_literal_not_guarded(self) -> None:
+        self.assertFalse(is_guarded("cat <<'EOF'\n$(git push origin b)\nEOF"))
+
+    def test_shell_interpreter_heredoc_still_modeled(self) -> None:
+        repo = Path(tempfile.mkdtemp())
+        subprocess.run(["git", "init", "-q"], cwd=repo, capture_output=True, check=False)
+        cmd = "bash <<'SH'\ngit commit -m t\nSH"
+        self.assertTrue(is_guarded(cmd))
+        operations = resolve_git_operations(cmd, cwd=repo)
+        self.assertTrue(operations and operations[0].mode == "commit")
+
+    def test_direct_command_unchanged(self) -> None:
+        self.assertTrue(is_guarded("git commit -m t"))
+
+
 if __name__ == "__main__":
     unittest.main()
