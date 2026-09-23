@@ -38,6 +38,7 @@ from codeguard.git_syntax import (
     inline_skip_gate,
 )
 from codeguard.hook_state import completed_event, record_completed_event, session_scope
+from codeguard.repository_policy import env_skip_gate
 from detect_lang import ensure_user_path, load_user_config
 from gate_lib import (  # 兼容原有 Python 导入接口
     check_commit_safety,
@@ -116,7 +117,7 @@ def _main(payload: dict) -> int:
         extract_command(payload),
         cwd=Path(os.getcwd()),
         load_config=load_user_config,
-        bypass_env=bool(os.environ.get("CODEGUARD_SKIP_GATE")),
+        bypass_env=env_skip_gate(),
     )
     for context in result.contexts:
         print(json.dumps({"hookSpecificOutput": {

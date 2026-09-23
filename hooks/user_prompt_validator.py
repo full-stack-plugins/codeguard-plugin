@@ -14,6 +14,7 @@ sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 
 from codeguard import prompt_application, prompt_policy
 from codeguard.hook_state import session_scope
+from codeguard.repository_policy import env_skip_gate
 from detect_lang import (  # 兼容原有 Python 导入接口
     LANG_COMMANDS,
     detect_languages,
@@ -93,7 +94,7 @@ def _main(payload: dict) -> int:
         project_root=find_project_root(os.getcwd()),
         session_id=payload.get("session_id"),
         load_config=load_user_config,
-        bypass_env=bool(os.environ.get("CODEGUARD_SKIP_GATE")),
+        bypass_env=env_skip_gate(),
     )
     if result.notification:
         notify(*result.notification)
