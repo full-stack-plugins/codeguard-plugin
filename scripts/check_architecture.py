@@ -46,7 +46,7 @@ CORE_DEPENDENCIES = {
     "codeguard.fingerprint": {"__future__", "hashlib", "json", "os", "shutil", "stat", "pathlib",
                               "codeguard.execution"},
     "codeguard.baseline": {"__future__", "pathlib", "re", "tempfile", "codeguard.execution", "codeguard.verdict"},
-    "codeguard.repository_policy": {"__future__", "pathlib", "git_snapshot", "codeguard.execution",
+    "codeguard.repository_policy": {"__future__", "os", "pathlib", "git_snapshot", "codeguard.execution",
                                     "codeguard.hook_state", "codeguard.path_policy"},
     "codeguard.spec_validation": {"__future__", "shutil", "pathlib", "codeguard.execution", "codeguard.reporting"},
     "codeguard.registry_schema": {"__future__", "re"},
