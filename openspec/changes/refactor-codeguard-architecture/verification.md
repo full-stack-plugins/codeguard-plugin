@@ -294,3 +294,14 @@
 - 该护栏只约束文本检查执行器；Git 二进制快照使用独立 `git_snapshot.git()`，其 `cat-file` 传输、覆盖层累计磁盘预算与恶意 Git 输出仍需另行审计。本批未 bump、推送或发布；三宿主现场、Windows、在线 CVE 与大型 Maven/Gradle 项目没有获得新证据。
 
 - 第二十八批随后发布为 v0.14.14：源码 PR #62 合并到 `479d87815be8478d409e598ab473412dc6997383`，市场 PR #18 合并到 `9bea1d06a07d1c111c93f597b5cc0da7e89720ae`。源码 PR 的 `vendor-check` 与合并后 main 的 `skills-check` 均成功；市场 PR 无 CI 检查，不称其 CI 已通过。受保护注释 tag `v0.14.14` 解引用到源码 main 合并提交，正式 Release 非 draft、非 prerelease，Codex/ZCode/Kimi 市场元数据和中英文导航均为 0.14.14。本次发布不证明三宿主已安装运行、Windows、在线 CVE、大型 Maven/Gradle 或 Git 二进制快照的资源上限；task 5.6 全目标审计、规格同步与归档保持未完成。
+
+## 第二十九批本地验证：Git 二进制输出有界捕获
+
+- 从 v0.14.14 main 的隔离工作树重新建立临时 CodeGraph 索引（141 文件、2,240 节点、5,047 边），沿 `git_snapshot.git → _snapshot_entries/validation_tree → gate` 确认：Git `capture_output=True` 在解析 20,000 文件/256 MiB blob 预算之前无界收集输出。此前的预算只能拒绝已装入内存的过量结果，无法保护执行进程。
+- 同一执行器现在提供原始字节结果，不解码 Git NUL 列表或 blob；Git 路径响应限 16 MiB，batch-check 按对象数限额，blob 响应在已验证大小总量后按内容与头部限额捕获。两流共享预算，超限终止并抛 `SnapshotError`，不交付截断的成功前缀。真实进程验证了 NUL/非法 UTF-8 原样保留、stdin 字节传递、双流洪泛早停；真实 Git 仓以 8 字节预算触发拒绝且 index 字节不变，既有 SHA-1/SHA-256、截断/错位/同长度替换和门禁可见性测试继续通过。
+- 首轮目标测试暴露 macOS 上已结束进程的 `killpg` 权限竞态；清理逻辑现只在进程或读取线程仍存活时尝试终止，并在权限故障下保守回退。首轮目标 27/27、全量 552/552；以下覆盖层审计沿同一尚未发布的工作树继续，不把该中间计数称为最终结果。
+- CodeGraph 沿 `validation_tree → overlays → read_bytes/write_bytes` 发现：旧实现虽限单文件 32 MiB，却未限覆盖层累计字节或文件数，且整文件载入内存；特殊 FIFO 可被静默当作删除，文件↔目录转换依赖 set 迭代顺序。五项真实 Git 目标场景先 RED（含总量、数量、FIFO 和双向转换），修复后以 64 KiB 块流式复制，最多 20,000 项/单文件 32 MiB/累计 256 MiB；源描述符前后核验大小与 mtime，异常不交付临时树。旧目录只在自动清理的一次性快照中被普通文件替换，原仓及 index 未改。
+- 随后在直接调用覆盖层复制器的隔离子进程中复现 FIFO 打开阻塞（超时 2 秒 RED）；在支持的平台上使用非阻塞打开，并以 `fstat` 拒绝特殊文件后，目标用例 0.06 秒通过。最终本地完整单测 **558/558、0 skipped**，真实 Hook **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。此处尚未记入新版本发布证据；Windows 子进程树、异常大的真实仓库性能、敌对并发文件系统、在线 CVE 与三宿主现场仍待独立验收。
+- 同日只读分层审计：插件远端 `main` 仍为 `95b793f`（v0.14.14 后文档合并），市场远端 `main` 新增其它插件 `processon-design 0.2.8` 的提交 `db08d83`，其 `catalog.json` 内 Codeguard 仍为 0.14.14；本机 ZCode 的 `installed_plugins.json` 将 Codeguard 指向 0.14.7 且对应缓存目录存在。Codex/Kimi 的本次默认缓存路径搜索未取得当前版本证据，不据此断言未安装。故源、市场和已安装宿主仍是不同证明层，本批未改宿主配置或触发更新。原始插件检出位于另一条带未提交改动的分支，隔离工作树没有覆盖它。
+- 再沿 `validation_tree → proposed_paths/overlays → gate` 审计发现，同一快照会先为 `changed` 列举一次覆盖层，物化时再列举一次；若结果不同，就可能报告已检查第一组文件、实际只复制第二组。真实 Git 仓中对两次路径列举注入不同结果先 RED（`first.txt` 在 changed 中但不在快照），现一次列举并将同一集合传给路径计算和物化，原 `proposed_paths` 外部调用仍自行观察。该修复不等于 Git index 与工作树之间的原子事务；内容读取期间仍以已有大小/mtime/预算校验拒绝可见变化。
+- 最终本地完整单测 **559/559、0 skipped**，真实 Hook **143/0/0**；Ruff、架构检查、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。仍是隔离工作树未发布代码，不能用 v0.14.14 的远端 CI、Release 或旧宿主安装证明它已经交付。

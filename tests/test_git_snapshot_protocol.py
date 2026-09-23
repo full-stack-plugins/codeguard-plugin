@@ -1,10 +1,12 @@
 """准确 Git 快照必须验证批量对象协议，不得把错位内容交给检查器。"""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,7 +31,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
 
     @staticmethod
     def corrupt_run(variant: str):
-        real_run = subprocess.run
+        real_run = git_snapshot.execute_bytes
 
         def run(argv, *args, **kwargs):
             result = real_run(argv, *args, **kwargs)
@@ -63,13 +65,13 @@ class GitSnapshotProtocolTests(unittest.TestCase):
                     raw += b"unexpected"
                 elif variant == "wrong_content_same_size":
                     raw = header + separator + b"X" + rest[1:]
-            return subprocess.CompletedProcess(result.args, result.returncode, raw, result.stderr)
+            return replace(result, stdout=raw)
 
         return run
 
     @staticmethod
     def corrupt_listing(variant: str):
-        real_run = subprocess.run
+        real_run = git_snapshot.execute_bytes
 
         def run(argv, *args, **kwargs):
             result = real_run(argv, *args, **kwargs)
@@ -98,7 +100,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
                 raw = b" ".join(fields) + b"\t" + name + raw[len(first):]
             elif variant == "invalid_header":
                 raw = b"bogus\t" + first.split(b"\t", 1)[1] + raw[len(first):]
-            return subprocess.CompletedProcess(result.args, result.returncode, raw, result.stderr)
+            return replace(result, stdout=raw)
 
         return run
 
@@ -108,6 +110,92 @@ class GitSnapshotProtocolTests(unittest.TestCase):
             self.assertEqual(self.content, (snapshot / "sample.bin").read_bytes())
             self.assertEqual(["sample.bin"], changed)
         self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_git_binary_response_over_limit_never_returns_partial_records(self):
+        before = (self.root / ".git/index").read_bytes()
+        with self.assertRaisesRegex(git_snapshot.SnapshotError, "output_limit"):
+            git_snapshot.git(self.root, "ls-files", "--stage", "-z", max_output_bytes=8)
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_predicted_overlays_have_an_aggregate_budget(self):
+        (self.root / "first.txt").write_bytes(b"a" * 10)
+        (self.root / "second.txt").write_bytes(b"b" * 10)
+        before = (self.root / ".git/index").read_bytes()
+        with (patch.object(git_snapshot, "_MAX_OVERLAY_BYTES", 15),
+              self.assertRaisesRegex(git_snapshot.SnapshotError, "覆盖层"),
+              git_snapshot.validation_tree(self.root, lanes={"untracked"})):
+            pass
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_predicted_overlay_count_is_bounded_before_materialization(self):
+        (self.root / "first.txt").write_bytes(b"")
+        (self.root / "second.txt").write_bytes(b"")
+        before = (self.root / ".git/index").read_bytes()
+        with (patch.object(git_snapshot, "_MAX_OVERLAY_FILES", 1),
+              self.assertRaisesRegex(git_snapshot.SnapshotError, "文件数量"),
+              git_snapshot.validation_tree(self.root, lanes={"untracked"})):
+            pass
+        self.assertEqual(before, (self.root / ".git/index").read_bytes())
+
+    def test_changed_paths_and_materialized_overlay_share_one_listing(self):
+        (self.root / "first.txt").write_bytes(b"first")
+        (self.root / "second.txt").write_bytes(b"second")
+        with (patch.object(git_snapshot, "overlays",
+                           side_effect=({"first.txt"}, {"second.txt"})) as listing,
+              git_snapshot.validation_tree(self.root, lanes={"untracked"}) as (snapshot, changed)):
+            self.assertIn("first.txt", changed)
+            self.assertNotIn("second.txt", changed)
+            self.assertEqual(b"first", (snapshot / "first.txt").read_bytes())
+            self.assertFalse((snapshot / "second.txt").exists())
+        self.assertEqual(1, listing.call_count)
+
+    def test_predicted_file_to_directory_transition_is_order_independent(self):
+        (self.root / "slot").write_bytes(b"old file")
+        subprocess.run(["git", "add", "slot"], cwd=self.root, check=True, capture_output=True)
+        (self.root / "slot").unlink()
+        (self.root / "slot").mkdir()
+        (self.root / "slot" / "child.txt").write_bytes(b"new child")
+        with (patch.object(git_snapshot, "overlays", return_value=("slot/child.txt", "slot")),
+              git_snapshot.validation_tree(self.root, lanes={"unstaged", "untracked"}) as (snapshot, _)):
+            self.assertEqual(b"new child", (snapshot / "slot" / "child.txt").read_bytes())
+
+    def test_predicted_directory_to_file_transition_replaces_old_children(self):
+        (self.root / "slot").mkdir()
+        (self.root / "slot" / "child.txt").write_bytes(b"old child")
+        subprocess.run(["git", "add", "slot"], cwd=self.root, check=True, capture_output=True)
+        (self.root / "slot" / "child.txt").unlink()
+        (self.root / "slot").rmdir()
+        (self.root / "slot").write_bytes(b"new file")
+        with git_snapshot.validation_tree(self.root, lanes={"unstaged", "untracked"}) as (snapshot, _):
+            self.assertEqual(b"new file", (snapshot / "slot").read_bytes())
+            self.assertFalse((snapshot / "slot" / "child.txt").exists())
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO fixture requires POSIX")
+    def test_predicted_fifo_is_not_silently_treated_as_deleted(self):
+        (self.root / "pipe").write_bytes(b"ordinary before replacement")
+        subprocess.run(["git", "add", "pipe"], cwd=self.root, check=True, capture_output=True)
+        (self.root / "pipe").unlink()
+        os.mkfifo(self.root / "pipe")
+        with (self.assertRaisesRegex(git_snapshot.SnapshotError, "特殊文件"),
+              git_snapshot.validation_tree(self.root, lanes={"unstaged"})):
+            pass
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO fixture requires POSIX")
+    def test_fifo_replacement_at_open_cannot_block_snapshot(self):
+        os.mkfifo(self.root / "pipe")
+        code = (
+            "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
+            "from git_snapshot import SnapshotError, _copy_overlay\n"
+            "try:\n"
+            "    _copy_overlay(Path(sys.argv[2]), Path(sys.argv[3]), 1024)\n"
+            "except SnapshotError:\n"
+            "    raise SystemExit(0)\n"
+            "raise SystemExit(1)\n"
+        )
+        outcome = subprocess.run([sys.executable, "-c", code, str(ROOT / "scripts"),
+                                  str(self.root / "pipe"), str(self.root / "dest")],
+                                 capture_output=True, timeout=2, check=False)
+        self.assertEqual(0, outcome.returncode, outcome.stderr.decode(errors="replace"))
 
     def test_empty_index_remains_a_valid_empty_snapshot(self):
         with tempfile.TemporaryDirectory(prefix="cg-snapshot-empty-") as directory:
@@ -147,7 +235,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
                     "missing_delimiter", "trailing", "wrong_content_same_size")
         for variant in variants:
             with (self.subTest(variant=variant),
-                  patch.object(git_snapshot.subprocess, "run",
+                  patch.object(git_snapshot, "execute_bytes",
                                side_effect=self.corrupt_run(variant)),
                   self.assertRaises(git_snapshot.SnapshotError),
                   git_snapshot.validation_tree(self.root)):
@@ -163,7 +251,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
                     "empty", "empty_record", "empty_name", "invalid_oid", "invalid_header")
         for variant in variants:
             with (self.subTest(variant=variant),
-                  patch.object(git_snapshot.subprocess, "run",
+                  patch.object(git_snapshot, "execute_bytes",
                                side_effect=self.corrupt_listing(variant)),
                   self.assertRaises(git_snapshot.SnapshotError),
                   git_snapshot.validation_tree(self.root)):
@@ -179,28 +267,27 @@ class GitSnapshotProtocolTests(unittest.TestCase):
         for variant in ("missing_terminator", "missing_complete_record", "empty",
                         "duplicate", "invalid_oid"):
             with (self.subTest(variant=variant),
-                  patch.object(git_snapshot.subprocess, "run",
+                  patch.object(git_snapshot, "execute_bytes",
                                side_effect=self.corrupt_listing(variant)),
                   self.assertRaises(git_snapshot.SnapshotError),
                   git_snapshot.validation_tree(self.root, mode="push")):
                 pass
 
     def test_incomplete_path_name_response_is_not_treated_as_empty(self):
-        real_run = subprocess.run
+        real_run = git_snapshot.execute_bytes
 
         def run(argv, *args, **kwargs):
             result = real_run(argv, *args, **kwargs)
             if argv[:4] == ["git", "diff", "--cached", "--name-only"]:
-                return subprocess.CompletedProcess(result.args, result.returncode,
-                                                   result.stdout[:-1], result.stderr)
+                return replace(result, stdout=result.stdout[:-1])
             return result
 
-        with (patch.object(git_snapshot.subprocess, "run", side_effect=run),
+        with (patch.object(git_snapshot, "execute_bytes", side_effect=run),
               self.assertRaises(git_snapshot.SnapshotError)):
             git_snapshot.proposed_paths(self.root)
 
     def test_malformed_listing_is_visible_to_exact_gate(self):
-        with patch.object(git_snapshot.subprocess, "run",
+        with patch.object(git_snapshot, "execute_bytes",
                           side_effect=self.corrupt_listing("missing_terminator")):
             failures, skipped = run_gate(self.root, {}, ["python"], exact=True)
         self.assertEqual([], failures)
@@ -216,7 +303,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
             self.assertIn(name, changed)
 
     def test_exact_gate_reports_corrupt_blob_as_unverified(self):
-        with patch.object(git_snapshot.subprocess, "run",
+        with patch.object(git_snapshot, "execute_bytes",
                           side_effect=self.corrupt_run("wrong_oid")):
             failures, skipped = run_gate(self.root, {}, ["python"], exact=True)
         self.assertEqual([], failures)
@@ -227,7 +314,7 @@ class GitSnapshotProtocolTests(unittest.TestCase):
         subprocess.run(["git", "add", ".env"], cwd=self.root,
                        check=True, capture_output=True)
         before = (self.root / ".git/index").read_bytes()
-        with patch.object(git_snapshot.subprocess, "run",
+        with patch.object(git_snapshot, "execute_bytes",
                           side_effect=self.corrupt_run("wrong_oid")):
             result = evaluate_git_command("git commit -m fixture", cwd=self.root,
                                           load_config=dict)

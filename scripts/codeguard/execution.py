@@ -4,12 +4,14 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 
-from .models import CheckPlan, PlanExecution, ProcessResult
+from .models import BinaryProcessResult, CheckPlan, PlanExecution, ProcessResult
 
 DEFAULT_MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 _READ_SIZE = 64 * 1024
@@ -29,6 +31,17 @@ def execute(argv: Sequence[str], cwd: Path, timeout: float, *,
     普通工具的退出码（包括工具自己返回的 124/127）原样保留，由领域
     判定解释；failure 只描述执行器实际观察到的故障。
     """
+    raw = execute_bytes(argv, cwd, timeout, env=env, stdin_null=stdin_null,
+                        max_output_bytes=max_output_bytes)
+    return ProcessResult(raw.argv, raw.cwd, raw.returncode,
+                         _text(raw.stdout), _text(raw.stderr), raw.failure)
+
+
+def execute_bytes(argv: Sequence[str], cwd: Path, timeout: float, *,
+                  env: Mapping[str, str] | None = None, stdin_null: bool = False,
+                  input_data: bytes | None = None,
+                  max_output_bytes: int | None = None) -> BinaryProcessResult:
+    """与文本执行共用的有界原始字节通道；不解释任何业务协议。"""
     if max_output_bytes is None:
         max_output_bytes = DEFAULT_MAX_OUTPUT_BYTES
     if max_output_bytes < 1:
@@ -36,18 +49,23 @@ def execute(argv: Sequence[str], cwd: Path, timeout: float, *,
     command = tuple(argv)
     root = Path(cwd)
     try:
-        proc = subprocess.Popen(
-            list(command), cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            env={**os.environ, **env} if env is not None else None,
-            stdin=subprocess.DEVNULL if stdin_null else None,
-            start_new_session=os.name == "posix",
-        )
+        with ExitStack() as stack:
+            input_file = stack.enter_context(tempfile.TemporaryFile()) if input_data is not None else None
+            if input_file is not None:
+                input_file.write(input_data)
+                input_file.seek(0)
+            proc = subprocess.Popen(
+                list(command), cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env={**os.environ, **env} if env is not None else None,
+                stdin=input_file if input_file is not None else subprocess.DEVNULL if stdin_null else None,
+                start_new_session=os.name == "posix",
+            )
     except FileNotFoundError as exc:
-        return ProcessResult(command, root, 127, stderr=f"command not found: {exc}",
-                             failure="not_found")
+        return BinaryProcessResult(command, root, 127,
+                                   stderr=f"command not found: {exc}".encode(), failure="not_found")
     except OSError as exc:
-        return ProcessResult(command, root, 126, stderr=f"cannot start command: {exc}",
-                             failure="os_error")
+        return BinaryProcessResult(command, root, 126,
+                                   stderr=f"cannot start command: {exc}".encode(), failure="os_error")
 
     captured = (bytearray(), bytearray())
     guard = threading.Lock()
@@ -75,11 +93,16 @@ def execute(argv: Sequence[str], cwd: Path, timeout: float, *,
         reader.start()
 
     def stop_process() -> None:
+        if proc.poll() is not None and not any(reader.is_alive() for reader in readers):
+            return
         if os.name == "posix":
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            except PermissionError:
+                if proc.poll() is None:
+                    proc.kill()
         elif proc.poll() is None:
             proc.kill()
 
@@ -117,15 +140,15 @@ def execute(argv: Sequence[str], cwd: Path, timeout: float, *,
         proc.wait()
         raise
 
-    stdout, stderr = (_text(bytes(stream)) for stream in captured)
+    stdout, stderr = (bytes(stream) for stream in captured)
     if fault is not None:
         message = {"timeout": f"timeout after {timeout}s",
                    "output_limit": f"output limit exceeded ({max_output_bytes} bytes)",
-                   "os_error": "cannot finish reading command output"}[fault]
-        stderr += ("\n" if stderr and not stderr.endswith("\n") else "") + message
-    return ProcessResult(command, root, {"timeout": 124, "output_limit": 125,
-                                         "os_error": 126}.get(fault, proc.returncode),
-                         stdout, stderr, fault)
+                   "os_error": "cannot finish reading command output"}[fault].encode()
+        stderr += (b"\n" if stderr and not stderr.endswith(b"\n") else b"") + message
+    return BinaryProcessResult(command, root, {"timeout": 124, "output_limit": 125,
+                                               "os_error": 126}.get(fault, proc.returncode),
+                               stdout, stderr, fault)
 
 
 def execute_plan(plan: CheckPlan, timeout: float) -> PlanExecution:
