@@ -82,11 +82,15 @@ CLI/MCP 失败日志与 Git 门禁截断诊断日志可能包含检查器的原�
 
 ### Requirement: CLI fix SHALL account for every repair outcome
 
-同一语言可同时产生跳过子范围与实际 formatter 结果。CLI MUST 遍历应用返回的每条结果，而不是按语言数截断；任何实际 formatter 失败或不可验证结果 MUST 不得被同语言的 SKIPPED 提示掩盖为成功。既有逐条提示与 dry-run 行为保持可见。
+同一语言可同时产生跳过子范围与实际 formatter 结果。CLI MUST 遍历应用返回的每条结果，而不是按语言数截断；任何实际 formatter 失败或不可验证结果 MUST 不得被同语言的 SKIPPED 提示掩盖为成功。既有逐条提示与 dry-run 行为保持可见。formatter 退出码 0 仅证明命令执行成功；若 CLI 未采集修复前后内容身份，MUST NOT 将它呈现为已经确认文件发生修复。
 
 #### Scenario: Mixed shell and zsh changes with a failing formatter
 - **WHEN** Git 改动同时包含 `.zsh` 与 `.sh`，前者安全跳过 formatter，后者 formatter 实际运行并失败
 - **THEN** CLI 同时显示跳过说明与 formatter 失败，退出非零；不得只处理第一条 SKIPPED 结果
+
+#### Scenario: Formatter exits successfully without changing a file
+- **WHEN** CLI 对已规范的改动文件运行 formatter，进程退出码为 0，但内容保持不变
+- **THEN** CLI 仅报告 formatter 执行成功且文件变化未验证，不宣称 `fixed`
 
 #### Scenario: No executable commands
 - **WHEN** 计划没有任何可执行命令

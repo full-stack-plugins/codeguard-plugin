@@ -72,7 +72,8 @@ def main() -> int:
             print(f"  {lang:12s} would run: {' '.join(r.get('command') or [])}")
             continue
         if r.get("fixed"):
-            print(f"  {lang:12s} \u2705 fixed")
+            # 兼容字段 fixed 表示 formatter 以 0 退出，不能证明文件确实改变。
+            print(f"  {lang:12s} \u2705 formatter 执行成功（文件变化未验证）")
         else:
             print(f"  {lang:12s} \u274c failed: exit={r.get('exit_code')}")
             if r.get("stderr_tail"):
