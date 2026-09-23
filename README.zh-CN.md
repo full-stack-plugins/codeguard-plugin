@@ -19,7 +19,7 @@ CodeGuard 为 AI 编程助手提供原生检查证据，守护已支持的 Git �
 | PostToolUse | 文件型工具检查本次编辑文件 | 反馈、exit 0；项目级检查延后 |
 | UserPromptSubmit | 与提交意图相关的工作树变更 | 建议，不阻断用户消息 |
 | PreToolUse Git 门禁 | 拟提交 index 快照或推送 HEAD 快照 | 确定违规 exit 2；不确定项明确 UNVERIFIED 并 fail-open |
-| CLI check / MCP check_code_style | 项目检查，含 Java 构建验证 | 明确状态、原因、原始退出码和日志 |
+| CLI check / MCP check_code_style | 项目检查，含 Java 构建验证 | 明确状态、原因、原始退出码、顺序执行证据和日志 |
 | pre-commit / CI | 独立配置的检查 | 单独验收，不能由钩子成功代替 |
 
 钩子不会自动覆盖宿主的每个命令入口。历史 V0.5.4 安装证据不能代表当前版本已在 Codex、ZCode、Kimi 验收。
@@ -107,12 +107,12 @@ python3 scripts/run_check.py --mcp /path/to/project
 
 | 工具 | 契约 |
 |---|---|
-| check_code_style | 逐语言状态、原因、passed、原始退出码与完整日志路径 |
+| check_code_style | 逐语言状态、原因、passed、原始退出码、逐命令状态元数据与完整失败日志路径 |
 | auto_fix | 只修 Git 改动文件、同范围复检，拒绝无界项目 formatter；fixed 表示实际修改 |
 | list_languages | 注册表语言标识和名称 |
 | analyze_java_impact | 只读计划，接受 path 和可选 changed 数组 |
 
-日志默认在 <project>/out/.codeguard-last.log；CLI --quiet 关闭写日志。MCP auto_fix 无法确定 Git 范围时不会写入。
+日志默认在 <project>/out/.codeguard-last.log；CLI --quiet 关闭写日志。多命令检查失败时，日志保存每条已执行检查的完整输出。MCP 执行轨迹只返回阶段、序号、程序名、退出/故障及输出长度，不回显 argv、环境覆盖或检查器输出。本地日志可能含敏感文本，应排除出版本控制。MCP auto_fix 无法确定 Git 范围时不会写入。
 
 ## 配置与覆盖
 

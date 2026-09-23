@@ -28,12 +28,30 @@ def registry_entries() -> list[dict]:
             for entry in REGISTRY.values()]
 
 
+def _public_trace(trace: list[dict]) -> list[dict]:
+    """MCP 只暴露逐命令状态；原始 argv/输出仍留在进程结果与本地日志。"""
+    phases: dict[str, int] = {}
+    output = []
+    for attempt in trace:
+        phase = attempt["phase"]
+        number = phases.get(phase, 0) + 1
+        phases[phase] = number
+        output.append({
+            "phase": phase, "number": number,
+            "program": Path(attempt["command"][0]).name,
+            "exit_code": attempt["exit_code"], "failure": attempt["failure"],
+            "stdout_chars": attempt["stdout_chars"],
+            "stderr_chars": attempt["stderr_chars"],
+        })
+    return output
+
+
 def result_envelope(results: list[dict]) -> list[dict]:
     """保留 MCP 历史字段；完整日志路径只来自实际检查。"""
     envelope = []
     for result in results:
         log_path = result.get("log_path", "")
-        envelope.append({
+        item = {
             "language": result.get("language", ""),
             "passed": bool(result.get("passed")),
             "status": result.get("status", "PASS" if result.get("passed") else "FAIL"),
@@ -41,7 +59,10 @@ def result_envelope(results: list[dict]) -> list[dict]:
             "exit_code": int(result.get("exit_code", 0)),
             "stderr_path": log_path,
             "log_path": log_path,
-        })
+        }
+        if "execution_trace" in result:
+            item["execution_trace"] = _public_trace(result["execution_trace"])
+        envelope.append(item)
     return envelope
 
 
@@ -56,7 +77,9 @@ def auto_fix(root: Path, languages: list[str]) -> dict:
     fix_results = run_fix(languages, root, files=files)
     results = run_check(languages, root, files=files, log_dir=root / "out")
     changed = any(not path.is_file() or path.read_bytes() != body for path, body in before.items())
-    return {"fixed": changed, "fix_results": fix_results, "check": result_envelope(results)}
+    public_fixes = [{**item, "execution_trace": _public_trace(item["execution_trace"])}
+                    if "execution_trace" in item else item for item in fix_results]
+    return {"fixed": changed, "fix_results": public_fixes, "check": result_envelope(results)}
 
 
 def mcp_tool_payload(name: str, arguments: dict | None, project_root: Path):
