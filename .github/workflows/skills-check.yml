@@ -8,17 +8,22 @@ on:
 jobs:
   vendor-check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    name: vendor-check (py${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install requirements (mcp SDK so MCP server tests run, not skip)
         run: python3 -m pip install --disable-pip-version-check -r requirements.txt
-      - name: Install test checker (deterministic real-process fixtures)
-        run: python3 -m pip install --disable-pip-version-check ruff==0.16.8
+      - name: Install dev baseline (ruff as python checker + test precondition)
+        run: python3 -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Check executable code quality
         run: ruff check hooks scripts tests
       - name: Verify core dependency boundaries and import cycles
