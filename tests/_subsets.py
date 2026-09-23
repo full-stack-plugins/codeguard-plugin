@@ -12,8 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from _harness import FAIL, HOOKS, PASS, PLUGIN, SKIP, git, make_repo, ok, run_hook, skip
-
+from _harness import HOOKS, PLUGIN, git, make_repo, ok, run_hook, skip
 
 # ══════════════════════════ 子集 1：语言规则结构审计 ══════════════════════════
 
