@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 from pathlib import Path
 
 from git_snapshot import SnapshotError, git
 
-from .git_syntax import _analyze_segment, _flatten_substitutions
+from .git_syntax import _analyze_segment, _flatten_substitutions, split_shell_segments
 
 _LANES = ("staged", "unstaged", "untracked")
 
@@ -42,7 +41,7 @@ def staging_intent(command: str, project_root: Path | None = None, *,
     wanted = Path(project_root).resolve() if project_root is not None else None
     lanes = {"staged"}
     extra = set()
-    for segment in re.split(r"&&|\|\||;|\n", _flatten_substitutions(command)):
+    for segment, _separator in split_shell_segments(_flatten_substitutions(command)):
         try:
             words = shlex.split(segment)
         except ValueError as exc:

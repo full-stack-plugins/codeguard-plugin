@@ -29,6 +29,45 @@ _QUERY_CONFIG_FLAGS = ("--get", "--get-all", "--get-regexp", "--unset", "--unset
                        "--list", "-l")
 
 
+def split_shell_segments(command: str) -> list[tuple[str, str | None]]:
+    """只按未引用、未转义的 Shell 控制符切段，保留前置分隔符。
+
+    这不是完整 Shell 解释器；嵌套替换由 `_flatten_substitutions` 另行展开。
+    引号内的 `;`/`&&` 和 `\\;` 是参数数据，不能合成 git config 豁免。
+    """
+    segments: list[tuple[str, str | None]] = []
+    start = 0
+    before: str | None = None
+    quote: str | None = None
+    escaped = False
+    i = 0
+    while i < len(command):
+        char = command[i]
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote is not None:
+            if char == quote:
+                quote = None
+        elif char in ("'", '"'):
+            quote = char
+        elif char in (";", "\n") or command[i:i + 2] in ("&&", "||"):
+            separator = command[i:i + 2] if command[i:i + 2] in ("&&", "||") else char
+            segment = command[start:i].strip()
+            if segment:
+                segments.append((segment, before))
+            before = separator
+            i += len(separator)
+            start = i
+            continue
+        i += 1
+    segment = command[start:].strip()
+    if segment:
+        segments.append((segment, before))
+    return segments
+
+
 
 def _flatten_substitutions(command: str) -> str:
     """把 `$(...)` 与反引号的内层文本并入待扫面（按 shell 语义它们会真的执行）。
@@ -193,8 +232,7 @@ def inline_skip_gate(command: str) -> bool:
     同名字符串不构成豁免；value 精确匹配 _SKIP_GATE_ASSIGN。
     """
     text = _flatten_substitutions(command)
-    import re as _re
-    for seg in _re.split(r"&&|\|\||;|\n", text):
+    for seg, _separator in split_shell_segments(text):
         tokens = [t.strip("\"'") for t in seg.strip().split()]
         parts = _git_seg_parts(tokens)
         if parts is None:
@@ -204,6 +242,34 @@ def inline_skip_gate(command: str) -> bool:
             if tok == "-c" and i + 1 < len(pre) and pre[i + 1].lower() in _SKIP_GATE_ASSIGN:
                 return True
     return False
+
+
+def skip_gate_config_change(segment: str) -> bool | None:
+    """解析单段仓库级豁免变更；True 为设置，False 为取消，None 为无关。"""
+    tokens = [token.strip("\"'") for token in segment.strip().split()]
+    parts = _git_seg_parts(tokens)
+    if parts is None:
+        return None
+    sub, index, _pre = parts
+    if sub != "config":
+        return None
+    rest = tokens[index + 1:]
+    # 其它文件或跨仓配置作用域不是当前仓库的可证明本地豁免。
+    if any(token in ("-f", "--file", "--global", "--system", "--blob")
+           or token.startswith(("-f", "--file=", "--blob=")) for token in rest):
+        return None
+    if "--unset" in rest or "--unset-all" in rest:
+        return False if any(token.lower() == "codeguard.skipgate" for token in rest) else None
+    if any(token in _QUERY_CONFIG_FLAGS for token in rest):
+        return None
+    args = [token for token in rest if not token.startswith("-")]
+    if len(args) < 2 or args[0].lower() != "codeguard.skipgate":
+        return None
+    if args[1].lower() in ("true", "1", "yes"):
+        return True
+    if args[1].lower() in ("false", "0", "no"):
+        return False
+    return None
 
 
 def chain_skip_gate(command: str) -> bool:
@@ -219,25 +285,8 @@ def chain_skip_gate(command: str) -> bool:
     里出现的同名字符串不构成豁免（见 _git_seg_parts 的子命令边界）。
     """
     text = _flatten_substitutions(command)
-    import re as _re
-    for seg in _re.split(r"&&|\|\||;|\n", text):
-        tokens = [t.strip("\"'") for t in seg.strip().split()]
-        parts = _git_seg_parts(tokens)
-        if parts is None:
-            continue
-        sub, si, _pre = parts
-        if sub != "config":
-            continue
-        rest = tokens[si + 1:]
-        if any(t in _QUERY_CONFIG_FLAGS for t in rest):
-            continue
-        args = [t for t in rest if not t.startswith("-")]
-        if len(args) < 2:
-            continue
-        key, value = args[0], args[1]
-        if key.lower() == "codeguard.skipgate" and value.lower() in ("true", "1", "yes"):
-            return True
-    return False
+    return any(skip_gate_config_change(seg) is True
+               for seg, _separator in split_shell_segments(text))
 
 
 def _segment_is_git_side_effect(seg: str) -> bool:
@@ -245,9 +294,8 @@ def _segment_is_git_side_effect(seg: str) -> bool:
 
 
 def _collect_subs(text: str) -> list[str]:
-    import re
     text = _flatten_substitutions(text)
     return [
-        sub for seg in re.split(r"&&|\|\||;|\n", text)
+        sub for seg, _separator in split_shell_segments(text)
         if (sub := _git_side_effect_sub(seg))
     ]

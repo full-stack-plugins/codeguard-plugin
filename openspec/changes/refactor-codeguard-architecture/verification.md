@@ -186,3 +186,12 @@
 - 当前 `GitTargetError` 将显式目标不可绑定与无显式目标的 workspace 兜底区分；前者在应用边界返回 exit 2 和具体路径，不再检查错误仓。Git 根观察的 `SnapshotError` 同样不交给顶层 fail-open。拟暂存解析接受可选显式 cwd，并由应用传入同一调用目录；旧无参导入/调用仍可使用进程 cwd。真实 PreToolUse 子进程证明无效目标阻断，`git -C` 有效目标仍覆盖非 Git cd。
 - TDD RED 包含错误放行、错误兜底、遗漏 pathspec 与根观察异常；GREEN 后完整单测 **470/470、0 skipped**，真实 Hook 回归 **143/0/0**。ruff、架构门禁、语言 schema **57 项/11 规则**、vendor 离线与在线、本 change strict、diff whitespace 通过；受管技能与 lock 未改。
 - 这不是 Shell 求值器：条件链、动态拼接、命令替换、复杂引用和链内环境变化仍是明确边界。三宿主现场、Windows、联网漏洞库与全部语言工具链未因此获得验收。本批在此记录时尚未 bump/提交/发布。
+
+## 第十八批实际验证：多仓操作与豁免归属
+
+- v0.14.3 已经插件 PR #49、市场 PR #6 合并到双仓 `main`；插件 PR 及合并后 `main` 的 `skills-check` 成功，不可变注释 tag 与 GitHub Release 解引用到 `f646f031bf35d269da82d4f70c0a4666991eb175`，市场三宿主版本为 0.14.3。该发布只覆盖第十七批及此前源码，不覆盖本批修改。
+- 临时 CodeGraph 快照从最新 main 同步并追踪 `evaluate_git_command → resolve_git_operations → validation_tree/proposed_paths`。原实现按整链 `push` 和 `pending_commit` 选面：A 仓 commit、B 仓纯 push 时，B 暂存的 `.env` 被错误纳入本次推送并阻断。真实双 Git 仓测试先 RED；现在 `GitOperation` 保留每个副作用的仓、模式与有序豁免状态，B 只检查 HEAD，同仓 commit→push 仍检查已有待推送内容与拟提交内容。
+- 仓库级 `skipGate` 原先以 `any(...)` 令 A 仓配置豁免 B 仓；内联 `-c` 和链式 `git config` 也会全链放行。新增测试分别先 RED，再证明只豁免所属仓与操作；同仓后续无豁免提交仍受检，后置设置不追溯前面的提交。已有仓库配置为 true 但命令先 unset 再提交也曾被预读配置误放行，现按命令序列覆盖旧配置。旧 `resolve_project_roots` 与语法布尔 helper 导入面保留。
+- 追加 RED：`git config --file=其它文件` 错被当成本仓豁免；`git config ... || git commit` 错把仅在设置失败时才会执行的提交放行。现在前者不构成豁免，后者及 `;`/换行连接的配置状态报告 UNVERIFIED 并要求拆分命令。未把完整 Shell 求值器伪装成已实现。
+- 完整单测 **479/479、0 skipped**；真实 Hook 回归 **143/0/0**。Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过；受管技能及 lock 未改。测试覆盖真实 Git/快照与应用层故障，但静态 Shell 解析仍非完整求值器，三宿主现场、Windows、在线漏洞库和全部语言工具链仍未独立验收。本批发布闭环待执行。
+- 后续 RED 发现：`echo "docs; git config codeguard.skipGate true" && git commit` 会把引号内分号当真实分隔符，错误放行含 `.env` 的提交。语法/仓库/间接脚本/拟暂存改用同一个引号及转义感知切分函数；真实 Git 提交安全用例与纯语法用例转绿。复核后完整单测 **481/481、0 skipped**，真实 Hook 回归 **143/0/0**；Ruff、架构依赖/循环、语言 schema **57 项/11 规则**、vendor 离线及在线、本 change strict、diff whitespace 均通过。本批发布证据仍待补齐。

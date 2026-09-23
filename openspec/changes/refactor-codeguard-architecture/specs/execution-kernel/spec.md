@@ -199,10 +199,45 @@ index 或工作树；不支持的动态/交互式形态必须明确未验证，�
 显式 `cd` 或 `git -C` 已给出目标时，若该目标不是可解析的 Git 工作树，MUST 阻断
 该 Git 副作用命令并报告目标不可确定；不得回退调用者仓或扫调用者一层子仓。
 只有命令未给出显式目标且调用目录不是 Git 仓时，才保留既有 workspace 子仓兜底策略。
+一条命令链触及多个仓库时，commit/push 门禁面和是否存在待提交操作 MUST 按仓库分别
+归属；A 仓的 commit 不得使 B 仓的纯 push 检查包含 B 仓尚未提交的 index。若同一仓
+同时 commit 和 push，则继续检查该仓已有待推送内容及拟提交内容，不得缩窄既有检查面。
+仓库级 `codeguard.skipGate` 只豁免设置它的仓库，不得因 A 仓豁免而跳过同链 B 仓。
+内联 `git -c codeguard.skipGate` 只豁免对应 Git 操作；链式 `git config` 设置/取消
+须按命令顺序归属到目标仓，不得把 A 仓的豁免传播到 B 仓或此前操作。写入
+其它配置文件的 `git config --file=...` 不构成当前仓库生效的豁免。
+链式配置变更只有经 `&&` 确认成功路径后才能传递到后续操作；跨越 `||`、`;`
+或换行后的配置状态无法静态证明时，MUST 阻断并提示拆分命令，不得猜测已生效。
+命令切分 MUST 区分真实 Shell 分隔符和被引用/转义的字面文本；提交消息、echo 参数
+或文件路径中的 `;`、`&&` 不得生成虚假的 Git 操作或豁免设置。
 
 #### Scenario: Two repositories have different staging commands
 - **WHEN** 一条命令链对 A 执行 add -A、对 B 只提交已暂存内容
 - **THEN** B 的未暂存及未跟踪文件不进入拟提交检查面
+
+#### Scenario: Commit and push belong to different repositories
+- **WHEN** 一条命令链提交 A 仓、只推送 B 仓，而 B 仓另有未提交的暂存改动
+- **THEN** A 使用 commit 面，B 使用纯 push 的 HEAD 面；B 的暂存改动不因 A 的 commit 被误纳入
+
+#### Scenario: Commit and push belong to the same repository
+- **WHEN** 同一仓在一条命令链中先提交再推送
+- **THEN** 门禁同时覆盖该仓拟提交 index 和已有待推送 HEAD 内容
+
+#### Scenario: A bypass belongs to its repository
+- **WHEN** 同链 A 仓设置了 `codeguard.skipGate`，B 仓没有豁免且包含应拦截内容
+- **THEN** 只审计并跳过 A 仓，仍对 B 仓运行完整门禁并阻断其违规内容
+
+#### Scenario: Inline and chain bypasses are not global
+- **WHEN** A 仓使用单次 `git -c` 或链式 `git config` 豁免，B 仓在同链执行无豁免提交
+- **THEN** 仅 A 的指定操作获得豁免，B 仓仍完整检查；同仓 unset 后的操作也不继承之前的豁免
+
+#### Scenario: A conditional bypass setter cannot be assumed successful
+- **WHEN** `git config codeguard.skipGate true` 后以 `||`、`;` 或换行连接提交，或设置写入其它配置文件
+- **THEN** 不把该设置当作已生效的本仓豁免；无法证明控制流时报告 UNVERIFIED 并要求拆分命令
+
+#### Scenario: Quoted control characters are data
+- **WHEN** `echo` 的引号参数或 commit 消息包含 `; git config codeguard.skipGate true`
+- **THEN** 不产生虚假的 config 设置，随后未豁免的提交仍须检查并阻断违规内容
 
 #### Scenario: An explicit Git target is not a repository
 - **WHEN** 命令从 Git 仓调用，但在 `cd` 到非 Git 目录后运行 `git push`，或使用无效的 `git -C` 目标
