@@ -26,6 +26,7 @@ flowchart TD
     Entry -. 会话与去重 .-> State[storage / hook_state / cache]
 ```
 
+检查作用域默认忽略项目根下任一以 `.` 开头的目录与文件（PostToolUse 保存面、delta 门禁面、语言发现面与全量扫描的 ruff/`find` 型通道；项目根本身位于点前缀父目录下不构成命中）；入库安全检查与 linter 配置发现不受此影响——密钥模式照拦，点前缀配置文件照常判定接入。
 `execution` 只记录进程证据，不把非零退出自动认定为代码违规。`verdict`、CVE 与 Dockerfile 报告解析决定 PASS、FAIL 或 UNVERIFIED；入口仅按各自协议呈现和聚合退出码。Git 提交检查使用 index 或预测暂存快照，推送检查使用 HEAD；保存钩子只给反馈。计划、未执行和未验证不能宣传为通过。
 Git 准确快照的二进制读取独立于文本检查执行器：先严格解析 index/HEAD 对象列表的 NUL 帧、模式、ID、类型/阶段和唯一文件名，并与独立路径列举核对；`cat-file` 两阶段响应再逐项核对 ID、blob 类型、大小与边界，按 SHA-1/SHA-256 blob 对象格式复算内容哈希。缺项、截断、尾部脏数据或同长度内容替换均不交付临时树，而是明确标记 Git UNVERIFIED。原始 index 不在观察过程中改写。该校验不是恶意 Git 进程沙箱或完整 Git/Shell 模拟。
 `language_check` 将 `PlanExecution` 的实际命令依序映射为应用层有界 `execution_trace`（检查、修复、复检阶段）；`check_application` 将其进一步压成 MCP 安全元数据，不回显原始 argv、环境覆盖或捕获输出。MCP `auto_fix` 先以 `fingerprint.file_content` 对仓内改动文件采集有总量预算的流式身份，仓外路径、符号链接或读取故障不启动 formatter；复检后无法再次采集身份时保留实际执行证据但不宣称已确认 `fixed`。`fix_results` 只公开状态与安全元数据；formatter stderr 尾部写入私有 `.codeguard-fix.log` 后只公开路径，日志不可用时不退回公开原文。失败日志保留各已执行检查的完整输出，可能含敏感文本，应排除出版本控制。项目日志和门禁截断日志共用 `storage.write_private_text` 的私有原子落盘；预置日志文件链接不被跟随，默认 `out` 目录为链接或不可写时不返回虚假日志路径，也不覆盖检查结论。终止命令仍决定既有状态、退出码和旧字段；未运行的计划命令不进入证据。

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from .config import get_overrides
+from .path_policy import is_dot_prefixed
 from .registry import EXT_LANG_MAP, FILE_LANG_MAP, PROJECT_MARKERS
 
 
@@ -74,6 +75,8 @@ def detect_languages(project_root: str | Path) -> list[str]:
     ext_map = {**EXT_LANG_MAP, **overrides.get("extensions", {})}
 
     def include(file: Path) -> None:
+        if is_dot_prefixed(file, project_root):
+            return  # 点前缀默认忽略（scan-scope-policy）：.eslintrc.js 不计入语言
         if file.is_file() and not _excluded(file, exclude):
             language = ext_map.get(file.suffix.lower()) or FILE_LANG_MAP.get(file.name)
             if language:

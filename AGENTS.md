@@ -45,6 +45,9 @@ git add -A && git commit -m "release: <插件id> <版本>" && git push
 
 ### 硬性禁令
 
+- **`.` 开头的目录与文件默认忽略**（检查/保存/发现/全量扫描面）：不扫描、不检查、不报告；
+  两个例外照常生效——入库安全检查照拦密钥模式（`.env`/`*.pem` 等），linter 配置发现
+  （`requiresConfig`/`linter_config_files`）照常匹配点文件
 - 禁止改代码不 bump 版本（「小版本也要发」）
 - 禁止手改 catalog.json 的 version 以外的生成产物、或手改三份市场清单——
   它们只能由 `scripts/bump-plugin.mjs` 与 `plugins/scripts/sync-marketplaces.mjs` 生成

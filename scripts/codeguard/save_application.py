@@ -7,10 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scope import is_build_artifact
+from scope import is_build_artifact, is_dot_prefixed
 
 from . import hook_state
-from .discovery import detect_language, project_uses_linter
+from .discovery import detect_language, find_project_root, project_uses_linter
 from .execution import execute
 from .fingerprint import check_identity
 from .hook_state import codeguard_home
@@ -72,6 +72,8 @@ def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str, str]:
 
 def should_skip(file_path: str, languages: list[str]) -> tuple[bool, str]:
     if not file_path or is_build_artifact(file_path):
+        return True, ""
+    if is_dot_prefixed(file_path, find_project_root(file_path)):
         return True, ""
     lang = detect_language(file_path)
     if not lang:

@@ -63,6 +63,29 @@ def is_build_artifact(path: str | Path) -> bool:
     return any(seg in FULL_SCAN_EXCLUDES for seg in parts)
 
 
+def is_dot_prefixed(path: str | Path, root: str | Path | None = None) -> bool:
+    """路径相对 root 的任一段以 `.` 开头（`.`/`..` 段除外）→ 点前缀，默认忽略。
+
+    检查面的单一谓词（scan-scope-policy spec）：PostToolUse 保存面、delta 门禁面、
+    全量扫描与语言发现都用它跳过点前缀目录与文件（.cursor/、.claude/、
+    .eslintrc.js 等——枚举追不上新宿主目录，谓词才是硬约束）。
+    例外面由调用方保证：入库安全检查（check_paths）与配置发现不走本谓词。
+
+    root 语义：path 相对 root 判段——项目根本身位于点前缀父目录（~/.config/proj/）
+    不算命中（实测陷阱）；root 缺省或 path 不在 root 下时退化为全路径判段。
+    不能用 lstrip("./")（会把 `.tox` 的点剥掉，同 is_build_artifact 的踩点）。
+    """
+    p = Path(path)
+    if root is not None:
+        try:
+            p = p.resolve().relative_to(Path(root).resolve())
+        except (ValueError, OSError):
+            pass  # root 外或无法解析：全路径判段，宁可多忽略也不错扫宿主目录
+    parts = [seg for seg in str(p).replace("\\", "/").split("/")
+             if seg not in ("", ".", "..")]
+    return any(seg.startswith(".") for seg in parts)
+
+
 def check_paths(paths: list[str]) -> list[tuple[str, str, str]]:
     """纯路径策略：只判断给定拟入库路径，不发现文件、不读 Git、不执行修复。"""
     violations: list[tuple[str, str, str]] = []
