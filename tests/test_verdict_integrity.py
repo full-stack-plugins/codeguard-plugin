@@ -22,7 +22,7 @@ import post_tool_lint
 import pre_tool_git_guard
 import run_check
 import run_per_language
-from codeguard import cve_scanners
+from codeguard import cve_scanners, save_application
 from detect_lang import LANG_COMMANDS
 
 # auto_fix 用例需真实 ruff 执行 format/check——工具缺失时断言的修复路径无法覆盖。
@@ -154,7 +154,7 @@ class VerdictTests(RepoCase):
         with patch.dict(LANG_COMMANDS, {"python": commands}), \
                 patch.object(post_tool_lint, "read_payload", return_value={"file_path": str(file)}), \
                 patch.object(post_tool_lint, "find_project_root", return_value=self.root), \
-                patch.object(post_tool_lint, "should_suppress_duplicate", return_value=False), \
+                patch.object(save_application, "should_suppress_duplicate", return_value=False), \
                 patch.object(post_tool_lint, "mac_notify"), \
                 patch.dict(os.environ, {"CODEGUARD_HOME": str(self.root / "state")}), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -168,14 +168,15 @@ class VerdictTests(RepoCase):
         with patch.dict(LANG_COMMANDS, {"python": commands}), \
                 patch.object(post_tool_lint, "read_payload", return_value={"file_path": str(file)}), \
                 patch.object(post_tool_lint, "find_project_root", return_value=self.root), \
-                patch.object(post_tool_lint, "should_suppress_duplicate", return_value=False), \
+                patch.object(save_application, "should_suppress_duplicate", return_value=False), \
                 patch.object(post_tool_lint, "load_user_config", return_value={"auto_fix_on_save": True}), \
-                patch.object(post_tool_lint, "run", side_effect=[(1, "F401", ""), (0, "", ""), (2, "", "config invalid")]), \
-                patch.object(post_tool_lint, "bump_state") as bump, \
+                patch.object(save_application, "run", side_effect=[(1, "F401", ""), (0, "", ""), (2, "", "config invalid")]) as run, \
+                patch.object(save_application, "bump_state") as bump, \
                 patch.object(post_tool_lint, "mac_notify"), contextlib.redirect_stdout(out):
             post_tool_lint.main()
         payload = json.loads(out.getvalue())
         self.assertIn("UNVERIFIED", payload["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(3, run.call_count)
         bump.assert_not_called()
 
 

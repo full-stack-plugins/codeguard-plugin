@@ -570,10 +570,11 @@ def test_perf():
         "sys.argv=['hook']\n"
         "sys.stdin=io.StringIO(json.dumps({'user_prompt':'提交代码'}))\n"
         "sys.path.insert(0,'hooks')\n"
-        "import gate_lib\n"
+        "sys.path.insert(0,'scripts')\n"
+        "from codeguard import prompt_application\n"
         "def _boom(*a, **k): raise RuntimeError('injected-failure')\n"
-        "gate_lib.run_gate=_boom\n"
-        "gate_lib.skip_gate_via_git_config=lambda *a, **k: False\n"  # 免疫本机 skipGate 配置
+        "prompt_application.run_gate=_boom\n"
+        "prompt_application.skip_gate_via_git_config=lambda *a, **k: False\n"  # 免疫本机 skipGate 配置
         f"runpy.run_path({str(HOOKS / 'user_prompt_validator.py')!r}, run_name='__main__')\n"
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, check=False, text=True,

@@ -64,6 +64,16 @@ class GitBoundaryTests(unittest.TestCase):
                 left, right, script)
             self.assertEqual([[str(left), str(right)], "push", ["staged", "unstaged"], False], actual)
 
+    def test_repository_resolution_uses_explicit_cwd_not_process_cwd(self):
+        with tempfile.TemporaryDirectory(prefix="cg-explicit-cwd-") as tmp:
+            repo = Path(tmp).resolve()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+            actual = self.isolated(
+                "from codeguard.git_context import resolve_project_roots;import json;"
+                "print(json.dumps([str(p) for p in resolve_project_roots('git push',cwd=__import__('pathlib').Path(sys.argv[2]))]))",
+                repo)
+            self.assertEqual([str(repo)], actual)
+
 
 if __name__ == "__main__":
     unittest.main()

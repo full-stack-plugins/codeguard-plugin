@@ -1,7 +1,6 @@
 """将静态 Git 意图绑定到本地仓库；负责文件/进程观察，不产生宿主输出。"""
 from __future__ import annotations
 
-import os
 import shlex
 from pathlib import Path
 
@@ -30,7 +29,7 @@ def _is_git_repo(p: Path) -> bool:
     return execute(["git", "-C", str(p), "rev-parse", "--git-dir"], Path.cwd(), 10).returncode == 0
 
 
-def resolve_project_roots(command: str) -> list[Path]:
+def resolve_project_roots(command: str, cwd: Path | None = None) -> list[Path]:
     """顺序扫描命令链，收集每个 git commit/push 段各自的仓库边界。
 
     链式发布（cd plugins && git commit && cd minimax && git push）操作
@@ -47,7 +46,8 @@ def resolve_project_roots(command: str) -> list[Path]:
     command = _flatten_substitutions(command)
     roots: list[Path] = []
     last_cd: Path | None = None
-    current_dir = Path.cwd().resolve()
+    caller_dir = (cwd or Path.cwd()).resolve()
+    current_dir = caller_dir
     for seg in re.split(r"&&|\|\||;|\n", command):
         seg = seg.strip()
         if not seg:
@@ -67,7 +67,7 @@ def resolve_project_roots(command: str) -> list[Path]:
         if c_path is not None:
             root = c_path if c_path.is_dir() and _is_git_repo(c_path) else None
         else:
-            root = last_cd or (Path(os.getcwd()) if _is_git_repo(Path(os.getcwd())) else None)
+            root = last_cd or (caller_dir if _is_git_repo(caller_dir) else None)
         if root:
             root = repository_root(root)
             if root not in roots:

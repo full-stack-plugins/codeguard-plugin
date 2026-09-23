@@ -147,3 +147,18 @@
 5. 通用执行器仅处理文本检查命令；Git blob 的二进制协议必须保留字节，不得为了“一致”强制 UTF-8 解码。
 6. 第一期不解决任意命令进程树管理、完整 shell 解释、沙箱及所有动态 Java 构建；这些边界不能在文档中消失。
 7. 只审阅了 pre-commit 官方的通用语言协议与 Python 适配器作边界参考，未声称移植或达到同等成熟度。
+
+## 第十三批实际验证：v0.13.0 阶段发布与会话 Hook 应用层
+
+- 上一批源码作为阶段版本 v0.13.0 经插件 PR #45、市场 PR #1 合并到两个 `main`；插件 PR 与 main 的 `skills-check` 均通过。不可变 `v0.13.0` 注释 tag 解引用到插件 main 合并提交 `fb95bbad6a6748e081918b79e58d7d1bb85a7d40`，GitHub Release 已发布；市场 Codex/ZCode/Kimi 清单为 0.13.0，生成器只读校验通过。三宿主已安装副本和运行现场仍未验证，不以发布代替宿主验收。
+- 本批新改动先有 RED：SessionStart/Stop 应用服务不存在，3+3 项新契约测试失败。`startup_application` 接管语言发现、配置盘点、探活、双副本/版本提醒报告；`session_application` 接管原子状态消费、总结与残留 skipGate 观察。两个 Hook 保留原路径、旧 Python 导入与会话去重，仅做宿主配置、通知、stdout 和 fail-open。
+- 真实 Git 和会话测试确认 Stop 只消费当前作用域一次、残留 skipGate 单列提醒；独立解释器证明两个应用服务导入不加载 Hook 或宿主 SDK。修改后的临时 CodeGraph 快照同步了 8 个文件，调用链显示 `build_startup_report` 与 `consume_summary` 均由对应 Hook 调用，未在源仓初始化图谱。
+- 本地本批全量 **441 unittest 全部通过、0 skipped**；`tests/run_all.py` **142/0/0**；ruff、架构依赖门禁、语言 schema 57 项/11 规则、vendor 离线与在线、本 change strict、diff whitespace 均通过。PostToolUse、UserPromptSubmit、PreToolUse 仍持有应用编排，4.3 和整体目标继续进行；本批代码尚未 bump、提交、推送或发布。
+
+## 第十四批实际验证：五类 Hook 协议入口收敛
+
+- UserPromptSubmit 的意图/语言策略与软门禁编排分别进入 `prompt_policy`/`prompt_application`；PreToolUse 的 Git 命令判定进入 `git_guard_application`，并显式传入调用者 cwd；PostToolUse 的保存检查、修复复检与反馈进入 `save_application`。SessionStart/Stop 沿用上一批应用服务。五个 Hook 保留原路径、协议输出、通知、fail-open 与兼容导入。
+- RED 后 GREEN：五个应用服务的独立导入与行为测试；软提示/保存的完成确认只在宿主输出后发生。PreToolUse 故障注入曾证明拦截事件在 stdout 写入前被记为完成，现改为输出后再记；宿主输出异常时不会错误缓存已交付拦截。既有 `run_all.py` 的异常注入改打实际 `prompt_application.run_gate` 所有者，并保持 fail-open 断言。
+- 临时 CodeGraph 快照重新同步了本批改动并追踪三个新应用服务的 Hook 调用点；源仓未初始化索引。`scripts/check_architecture.py` 声明并约束新内核模块，隔离导入测试阻止其反向加载宿主 Hook/MCP。
+- 使用本机已有、带 MCP SDK 的 `/opt/anaconda3/bin/python3` 3.13.5 完整执行 **454 unittest，全部通过、0 skipped**；`tests/run_all.py` **142/0/0**。Homebrew Python 3.14 缺 MCP SDK 时同一套测试仅执行 451 项、跳过 3 项，故不将该运行作为完整证明。ruff、架构门禁、语言 schema 57 项/11 规则、vendor 离线与在线、本 change strict、diff whitespace 通过；技能 lock 和受管技能未改。
+- 本地入口边界已满足 task 4.3。Stop 会先消费会话状态再输出，若 stdout 故障可能丢失该次总结；三宿主安装现场、Windows、联网漏洞库及所有语言真实工具链仍待独立验收。本批源码在本记录时仍未 bump/提交/推送/发布，不把 v0.13.0 的远端证据套用到新改动。

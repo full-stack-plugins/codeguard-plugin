@@ -107,6 +107,51 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(expected, result.stdout.strip())
 
+    def test_session_application_import_does_not_load_hook_adapter(self):
+        result = subprocess.run([sys.executable, "-I", "-c",
+                                 ("import sys;sys.path.insert(0,sys.argv[1]);"
+                                  "import codeguard.session_application;"
+                                  "assert not any(m in sys.modules for m in "
+                                  "('stop_summary','gate_lib','mcp'))"),
+                                 str(ROOT / "scripts")], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_startup_application_import_does_not_load_hook_adapter(self):
+        result = subprocess.run([sys.executable, "-I", "-c",
+                                 ("import sys;sys.path.insert(0,sys.argv[1]);"
+                                  "import codeguard.startup_application;"
+                                  "assert not any(m in sys.modules for m in "
+                                  "('env_check','gate_lib','mcp'))"),
+                                 str(ROOT / "scripts")], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_prompt_application_import_does_not_load_hook_adapter(self):
+        result = subprocess.run([sys.executable, "-I", "-c",
+                                 ("import sys;sys.path.insert(0,sys.argv[1]);"
+                                  "import codeguard.prompt_application;"
+                                  "assert not any(m in sys.modules for m in "
+                                  "('user_prompt_validator','gate_lib','mcp'))"),
+                                 str(ROOT / "scripts")], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_git_guard_application_import_does_not_load_hook_adapter(self):
+        result = subprocess.run([sys.executable, "-I", "-c",
+                                 ("import sys;sys.path.insert(0,sys.argv[1]);"
+                                  "import codeguard.git_guard_application;"
+                                  "assert not any(m in sys.modules for m in "
+                                  "('pre_tool_git_guard','gate_lib','mcp'))"),
+                                 str(ROOT / "scripts")], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_save_application_import_does_not_load_hook_adapter(self):
+        result = subprocess.run([sys.executable, "-I", "-c",
+                                 ("import sys;sys.path.insert(0,sys.argv[1]);"
+                                  "import codeguard.save_application;"
+                                  "assert not any(m in sys.modules for m in "
+                                  "('post_tool_lint','gate_lib','mcp'))"),
+                                 str(ROOT / "scripts")], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
