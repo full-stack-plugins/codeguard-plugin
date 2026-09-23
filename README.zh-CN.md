@@ -146,7 +146,9 @@ ruff check hooks scripts tests
 
 测试包含真实临时 Git 仓库、原生子进程 fixture 与官方 SDK stdio MCP 调用。fixture wrapper 成功不是真实 Maven/Gradle 集成构建。Codex/ZCode/Kimi 当前版本加载、真实项目构建、在线漏洞扫描与准确率/召回率基准仍需独立验收。
 
-当前实现与证据：[架构及扩展指南](docs/current-architecture.md)、[重构验证记录](openspec/changes/refactor-codeguard-architecture/verification.md)。旧文档保留为历史参考：[判定与 Java 架构](docs/verdict-java-architecture.md)、[此前验证报告](docs/verification-verdict-java.md)、[原架构](docs/partme-codeguard-plugin-Architecture.zh_CN.md)、[路线图](docs/technical-roadmap.zh_CN.md)。
+当前实现与证据：[架构及扩展指南](docs/current-architecture.md)、[重构验证记录](openspec/changes/archive/2026-09-23-refactor-codeguard-architecture/verification.md)。旧文档保留为历史参考：[判定与 Java 架构](docs/verdict-java-architecture.md)、[此前验证报告](docs/verification-verdict-java.md)、[原架构](docs/partme-codeguard-plugin-Architecture.zh_CN.md)、[路线图](docs/technical-roadmap.zh_CN.md)。
+
+版本历史见 [CHANGELOG.md](CHANGELOG.md)（按版本段落的主题摘要）。
 
 ## 许可与隐私
 
