@@ -1,7 +1,7 @@
 # registry-driven-config Specification
 
 ## Purpose
-TBD - created by archiving change add-linter-config-from-registry. Update Purpose after archive.
+定义注册表驱动的 linter 配置契约：各语言 linter 配置文件清单只在 languages.json 声明，env_check 等消费方从注册表派生配置事实而非硬编码字典，保证新增语言只改一处。
 ## Requirements
 ### Requirement: Per-language linter config files SHALL live in scripts/languages.json
 

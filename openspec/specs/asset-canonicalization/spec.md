@@ -1,7 +1,7 @@
 # asset-canonicalization Specification
 
 ## Purpose
-TBD - created by archiving change consolidate-marketing-assets. Update Purpose after archive.
+定义营销资产的正典化契约：零引用资产必须移除、保留资产必须在 assets/README.md 逐个登记，使资产面始终可审计、可追溯，不积累无主文件。
 ## Requirements
 ### Requirement: Zero-reference marketing assets SHALL be removed
 

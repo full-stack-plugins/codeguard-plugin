@@ -1,7 +1,7 @@
 # languages-registry-contract Specification
 
 ## Purpose
-TBD - created by archiving change add-languages-schema-validator. Update Purpose after archive.
+定义 languages.json 注册表契约：语言清单的单一事实源由 scripts/validate_languages_json.py 的结构与一致性规则校验并在 CI 强制，任何字段缺失、命令形态错误或命名冲突在入库前被拦截。
 ## Requirements
 ### Requirement: languages.json SHALL be validated by scripts/validate_languages_json.py
 
