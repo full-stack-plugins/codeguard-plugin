@@ -15,7 +15,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from codeguard.engine import ENGINES, resolve_authoritative
+from codeguard.engine import (
+    ENGINES,
+    INVENTORY_REPORT_TYPE,
+    _iter_cells,
+    resolve_authoritative,
+)
 
 PROBE_TIMEOUT = 10
 
@@ -55,8 +60,54 @@ def probe_rust() -> dict:
     }
 
 
+def probe_capability_inventory(path: str) -> dict:
+    """读取内核自报的能力清单。
+
+    权威性由此决定：插件不写死内核是否可用，而是读它自己声明的
+    implemented / gap。读不到就按 gap 处理（fail closed）。
+    """
+    try:
+        proc = subprocess.run(
+            [path, "capabilities", "all", "--format", "json"],
+            capture_output=True, text=True, timeout=PROBE_TIMEOUT, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"readable": False, "reason": f"能力清单读取失败：{exc}"}
+    if proc.returncode != 0:
+        return {"readable": False, "reason": f"能力清单命令退出 {proc.returncode}"}
+    try:
+        payload = json.loads(proc.stdout)
+    except ValueError:
+        return {"readable": False, "reason": "能力清单不是 JSON"}
+    if not isinstance(payload, dict) or payload.get("report_type") != INVENTORY_REPORT_TYPE:
+        return {"readable": False, "reason": "缺少 capability_inventory 标记"}
+    return summarize_inventory(payload)
+
+
+def summarize_inventory(payload: dict) -> dict:
+    """把能力清单汇总成 implemented / gap 计数。"""
+    counts: dict[str, int] = {}
+    for cell in _iter_cells(payload):
+        status = cell.get("status")
+        key = status if status in ("implemented", "gap", "not_applicable") else "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return {
+        "readable": True,
+        "release_version": payload.get("release_version"),
+        "counts": counts,
+        "implemented": counts.get("implemented", 0),
+        "gap": counts.get("gap", 0),
+        "not_applicable": counts.get("not_applicable", 0),
+        "unknown": counts.get("unknown", 0),
+    }
+
+
 def build_report() -> dict:
     rust = probe_rust()
+    inventory = (
+        probe_capability_inventory(rust["path"]) if rust["available"]
+        else {"readable": False, "reason": "Rust 组件缺席"}
+    )
     authoritative = resolve_authoritative(rust_available=rust["available"])
     return {
         "report_type": "engine",
@@ -72,6 +123,7 @@ def build_report() -> dict:
             for spec in (ENGINES["legacy"], ENGINES["rust"])
         ],
         "rust_component": rust,
+        "rust_capability_inventory": inventory,
     }
 
 
@@ -83,6 +135,7 @@ def render_human(report: dict) -> str:
         lines.append(f"  - {entry['label']}：{mark}")
         lines.append(f"      {entry['note']}")
     rust = report["rust_component"]
+    inv = report["rust_capability_inventory"]
     lines.append("")
     if rust["available"]:
         lines.append(
@@ -90,9 +143,22 @@ def render_human(report: dict) -> str:
             f"target={rust['target']}，build_identity={rust['build_identity']}，"
             f"rulepack_compatibility={rust['rulepack_compatibility']}）"
         )
-        lines.append("  它当前不签发质量结论：检测到 ≠ 可用于门禁。")
     else:
         lines.append(f"未检测到 Rust 组件：{rust['reason']}")
+    lines.append("")
+    if inv.get("readable"):
+        lines.append(
+            f"内核自报能力（release={inv.get('release_version')}）："
+            f"implemented {inv['implemented']} / gap {inv['gap']} / "
+            f"not_applicable {inv['not_applicable']} / unknown {inv['unknown']}"
+        )
+        if inv["implemented"] == 0:
+            lines.append("  尚无任何类别自报已实现 → 全局签发方保持 Legacy。")
+        else:
+            lines.append("  已有类别自报已实现 → 该类别可由 Rust 签发，"
+                         "逐类别结论见 category_authority。")
+    else:
+        lines.append(f"内核能力清单不可读（{inv.get('reason')}）→ 按未证明处理，签发方保持 Legacy。")
     return "\n".join(lines)
 
 
