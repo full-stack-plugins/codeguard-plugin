@@ -50,10 +50,20 @@ AI 行为：**禁止**把密钥/密码写死进代码或提交；发现已泄露
 
 ### 统一入口（推荐）
 
+先判定引擎：`codeguard --version --format json`。对照见 `codeguard` 技能的 `references/operations/engine-contract.md`。
+
+Legacy Python 引擎：
+
 ```bash
 codeguard cve                    # 自动检测生态并扫描（maven/node/python/rust）
 codeguard cve --fix              # 允许自动修复（npm audit fix）
 codeguard cve --severity MEDIUM  # 失败阈值调到中危
+```
+
+Rust 引擎用位置参数选生态，且没有 `--fix` / `--severity`；它当前对质量路径返回未完成（退出码 3），不能用来签发"无漏洞"结论：
+
+```bash
+codeguard cve typescript [path]   # / cve rust / cve python
 ```
 
 ### 各生态原生命令

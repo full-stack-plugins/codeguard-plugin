@@ -14,7 +14,7 @@ compatibility: 需要 Codeguard 运行时命令或源码仓库上下文；默认
 ### ✅ Strengths
 1. 项目语言自动检测（扩展名 + 标记文件双重识别）
 2. 统一 lint 门禁：`bin/codeguard check`（或 scripts/run_check.py），失败即退出码 2
-3. 统一自动修复：`bin/codeguard fix`（spotless / cargo fmt / eslint --fix / ruff --fix）
+3. 统一自动修复：`bin/codeguard fix`（spotless / cargo fmt / eslint --fix / ruff --fix），仅 Legacy 引擎可用
 4. CVE 依赖漏洞编排：`bin/codeguard cve`（Maven dependency-check / npm audit / pip-audit / cargo audit，附修复指引）
 5. 提交门禁：用户表达「提交/push」意图时全量复检（UserPromptSubmit 钩子）
 6. 会话总结：Stop 钩子输出本轮 lint 通过/失败/自动修复计数
@@ -41,6 +41,13 @@ compatibility: 需要 Codeguard 运行时命令或源码仓库上下文；默认
 ## I. 标准工作流
 
 ```bash
+# 0. 先判定引擎（必做）
+codeguard --version --format json 2>/dev/null && echo ENGINE=rust || echo ENGINE=legacy
+```
+
+完整引擎契约见 `references/operations/engine-contract.md`。下面主路径为 Legacy Python 引擎：
+
+```bash
 # 1. 检测语言
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/detect_lang.py" "$(pwd)"
 
@@ -48,12 +55,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/detect_lang.py" "$(pwd)"
 bin/codeguard check                     # 或 python3 scripts/run_check.py
 bin/codeguard check --lang java         # 只跑某语言
 
-# 3. 失败 → 自动修复 → 复扫
+# 3. 失败 → 自动修复 → 复扫（fix 仅 Legacy 存在）
 bin/codeguard fix --lang <name>
 
 # 4. CVE 扫描（提交前必跑）
 bin/codeguard cve --severity HIGH
 ```
+
+Rust 引擎下改用位置参数（`check all|java`、`cve <rust|python|typescript>`），且 `fix`、`--lang`、`--ecosystem`、`--severity` 均不存在。该组件当前对所有质量路径返回退出码 3（未完成），只能表述为局部原生观察，不得据此签发通过。
 
 ## II. 门禁规则（不可协商）
 
@@ -61,6 +70,7 @@ bin/codeguard cve --severity HIGH
 |---|---|
 | lint 失败 = 阻塞 | 严格模式下退出码 2，AI 必须修复后才能继续对话中的写码动作 |
 | 无法验证 ≠ 通过 | 工具缺失（exit 127）输出「无法验证」并给出安装命令，不计入通过 |
+| 未完成 ≠ 通过 | 退出码 3 表示检查没跑完，只能报告未完成，不得表述为通过或零漏洞 |
 | 检查出来得修 | CVE/HIGH 以上发现必须给出修复动作；禁止只报告不处理 |
 | 禁止静默豁免 | 不得用 `@SuppressWarnings` / 调高阈值 / 改门禁配置来让失败消失；确需豁免须用户明确同意并在 suppressions 登记理由 |
 

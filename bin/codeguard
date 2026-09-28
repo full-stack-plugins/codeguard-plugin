@@ -10,6 +10,7 @@
 #   # 退出码: 0 通过 / 1 无法验证 / 2 存在漏洞 / 3 参数错误
 #   codeguard dockerfile [--json] [path]                      # Dockerfile 安全风险检查（hadolint + trivy config）
 #   codeguard detect     [path]                               # 检测项目语言
+#   codeguard engine     [--format human|json]                # 报告由哪个引擎签发质量结论
 #
 # 安装到 PATH:
 #   ln -s "$(pwd)/bin/codeguard" /usr/local/bin/codeguard
@@ -39,6 +40,9 @@ case "$cmd" in
   detect)
     exec python3 "$ROOT/scripts/detect_lang.py" "${1:-.}"
     ;;
+  engine)
+    exec python3 "$ROOT/scripts/engine_report.py" "$@"
+    ;;
   init)
     cat >&2 <<'EOF'
 [codeguard] 项目初始化引导：
@@ -53,7 +57,7 @@ EOF
     ;;
   *)
     echo "codeguard: 未知子命令 '$cmd'" >&2
-    echo "可用: check | fix | cve | dockerfile | detect | java-plan | init" >&2
+    echo "可用: check | fix | cve | dockerfile | detect | java-plan | engine | init" >&2
     exit 1
     ;;
 esac

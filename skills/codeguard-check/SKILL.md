@@ -1,7 +1,7 @@
 ---
 name: codeguard-check
 license: Apache-2.0
-description: 对 Codeguard 支持的仓库执行只读 lint 门禁并解释结果；当用户说 check、跑检查、lint 报告、提交前检查，或 CI 的 Codeguard 检查失败时使用。必须区分 PASS、FAIL、UNVERIFIED 与 PLANNED。
+description: 对 Codeguard 支持的仓库执行只读 lint 门禁并解释结果；当用户说 check、跑检查、lint 报告、提交前检查，或 CI 的 Codeguard 检查失败时使用。必须区分 PASS、FAIL、UNVERIFIED、INCOMPLETE 与 PLANNED，并写明结果由 legacy 还是 rust 引擎签发。
 compatibility: 需要 Codeguard CLI 和目标语言工具链；默认不修改源码、不安装工具。
 ---
 
@@ -11,13 +11,27 @@ compatibility: 需要 Codeguard CLI 和目标语言工具链；默认不修改�
 
 ## 30 秒开始
 
+先判定引擎（`codeguard --version --format json`），再选择命令面。完整对照见 `codeguard` 技能的 `references/operations/engine-contract.md`。
+
+Legacy Python 引擎：
+
 ```bash
 bin/codeguard detect .
 bin/codeguard check .
 bin/codeguard check --lang java,python --timeout 60 .
 ```
 
-执行前记录工作目录、当前分支、目标模块和工具版本。若 `bin/codeguard` 不存在，不要猜测命令或声称通过；改用仓库的权威 CI/lint 命令或报告 `UNVERIFIED`。
+Rust 组件（当前对质量路径固定返回未完成）：
+
+```bash
+codeguard detect . --format json
+codeguard plan check all .
+codeguard check all . --format json
+```
+
+Rust 侧的 `check` 只接受位置参数 `all|java`，没有 `--lang`；`--timeout` 接受 duration（如 `30m`）而非裸秒数。Rust 组件返回退出码 3，只能表述为局部原生观察或未完成，**不能作为门禁通过结论**。
+
+执行前记录工作目录、当前分支、目标模块和工具版本，并写明结果由哪个引擎签发。若 `bin/codeguard` 不存在，不要猜测命令或声称通过；改用仓库的权威 CI/lint 命令或报告 `UNVERIFIED`。
 
 ## 能力边界
 
@@ -25,8 +39,8 @@ bin/codeguard check --lang java,python --timeout 60 .
 
 1. 自动检测项目语言，一次跑多语言 lint。
 2. 表格化报告每种语言的命令、退出码、耗时和状态。
-3. 使用 `--lang` 和 `--timeout` 缩小故障范围。
-4. 区分代码违规、配置错误、工具缺失和执行器错误。
+3. Legacy 下用 `--lang` 和 `--timeout` 缩小故障范围；Rust 下先用 `plan` 看只读计划。
+4. 区分代码违规、配置错误、工具缺失、未完成和执行器错误。
 5. 为修复与 CI 复现产出结构化证据。
 
 ### ⚠️ Prerequisites
@@ -62,13 +76,22 @@ bin/codeguard check --lang java,python --timeout 60 .
 
 ## 命令契约
 
+Legacy Python 引擎：
+
 ```bash
 bin/codeguard check                        # 全量
 bin/codeguard check --lang java,python     # 限定语言
-bin/codeguard check --timeout 60 path/     # 指定项目与超时
+bin/codeguard check --timeout 60 path/     # 指定项目与超时（裸秒数）
 ```
 
-实际 CLI 参数以 `bin/codeguard check --help` 为准。技能包只提供操作知识，不假装包含 Codeguard 运行时。
+Rust 引擎（`--lang` 不存在，`--timeout` 用 duration，退出码 3 表示未完成）：
+
+```bash
+codeguard check all path/ --timeout 30m --format json
+codeguard check java path/ --format json
+```
+
+实际 CLI 参数以 `bin/codeguard check --help`（Legacy）或 `codeguard --help`（Rust）为准。技能包只提供操作知识，不假装包含 Codeguard 运行时。
 
 ## 状态语义
 
@@ -77,6 +100,7 @@ bin/codeguard check --timeout 60 path/     # 指定项目与超时
 | `PASS` | 权威检查命令在明确范围内退出 0 | 可报告该 lint 门禁通过 |
 | `FAIL` | 工具成功运行并发现违规 | 按格式/规则/配置分类修复 |
 | `UNVERIFIED` | 工具、配置、权限、版本、超时或环境不足 | 补齐前置条件，不得写通过 |
+| `INCOMPLETE` | 检查按契约未跑完（Rust 引擎退出码 3、必需检查缺失、部分模块未覆盖） | 列出未完成项，**不得写通过**，也不得表述为零违规 |
 | `PLANNED` | 注册表仅有识别能力，没有可执行门禁 | 列出待接入工具与验收条件 |
 
 ## 标准 Workflow
@@ -113,7 +137,7 @@ bin/codeguard check --timeout 60 path/     # 指定项目与超时
 
 ### Step 7：输出结果
 
-按语言列出 PASS/FAIL/UNVERIFIED/PLANNED，并将 lint、test、build、security 证据分开。
+按语言列出 PASS/FAIL/UNVERIFIED/INCOMPLETE/PLANNED，并将 lint、test、build、security 证据分开。
 
 ## Rules
 
@@ -127,13 +151,15 @@ bin/codeguard check --timeout 60 path/     # 指定项目与超时
 
 ```text
 Codeguard check 结果
+- 引擎：<legacy | rust>
 - 范围：<repo/module/path>
 - 检测语言：<list>
 - 命令：<actual command>
 - 工具：<versions>
-- 结果：<language -> PASS/FAIL/UNVERIFIED/PLANNED>
+- 结果：<language -> PASS/FAIL/UNVERIFIED/INCOMPLETE/PLANNED>
 - 发现：<categorized findings>
 - 未验证：<test/build/security/platform gaps>
+- 未完成：<required checks not run>
 ```
 
 ## Gotchas
