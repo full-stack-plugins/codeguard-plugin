@@ -1,0 +1,56 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codeguard",
+  "version": "0.16.1",
+  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+  "author": {
+    "name": "Full Stack Skills / PartMe.AI",
+    "url": "https://github.com/partme-ai"
+  },
+  "homepage": "https://github.com/partme-ai/partme-codeguard-plugin",
+  "repository": "https://github.com/partme-ai/partme-codeguard-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "java",
+    "rust",
+    "typescript",
+    "python",
+    "javadoc",
+    "checkstyle",
+    "clippy",
+    "eslint",
+    "ruff",
+    "pre-commit"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "代码规范守卫",
+        "shortDescription": "Trustworthy code checks and Java impact analysis",
+        "longDescription": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit. Java planning is read-only; executing project checks runs trusted build/test commands, not a security sandbox.",
+        "developerName": "Full Stack Skills / PartMe.AI",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/partme-ai/partme-codeguard-plugin",
+        "privacyPolicyURL": "https://github.com/partme-ai/partme-codeguard-plugin/blob/main/PRIVACY.md",
+        "termsOfServiceURL": "https://github.com/partme-ai/partme-codeguard-plugin/blob/main/TERMS.md",
+        "defaultPrompt": [
+          "Run /check on the current project and fix what fails",
+          "Initialize codeguard on this repository with /init",
+          "Analyze Java module impact, then run the project's verification plan"
+        ],
+        "brandColor": "#2563EB",
+        "composerIcon": "./assets/composer-icon.png",
+        "logo": "./assets/official-logo.png",
+        "logoDark": "./assets/official-logo.png",
+        "screenshots": []
+      }
+    },
+    "ai.nanoco.nanoclaw": {
+      "agentName": "代码规范守卫"
+    }
+  }
+}
