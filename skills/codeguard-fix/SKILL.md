@@ -23,11 +23,15 @@ compatibility: 需要 Codeguard CLI、对应 formatter/linter 和可写工作树
 
 ## 命令
 
+`fix` 只在 Legacy Python 引擎下存在。Rust `codeguard` 组件当前没有自动修复命令，探测到 Rust 引擎时不要凭空构造 `codeguard fix`。
+
 ```bash
 bin/codeguard fix --dry-run       # 预览（不实际修改）
 bin/codeguard fix                 # 执行修复
 bin/codeguard fix --lang python   # 只修 Python
 ```
+
+引擎判定与两套命令面对照见 `codeguard` 技能的 `references/operations/engine-contract.md`。
 
 ## Workflow
 
@@ -112,6 +116,7 @@ Codeguard fix 结果
 
 ## 按需加载资源
 
+- 判定当前引擎与可用命令时读取 **`codeguard`** 技能的 `references/operations/engine-contract.md`。安装：`npx skills add full-stack-skills/codeguard-skills --skill codeguard`。
 - 判断是否可自动修复时读取 `references/rules/autofix-boundary.md`。
 - 设计分批修复时读取 `references/operations/recheck-playbook.md`。
 - 根据用户场景只读取 `examples/` 中的对应示例。

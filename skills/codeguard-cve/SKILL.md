@@ -32,6 +32,10 @@ compatibility: 需要目标生态的锁文件、扫描工具及可用漏洞数�
 
 ## 命令
 
+先判定引擎，两套命令面不同。Rust `codeguard` 组件的 `cve` 用位置参数选择生态，且没有 `--severity` / `--fix` / `--json`；它对质量路径固定返回未完成（退出码 3），不能用来签发"无漏洞"结论。
+
+**Legacy Python 引擎：**
+
 ```bash
 bin/codeguard cve                          # 全生态扫描
 bin/codeguard cve --ecosystem node         # 只扫 node
@@ -40,6 +44,16 @@ bin/codeguard cve --severity MEDIUM        # 门禁阈值调到中危（发版�
 bin/codeguard cve --json path/             # 结构化输出
 ```
 
+**Rust 组件（局部原生观察，结论保持未完成）：**
+
+```bash
+codeguard cve typescript [path] --node-tool ABS_PATH --npm-entry ABS_PATH --npm-version VERSION
+codeguard cve rust [path] --cargo-audit-tool ABS_PATH --db ABS_PATH
+codeguard cve python [path] --pip-audit-tool ABS_PATH --pip-audit-version VERSION
+```
+
+引擎判定与两套命令面对照见 `codeguard` 技能的 `references/operations/engine-contract.md`。
+
 ## 三态语义（门禁必须遵守）
 
 | 退出码 | 含义 | 门禁动作 |
@@ -47,6 +61,7 @@ bin/codeguard cve --json path/             # 结构化输出
 | 0 | 全部通过 | 允许提交 |
 | 1 | 无法验证（工具缺失/超时） | **不视为通过**——先装工具 |
 | 2 | 发现漏洞 | 必须修复（升级/替换/登记缓解），禁止只报告不处理 |
+| 3 | 检查未完成（Rust 组件当前对所有质量路径返回） | **不视为通过**——只能表述为未完成或局部观察 |
 
 ## Workflow
 
@@ -78,7 +93,7 @@ bin/codeguard cve --json path/             # 结构化输出
 
 ### Step 3：执行只读扫描
 
-优先 `bin/codeguard cve --json <path>` 保存结构化证据，不在首次扫描时带 `--fix`。
+优先 `bin/codeguard cve --json <path>` 保存结构化证据，不在首次扫描时带 `--fix`。Rust 引擎下改用 `--format json` 的 `cve <生态>` 调用，并如实标注该结果为未完成。
 
 ### Step 4：确认可利用性与引入路径
 
@@ -103,6 +118,7 @@ bin/codeguard cve --json path/             # 结构化输出
 3. 不只复制 scanner 标题；必须确认依赖路径和可用修复版本。
 4. 缓解不等于修复，必须写明残余风险与追踪日期。
 5. 报告必须记录扫描日期和数据库新鲜度。
+6. 必须写明本次扫描由哪个引擎签发；Rust 组件的未完成结果不得表述为零漏洞。
 
 ## 输出模板
 
