@@ -25,6 +25,7 @@ SCRIPT_ROLES = {
     "java_project.py": "entry",
     "run_check.py": "entry",
     "validate_languages_json.py": "entry",
+    "validate_portable_plugin.py": "entry",
     "verdict.py": "compat-shim",
     "user_config.py": "compat-shim",
     "run_per_language.py": "compat-shim",

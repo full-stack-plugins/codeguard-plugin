@@ -1,0 +1,5 @@
+{
+  "name": "fix",
+  "description": "自动修复所有 linter 问题",
+  "prompt": "运行 /fix。\n\n步骤：\n1. 调用 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/detect_lang.py .` 识别项目语言\n2. 对每种语言跑对应修复命令（spotless:apply / cargo fmt / eslint --fix / ruff check --fix）\n3. 修复后跑 lint 验证\n4. 报告哪些被自动修复、哪些仍需手动处理\n\n也可以直接调用：`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/fix.py [--dry-run]`\n\n注意：\n- 不要自动修改 linter 配置文件（checkstyle.xml、clippy.toml 等）来消除失败\n- 不要在业务代码中加 `@SuppressWarnings` 来屏蔽 javadoc 警告\n- 不要为了通过 lint 而改坏代码逻辑"
+}
