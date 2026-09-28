@@ -182,23 +182,34 @@ def check_plugin_manifest(root: Path, report: Report) -> dict | None:
                 f"must start and end alphanumeric; no '--' or '..').",
             )
 
-    version = manifest.get("version")
-    if version is not None and not isinstance(version, str):
-        report.fail(where, f"version must be a string, got {type(version).__name__} (§5.4)")
+    # §5.4: every metadata field, when present, MUST have its declared JSON type.
+    # An explicit `null` is a type violation, not absence — detect it with `in`.
+    if "version" in manifest and not isinstance(manifest["version"], str):
+        report.fail(
+            where,
+            f"version must be a string, got {type(manifest['version']).__name__} (§5.4)",
+        )
 
-    keywords = manifest.get("keywords")
-    if keywords is not None:
-        if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
-            report.fail(where, "keywords must be an array of strings (§5.4)")
+    if "keywords" in manifest and (
+        not isinstance(manifest["keywords"], list)
+        or not all(isinstance(k, str) for k in manifest["keywords"])
+    ):
+        report.fail(where, "keywords must be an array of strings (§5.4)")
 
     for scalar in ("description", "homepage", "repository", "license"):
         if scalar in manifest and not isinstance(manifest[scalar], str):
-            report.fail(where, f"{scalar} must be a string (§5.4)")
+            report.fail(
+                where,
+                f"{scalar} must be a string, got {type(manifest[scalar]).__name__} (§5.4)",
+            )
 
-    author = manifest.get("author")
-    if author is not None:
+    if "author" in manifest:
+        author = manifest["author"]
         if not isinstance(author, dict):
-            report.fail(where, "author must be an object (§5.4)")
+            report.fail(
+                where,
+                f"author must be an object, got {type(author).__name__} (§5.4)",
+            )
         else:
             extra = sorted(set(author) - AUTHOR_ALLOWED)
             if extra:
@@ -209,10 +220,13 @@ def check_plugin_manifest(root: Path, report: Report) -> dict | None:
                 )
             for key, value in author.items():
                 if not isinstance(value, str):
-                    report.fail(where, f"author.{key} must be a string (§5.4)")
+                    report.fail(
+                        where,
+                        f"author.{key} must be a string, got {type(value).__name__} (§5.4)",
+                    )
 
-    extensions = manifest.get("extensions")
-    if extensions is not None:
+    if "extensions" in manifest:
+        extensions = manifest["extensions"]
         if not isinstance(extensions, dict):
             # Non-fatal: the client reports and ignores it (§8.1).
             report.fail(
@@ -345,7 +359,9 @@ def _check_stdio(where: str, entry: dict, root: Path, report: Report) -> None:
     command = entry["command"]
     if not isinstance(command, str) or not command:
         report.fail(where, "command must be a non-empty string (§7.2.1)")
-    elif " " in command.strip():
+    elif any(ch.isspace() for ch in command):
+        # §7.2.1: one executable token. Any whitespace — space, tab, newline —
+        # means it is a shell command string, not a token.
         report.fail(
             where,
             f"command {command!r} must be a single executable token, not a shell "
@@ -360,6 +376,15 @@ def _check_stdio(where: str, entry: dict, root: Path, report: Report) -> None:
                 where,
                 f"command {command!r} escapes the plugin root (§4.1).",
             )
+    elif "/" in command:
+        # §7.2.1: command is either a bare executable name (resolved by platform
+        # search) or a plugin-relative path beginning with ./ . An absolute path
+        # or a ../ traversal is neither and must not pass as PATH-resolved.
+        report.fail(
+            where,
+            f"command {command!r} must be a bare executable name or a plugin-relative "
+            f"path beginning with './' (§7.2.1).",
+        )
 
     args = entry.get("args")
     if args is not None and (
@@ -399,6 +424,32 @@ def _check_stdio(where: str, entry: dict, root: Path, report: Report) -> None:
                 target.relative_to(root.resolve())
             except ValueError:
                 report.fail(where, f"cwd {cwd!r} escapes the plugin root (§4.1)")
+        else:
+            # §9.2 + §4.1: expand the declared placeholder and verify containment.
+            # `${PLUGIN_ROOT}/../../outside` must not pass as conformant.
+            if cwd.startswith("${PLUGIN_DATA}"):
+                base = _plugin_data_dir(root)
+                expanded = base / cwd[len("${PLUGIN_DATA}"):].lstrip("/")
+            else:
+                base = root.resolve()
+                expanded = base / cwd[len("${PLUGIN_ROOT}"):].lstrip("/")
+            try:
+                expanded.resolve().relative_to(base.resolve())
+            except ValueError:
+                report.fail(
+                    where,
+                    f"cwd {cwd!r} escapes its declared root after placeholder "
+                    f"expansion (§4.1)",
+                )
+
+
+def _plugin_data_dir(root: Path) -> Path:
+    """The client-managed PLUGIN_DATA location for this installed instance.
+
+    Mirrors the reference layout clients use: a dedicated writable directory
+    that persists across updates. Validation only needs a stable anchor for
+    containment checks."""
+    return root.resolve().parent / "data" / root.name
 
 
 def _check_remote(where: str, entry: dict, report: Report) -> None:
@@ -412,10 +463,21 @@ def _check_remote(where: str, entry: dict, report: Report) -> None:
             f"url {url!r} must not contain placeholders; clients MUST NOT perform "
             f"placeholder or environment-variable expansion in url (§7.2.1).",
         )
-    if not url.startswith(("http://", "https://")):
-        report.fail(where, f"url {url!r} must be an absolute HTTP or HTTPS URL (§7.2.1)")
-    elif "#" in url:
-        report.fail(where, f"url {url!r} must not contain a fragment (§7.2.1)")
+    # §7.2.1: an absolute HTTP or HTTPS URL. Parse, don't prefix-match — a bare
+    # `https://` or a URL with an empty host or embedded whitespace must not pass.
+    from urllib.parse import urlsplit
+
+    if any(ch.isspace() for ch in url):
+        report.fail(where, f"url {url!r} must not contain whitespace (§7.2.1)")
+    else:
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            report.fail(
+                where,
+                f"url {url!r} must be an absolute HTTP or HTTPS URL with a host (§7.2.1)",
+            )
+        elif parts.fragment:
+            report.fail(where, f"url {url!r} must not contain a fragment (§7.2.1)")
 
     headers = entry.get("headers")
     if headers is not None:
@@ -453,7 +515,10 @@ def _check_remote(where: str, entry: dict, report: Report) -> None:
 
 # --- skills/ (§6.1, §7.1) --------------------------------------------------
 
-FRONTMATTER_NAME_RE = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
+# Agent Skills identifiers: lowercase alphanumerics and hyphens (kebab-case),
+# 1-64 characters. This is deliberately stricter than the plugin-name grammar
+# (§5.5) — skill names do not use periods.
+FRONTMATTER_NAME_RE = re.compile(r"^(?!.*--)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 
 
 def check_skills(root: Path, report: Report) -> tuple[int, list[str]]:
@@ -470,15 +535,38 @@ def check_skills(root: Path, report: Report) -> tuple[int, list[str]]:
         )
         return 0, []
 
+    root_resolved = root.resolve()
     discovered: list[str] = []
     for child in sorted(skills_dir.iterdir()):
+        # Dot-prefixed entries are host/tool metadata, never skills.
+        if child.name.startswith("."):
+            continue
         if not child.is_dir():
             # Stray files are not skills; §7.1 only looks at immediate child dirs.
             report.note(f"skills/{child.name} is a file, not a skill directory")
             continue
+        # §4.1: symlinks may resolve within the plugin root, but a skill whose
+        # directory resolves outside it must be skipped, not validated.
+        if child.is_symlink():
+            try:
+                child.resolve().relative_to(root_resolved)
+            except ValueError:
+                report.fail(
+                    where,
+                    f"skills/{child.name} is a symlink escaping the plugin root (§4.1)",
+                )
+                continue
         skill_md = child / "SKILL.md"
         if not skill_md.is_file():
             report.note(f"skills/{child.name}/ has no SKILL.md and is not a skill")
+            continue
+        try:
+            skill_md.resolve().relative_to(root_resolved)
+        except ValueError:
+            report.fail(
+                f"skills/{child.name}/SKILL.md",
+                "resolves outside the plugin root (§4.1)",
+            )
             continue
         discovered.append(child.name)
         check_skill_md(f"skills/{child.name}/SKILL.md", child, skill_md, report)
@@ -487,52 +575,86 @@ def check_skills(root: Path, report: Report) -> tuple[int, list[str]]:
 
 def check_skill_md(where: str, skill_dir: Path, path: Path, report: Report) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
-    if not text.startswith("---"):
+    # The opening delimiter must be a line that is exactly `---`; a prefix or
+    # substring check would accept `---not-a-fence`.
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
         report.fail(where, "missing YAML frontmatter; required by the Agent Skills spec (§7.1)")
         return
-    end = text.find("\n---", 3)
+    end = -1
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            end = index
+            break
     if end == -1:
         report.fail(where, "unterminated YAML frontmatter")
         return
 
+    # Extract `key: value` pairs. A value that is empty or comment-only
+    # (`description: # omitted`) is not a value; treat it as absent so the
+    # required-field checks fire instead of silently accepting a comment.
     fields: dict[str, str] = {}
-    for line in text[3:end].splitlines():
+    for line in lines[1:end]:
         match = re.match(r"^([A-Za-z_-]+):\s*(.*)$", line)
         if match:
-            fields[match.group(1)] = match.group(2).strip().strip('"').strip("'")
+            raw = match.group(2).strip()
+            # a value that is empty or comment-only (`description: # omitted`)
+            # is not a value; a trailing ` # comment` is stripped too
+            raw = "" if raw.startswith("#") else re.sub(r"\s+#.*$", "", raw).strip()
+            fields[match.group(1)] = raw.strip('"').strip("'")
 
     name = fields.get("name", "")
     if not name:
         report.fail(where, "frontmatter is missing `name`")
     else:
+        if not 1 <= len(name) <= 64:
+            report.fail(where, f"frontmatter name is {len(name)} characters, must be 1-64")
         if not FRONTMATTER_NAME_RE.match(name):
-            report.fail(where, f"frontmatter name {name!r} is not a valid skill identifier")
+            report.fail(
+                where,
+                f"frontmatter name {name!r} is not a valid skill identifier "
+                f"(lowercase alphanumerics and hyphens only)",
+            )
         if name != skill_dir.name:
             report.fail(
                 where,
                 f"frontmatter name {name!r} does not match its directory "
                 f"{skill_dir.name!r}; discovery is by directory (§7.1).",
             )
-    if not fields.get("description"):
+    description = fields.get("description", "")
+    if not description:
         report.fail(where, "frontmatter is missing `description`")
+    elif len(description) > 1024:
+        # Agent Skills limits `description` to 1,024 characters; a client may
+        # reject a skill that the validator accepted.
+        report.fail(
+            where,
+            f"frontmatter description is {len(description)} characters, must be at most 1024",
+        )
 
 
 # --- client extension directories (§8.2) ----------------------------------
 
 
 def _content_files(directory: Path) -> dict[str, Path]:
-    """Map relative path -> file for every real content file under `directory`."""
+    """Map relative path -> file for every real content file under `directory`.
+
+    Dot-prefixed paths are skipped along with build caches — mirrors and scans
+    must never treat `.DS_Store`, `.gitignore` or similar as content."""
     found: dict[str, Path] = {}
     if not directory.is_dir():
         return found
     for path in directory.rglob("*"):
         if not path.is_file():
             continue
+        relative = path.relative_to(directory)
+        if any(part.startswith(".") for part in relative.parts):
+            continue
         if any(part in _IGNORED_PARTS for part in path.parts):
             continue
         if path.suffix in _IGNORED_SUFFIXES:
             continue
-        found[str(path.relative_to(directory))] = path
+        found[str(relative)] = path
     return found
 
 
@@ -573,20 +695,20 @@ def check_client_extensions(root: Path, report: Report) -> None:
                 report.fail(
                     f"{namespace}/{source}/{relative}",
                     f"is missing from the client extension mirror of `{source}/`; "
-                    f"re-run scripts/add_client_extensions.py (§8.2).",
+                    f"refresh the `{namespace}/{source}/` mirror from the root copy (§8.2).",
                 )
             for relative in sorted(set(mirrored) - set(original)):
                 report.fail(
                     f"{namespace}/{source}/{relative}",
                     f"has no counterpart in the root `{source}/`; remove the stale "
-                    f"mirror (§8.2).",
+                    f"mirror file (§8.2).",
                 )
             for relative in sorted(set(mirrored) & set(original)):
                 if mirrored[relative].read_bytes() != original[relative].read_bytes():
                     report.fail(
                         f"{namespace}/{source}/{relative}",
-                        f"has drifted from the root `{source}/` copy; re-run "
-                        f"scripts/add_client_extensions.py (§8.2).",
+                        f"has drifted from the root `{source}/` copy; refresh the "
+                        f"mirror from the root copy (§8.2).",
                     )
 
             if mirrored:
@@ -630,7 +752,8 @@ def check_parity(root: Path, plugin: dict | None, report: Report) -> None:
     interface = other.get("interface")
     if isinstance(interface, dict):
         extensions = plugin.get("extensions")
-        carried = extensions.get("com.openai", {}).get("interface") if isinstance(extensions, dict) else None
+        openai = extensions.get("com.openai") if isinstance(extensions, dict) else None
+        carried = openai.get("interface") if isinstance(openai, dict) else None
         if carried is None:
             report.fail(
                 where,
@@ -660,12 +783,6 @@ def validate(root: Path) -> Report:
         report.note(f"{count} skill(s) discovered under skills/")
     check_client_extensions(root, report)
     check_parity(root, plugin, report)
-    if (root / ".mcp.json").is_file() and not (root / "mcp.json").is_file():
-        report.note(
-            "`.mcp.json` is present but `mcp.json` is not; Agent Plugins reads only "
-            "`mcp.json` at the plugin root, so these MCP servers are invisible to a "
-            "conformant client (§6.1, §7.2.1)."
-        )
     return report
 
 
