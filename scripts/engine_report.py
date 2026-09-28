@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from codeguard.engine import ENGINES, resolve_authoritative  # noqa: E402
+from codeguard.engine import ENGINES, resolve_authoritative
 
 PROBE_TIMEOUT = 10
 

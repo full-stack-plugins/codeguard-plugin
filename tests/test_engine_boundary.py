@@ -12,8 +12,8 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN / "scripts"))
 
-import engine_report  # noqa: E402
-from codeguard.engine import (  # noqa: E402
+import engine_report
+from codeguard.engine import (
     ENGINES,
     LEGACY,
     LEGACY_EXIT,
