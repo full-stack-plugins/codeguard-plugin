@@ -20,6 +20,7 @@ SCRIPT_ROLES = {
     "cve_check.py": "entry",
     "detect_lang.py": "entry",
     "dockerfile_security.py": "entry",
+    "engine_report.py": "entry",
     "fix.py": "entry",
     "gen_language_docs.py": "entry",
     "java_project.py": "entry",
@@ -41,6 +42,8 @@ ADAPTER_LAYERS = {
 }
 
 CORE_DEPENDENCIES = {
+    # 引擎边界：纯数据与退出码翻译，不执行进程（探测由调用方注入）。
+    "codeguard.engine": {"__future__", "dataclasses", "typing"},
     "codeguard.cve_policy": {"__future__", "dataclasses"},
     "codeguard.cve_reports": {"__future__", "json", "math", "codeguard.cve_policy"},
     "codeguard.cve_scanners": {"__future__", "tempfile", "pathlib", "codeguard.cve_policy",
