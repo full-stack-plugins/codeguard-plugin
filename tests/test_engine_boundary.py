@@ -19,6 +19,7 @@ from codeguard.engine import (
     LEGACY_EXIT,
     RUST,
     RUST_EXIT,
+    category_authority,
     resolve_authoritative,
     translate,
 )
@@ -83,7 +84,8 @@ class AuthoritativeSelectionTests(unittest.TestCase):
     def test_rust_presence_is_still_reported_for_operator_awareness(self):
         """存在性要能被调用方感知，但只作为提示，不改变权威性。"""
         self.assertTrue(RUST.authoritative is False)
-        self.assertIn("gap", RUST.note)
+        # 说明文字必须指向「内核自报」这一事实来源，而不是复述某个会过期的状态。
+        self.assertIn("capability_inventory", RUST.note)
 
 
 class EngineReportProbeTests(unittest.TestCase):
@@ -153,3 +155,94 @@ class EngineReportProbeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CapabilityDerivedAuthorityTests(unittest.TestCase):
+    """权威性必须由内核自报状态推导，而不是插件写死。"""
+
+    def _inventory(self, status: str) -> dict:
+        return {
+            "schema_version": "0.2.0",
+            "report_type": "capability_inventory",
+            "release_version": "0.1.0",
+            "languages": [
+                {
+                    "language": "java",
+                    "legacy_status": "stable",
+                    "legacy_lint_declared": True,
+                    "legacy_formatter_declared": False,
+                    "platforms": {
+                        "linux_x86_64": {
+                            "lint": {"status": status, "reason": "observed"},
+                        }
+                    },
+                }
+            ],
+        }
+
+    def _auth(self, inventory, **kw):
+        args = {"language": "java", "platform": "linux_x86_64", "category": "lint"}
+        args.update(kw)
+        return category_authority(inventory, **args)
+
+    def test_gap_keeps_legacy_as_signing_engine(self):
+        result = self._auth(self._inventory("gap"))
+        self.assertEqual("legacy", result.engine)
+        self.assertEqual("gap", result.status)
+
+    def test_implemented_hands_over_that_category_to_rust(self):
+        result = self._auth(self._inventory("implemented"))
+        self.assertEqual("rust", result.engine)
+        self.assertEqual("implemented", result.status)
+
+    def test_not_applicable_does_not_hand_over(self):
+        result = self._auth(self._inventory("not_applicable"))
+        self.assertEqual("legacy", result.engine)
+
+    def test_unreadable_inventory_fails_closed_to_legacy(self):
+        for bad in (None, {}, {"report_type": "something_else"}, [], "nonsense"):
+            result = self._auth(bad)
+            self.assertEqual("legacy", result.engine, repr(bad))
+            self.assertIsNone(result.status, repr(bad))
+
+    def test_missing_cell_is_treated_as_unproven(self):
+        inventory = self._inventory("implemented")
+        result = self._auth(inventory, category="cve")
+        self.assertEqual("legacy", result.engine)
+        self.assertIn("无该单元", result.reason)
+
+    def test_flat_cells_shape_is_also_understood(self):
+        """带 --platform/--category 过滤时内核输出扁平 cells，需同样解析。"""
+        inventory = {
+            "schema_version": "0.2.0",
+            "report_type": "capability_inventory",
+            "release_version": "0.1.0",
+            "cells": [
+                {"language": "java", "platform": "linux_x86_64",
+                 "category": "lint", "status": "implemented", "reason": "observed"},
+                {"language": "java", "platform": "linux_x86_64",
+                 "category": "cve", "status": "gap", "reason": "not implemented"},
+            ],
+        }
+        self.assertEqual("rust", self._auth(inventory, category="lint").engine)
+        self.assertEqual("legacy", self._auth(inventory, category="cve").engine)
+
+    def test_summary_counts_implemented_and_gap(self):
+        inventory = {
+            "schema_version": "0.2.0",
+            "report_type": "capability_inventory",
+            "release_version": "0.1.0",
+            "cells": [
+                {"language": "java", "platform": "p", "category": "lint", "status": "implemented"},
+                {"language": "java", "platform": "p", "category": "cve", "status": "gap"},
+                {"language": "go", "platform": "p", "category": "lint", "status": "gap"},
+            ],
+        }
+        summary = engine_report.summarize_inventory(inventory)
+        self.assertTrue(summary["readable"])
+        self.assertEqual(1, summary["implemented"])
+        self.assertEqual(2, summary["gap"])
+
+    def test_zero_implemented_keeps_global_signing_engine_on_legacy(self):
+        """即使检测到内核，只要没有类别自报实现，全局兜底仍是 Legacy。"""
+        self.assertIs(resolve_authoritative(rust_available=True), LEGACY)

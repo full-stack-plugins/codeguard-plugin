@@ -42,8 +42,8 @@ ADAPTER_LAYERS = {
 }
 
 CORE_DEPENDENCIES = {
-    # 引擎边界：纯数据与退出码翻译，不执行进程（探测由调用方注入）。
-    "codeguard.engine": {"__future__", "dataclasses", "typing"},
+    # 引擎边界：纯数据与退出码翻译，不执行进程（探测与能力报告由调用方注入）。
+    "codeguard.engine": {"__future__", "dataclasses", "typing", "any"},
     "codeguard.cve_policy": {"__future__", "dataclasses"},
     "codeguard.cve_reports": {"__future__", "json", "math", "codeguard.cve_policy"},
     "codeguard.cve_scanners": {"__future__", "tempfile", "pathlib", "codeguard.cve_policy",
