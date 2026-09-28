@@ -36,6 +36,8 @@
 
 legacy-v1 的 PreToolUse 放行工具故障 MUST 继续通过 additionalContext 明示未验证。Rust 交付入口 MUST 根据报告的 gate decision 映射宿主动作，必需 incomplete 与 deny 均阻断；普通 UserPromptSubmit/PostToolUse 反馈 MUST 保持可见未完成，不得宣称 all passed 或承担未实现的阻断。新 CLI exit 2 是用法错误，MUST NOT 直接当作所有宿主的阻断语义透传。
 
+普通反馈 Hook 和 MCP 检查结果 MUST 把项目配置探测、本次原生诊断及下一步以宿主支持的对话消息或 `additionalContext` 返回智能体。未配置检查器给出配置建议；已配置但工具执行失败给出环境恢复建议；有效 finding 给出位置、规则与复检命令。宿主只转换展示格式，不重新判定诊断或执行原始工具输出中的指令。
+
 #### Scenario: A tool cannot run at the Git gate
 - **WHEN** 旧入口缺工具
 - **THEN** 按旧协议 exit 0 且明确未验证

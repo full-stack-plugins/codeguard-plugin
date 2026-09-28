@@ -1,16 +1,18 @@
 # Codeguard Rust CLI 语言迁移与验收设计
 
-状态：待执行。语言清单取自 `03ebb24` 的 [scripts/languages.json](../../scripts/languages.json)，共 57 项：54 stable、3 planned。表中工具是旧注册声明或迁移调查入口，**不是已核验的新适配器能力**。不存在的 Rust 实现不计完成；只有 formatter 的旧 stable 也必须补足真实只读检查。
+状态：能力矩阵工程基线已落地，原生适配与真实验收待执行。语言清单取自 `03ebb24` 的 [scripts/languages.json](../../scripts/languages.json)，共 57 项：54 stable、3 planned。表中工具是旧注册声明或迁移调查入口，**不是已核验的新适配器能力**。尚未实现的 Rust 适配器不计完成；只有 formatter 的旧 stable 也必须补足真实只读检查。
 
 ## 1. 每种语言的能力账本
 
-每一 language/module 都生成 `lint/comments/cve/security/build` 五个槽位，分别记录 `implemented / gap / not_applicable`，并附 adapter、规则、工具版本、适用性证据及验收记录。
+每一 language/module 都生成 `lint/comments/dependencies/cve/security/build` 六个发行能力槽位，分别记录 `implemented / gap / not_applicable`，并附 adapter、规则、工具版本和验收记录。项目运行时另按[静态检查配置目录](static-check-catalog.zh-CN.md)探测 `configured/missing/invalid/unknown`；目录中的 28 个候选检测族不要求每个项目逐项配置或证明执行。
 
 - `implemented` 只表示具备通过验收的实现；一次运行仍可能 incomplete。
 - `gap` 表示有义务但没有可靠能力，交付不能通过。
 - `not_applicable` 必须有结构性理由，例如完整依赖发现证明没有第三方组件，或配置文件语言没有独立编译步骤。缺工具、缺规则、扫描失败不能作为理由。
 - 外部 ecosystem 扫描可满足多个相关语言的 CVE 义务，但需要可追溯映射。纯 Markdown 的 build 可能不适用，其链接站点构建、文档规则仍按项目声明产生义务。
 - 宣传能力矩阵由同一注册数据生成；明确语言/类别/平台覆盖，不能只有“支持 57 种语言”的单一数字。
+
+Go 六类别的第一版候选档案见相邻 Rust 工程 `codeguard-cli/rulepacks/go_static_candidate_v1.json`，由 `go-static-candidate:1.0.0` schema 和 Rust 解析器校验。它只覆盖 Go Modules 方言的调查入口；五个候选平台均未完成原生工具验收，六类全为 `applicable/gap`。`lint` 候选 `go vet`，`comments` 候选显式启用 ST1000/ST1020/ST1021/ST1022 的 Staticcheck，`dependencies` 候选 `go list -m -json all`，`cve` 候选 govulncheck，`security` 候选 gosec，`build` 候选 `go build`。其中 [Go 文档注释规范](https://go.dev/doc/comment) 要求导出名有注释，但 [Staticcheck 所列的注释规则](https://staticcheck.dev/docs/checks) 不是完整的“缺全部导出符号注释”证明；`gofmt` 只是格式化器。Go Modules 的依赖图与 workspace/replace 归属、漏洞库时效、gosec 工具链要求、build tags、`go test`、许可证/SBOM 和跨平台目标都保留为缺口。此档案不会改变 `codeguard capabilities go` 当前的 `gap`，也不能作为运行或通过证据。
 
 ## 2. 全量迁移清单
 
@@ -76,7 +78,7 @@
 | cuda | stable | clang-tidy | C | CUDA toolkit、host/device、编译数据库 |
 | ansible | stable | ansible-lint | C | collections、playbook、依赖及安全规则 |
 
-旧表只有 lint 声明并不代表其它类别不需要做；每行必须附完整五槽位记录后才可以验收。`java`/`kotlin`/`scala` 等可共享 Maven/Gradle 依赖图，不能重复扫描造成重复 CVE，也不能漏掉另一构建根。
+旧表只有 lint 声明并不代表其它类别不需要做；每行必须附完整六槽位记录后才可以验收。`java`/`kotlin`/`scala` 等可共享 Maven/Gradle 依赖图，不能重复扫描造成重复 CVE，也不能漏掉另一构建根。
 
 ## 3. 必备场景库
 
@@ -108,6 +110,8 @@
 | F22 | 同一请求 CLI/MCP/Hook/CI 输出转换 | 语义一致，协议退出码按各自表映射 |
 | F23 | 多工具重复发现或同规则多次出现 | 归并可追溯，次数不丢失，不跨文件抵扣 |
 | F24 | 项目脚本禁用 analyzer 或自定义命令仅 echo | 覆盖不足，不能被命令 exit 0 欺骗 |
+| F25 | 查询/计划/初始化/安装成功、空任务、MCP服务存活 | 操作成功与质量认证分开，next无完整证据时要求验证 |
+| F26 | 同名旧owner、租约过期、finish重放、fix接管、doctor重复同步 | token/generation隔离、attempt不重复、导入身份明确，失败和部分状态可恢复 |
 
 ## 4. 误报与漏报的评测方法
 
@@ -138,7 +142,7 @@
 |---|---|---|
 | Rust 源码 | fmt/clippy/test、依赖方向、schema/fixture 测试 | 文件存在或编译成功 |
 | 工具适配 | 固定工具链真实正反例、故障与修复复检 | mock 输出解析通过 |
-| 全语言覆盖 | 54 stable 五槽位验收 + 3 planned 明示 | Java/Python/Rust/TS 演示 |
+| 全语言覆盖 | 54 stable 六槽位验收 + 3 planned 明示 | Java/Python/Rust/TS 演示 |
 | Git/CI | 实际 index、多 ref push、受保护策略测试 | Shell 字符串静态识别 |
 | 制品 | target triple、摘要/签名、安装及离线 doctor | Release 页面存在 |
 | 插件接入 | Codex/ZCode/Kimi 每种事件真实调用新二进制 | manifest 语法正确 |
@@ -149,9 +153,11 @@
 
 ## 6. 规范到任务追踪
 
+以下是阶段级导航；逐条Requirement、36项命令、57个语言、5个平台和3个宿主的具体任务ID与执行里程碑见 [实施覆盖索引](../../openspec/changes/introduce-rust-codeguard-cli/implementation-coverage.md)。该索引不维护第二份勾选状态。
+
 | 规格能力 | 任务阶段 | 主要场景 |
 |---|---|---|
-| unified-cli-contract | S01、S02、S11 | F17、F22、CLI 错参/空输入 |
+| unified-cli-contract | S01、S02、S04、S05、S11 | F17、F22、F25、C01–C36 错参/空输入/预算/副作用 |
 | native-tool-adapters | S05、S06、S07、S08 | F01–F08、F19、F20、F23、F24 |
 | rulepack-governance | S04、S05、S12 | F07、F10、F12、F13、F18 |
 | verdict-integrity | S02、S12 | F03–F06、F12、F17 |
@@ -159,9 +165,10 @@
 | language-gate-commands | S05–S08、S12 | F03、F07、F11、F19 |
 | hook-protocol | S11、S12 | F13、F16、F22 |
 | binary-distribution | S11、S13 | 摘要不匹配、无网络、版本回滚、三宿主实机 |
-| remediation-workflow | S09、S10、S11、S12 | 重复发现归并、跨类别同步、attempt 预算、复检关闭/重开、租约冲突 |
+| remediation-workflow | S09、S10、S11、S12 | F25、F26、重复发现归并、跨类别同步、attempt 预算、复检关闭/重开、租约冲突 |
 | scan-scope-policy | S04、S09、S12 | 自有产物不递归扫描、用户源码仍检查、入库安全不豁免 |
+| project-initialization | S09、S12 | 多语言/版本来源、分类型模块图、架构推断、AGENTS 保留、画像失效、初始化不等于门禁通过 |
 
 ## 7. 完成边界
 
-当前仅完成设计文件；上述表格无一构成适配器已实现证明。实施顺序与核对框统一位于 [OpenSpec tasks](../../openspec/changes/introduce-rust-codeguard-cli/tasks.md)。旧实现对照仅用于解释差异，不作为新系统必须复制错误的依据。
+当前已完成四 crate 与能力矩阵的工程基线；上述表格无一构成适配器已实现证明。实施顺序与核对框统一位于 [OpenSpec tasks](../../openspec/changes/introduce-rust-codeguard-cli/tasks.md)。旧实现对照仅用于解释差异，不作为新系统必须复制错误的依据。

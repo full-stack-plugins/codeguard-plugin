@@ -69,3 +69,35 @@ Rust build MUST 记录编译、静态检查和测试执行的区别。Java 默�
 #### Scenario: Default static build completes
 - **WHEN** 默认静态构建成功但未运行测试
 - **THEN** 报告 test_execution=false，不声称测试通过
+
+#### Scenario: Native Cargo check reports an attributed compiler error
+- **WHEN** Rust 静态构建调用原生 Cargo check，机器流包含完整 package/manifest/target 身份、可归属的编译诊断及失败结束记录
+- **THEN** 保留原生编译诊断与目标身份，明确 build_level=type_check、test_execution=false；不将它改称 Clippy、文档或安全违规，不从局部目标结果推导完整项目或交付结论
+
+#### Scenario: Native Cargo build report lacks a valid completion contract
+- **WHEN** Cargo 静态构建机器流损坏、重复语义键、无结束记录、结束后仍有事件、成功结束却含 error，或进程失败而无可归属编译诊断
+- **THEN** 构建结果保持未完成；有效已观察诊断可保留为调查证据，但不能把裸退出码、空输出或环境故障认作源码违规或通过
+
+#### Scenario: Public Cargo type-check probe encounters changed inputs or cancellation
+- **WHEN** build rust的显式原生类型检查执行时源码、根清单、锁或工具身份变化，或用户取消同轮执行
+- **THEN** 报告绑定本轮原生状态和输入摘要，保留调查证据且移除源码修复许可；取消优先返回130；完整且目标归属唯一的局部诊断才提供限定目标修复指引，仍明确test_execution=false、coverage_proven=false和交付not_evaluated，不将局部成功当作完整策略或任务关闭
+
+#### Scenario: Cargo build observations synchronize without closing old tasks
+- **WHEN** 已初始化工作区重复扫描同一编译错误，或未消费报告的源码/原生目标/清单/锁字节已经变化
+- **THEN** 当前有效观察只更新同一稳定问题和修复任务，next指向原生构建检查；陈旧证据保留为历史并生成重扫准备任务，坏身份拒绝导入；环境失败生成准备任务，不生成源码违规，同步或任务勾选不得关闭问题
+
+#### Scenario: Cargo build task rechecks through the original checker
+- **WHEN** 智能体对稳定的 Rust 编译任务执行 task verify，并显式提供同一原生 Cargo 工具
+- **THEN** 在任务租约和统一截止时间内重新执行 Cargo check，绑定源码、清单、锁与工具身份，保存关联任务和尝试的复检事件；原错误仍在时返回 still_present，工具或输入异常返回 incomplete
+
+#### Scenario: Cargo build task has no diagnostic in a local recheck
+- **WHEN** 原生 Cargo check 本轮无错误，而完整项目策略、目标组合或规则覆盖尚未核验
+- **THEN** 仅返回 candidate_absent_unverified_policy 或环境恢复候选，保留原任务 open，next 指引核查原生配置和完整交付；不得凭零诊断、白名单候选或任务勾选自动关闭
+
+#### Scenario: Unified check schedules native Rust type checking
+- **WHEN** `check all` 发现 Rust 源码，调用方提供绝对 Cargo 工具，并有可读取的根 Cargo 清单与锁
+- **THEN** 在同一任务图、共享截止时间和 Cargo 构建资源约束下调用原生 Cargo check；反馈独立保留编译 finding、构建等级和是否执行测试，已初始化工作区同步稳定任务并在对话中给出下一步；局部构建成功仍不授予完整覆盖或交付通过
+
+#### Scenario: Unified Rust build check cannot complete
+- **WHEN** Cargo 缺失、原生机器流损坏、目标归属不明、输入或工具变化、执行超时或取消
+- **THEN** `check all` 保留本轮原生诊断和具体未完成原因，生成可恢复的环境/完整性任务；不得将故障算源码编译违规、白名单命中或空结果通过
