@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]   # hooks/ 的上级 = 插件根
+PLUGIN_ROOT = next((c for c in Path(__file__).resolve().parents if (c / "plugin.json").is_file()), Path(__file__).resolve().parents[1])   # hooks/ 的上级 = 插件根
 
 sys.path.insert(0, str(PLUGIN_ROOT / "hooks"))
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
