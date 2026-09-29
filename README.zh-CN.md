@@ -12,14 +12,14 @@ CodeGuard 为 AI 编程助手提供原生检查证据，守护已支持的 Git �
 
 ### Rust 运行时候选（macOS arm64）
 
-插件新增**显式候选** Rust 运行时绑定。[`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) 固定 `@partme.ai/codeguard@0.1.1`、注册表 tarball 和原生二进制摘要、候选源码提交、平台及检查协议主版本。仅在 Apple Silicon macOS 上安装：
+插件新增**显式候选** Rust 运行时绑定。[`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) 固定 `@partme.ai/codeguard@0.1.2`、注册表 tarball 和原生二进制摘要、候选源码提交、平台及检查协议主版本。仅在 Apple Silicon macOS 上安装：
 
 ```bash
 node runtime/codeguard_runtime.cjs install --download
 node runtime/codeguard_runtime.cjs verify
 ```
 
-离线安装可执行 `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.1.tgz`，仍须满足同一锁定摘要。安装器先在暂存目录核验包，再切换活动收据。[`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) 是 Claude Code 的 SessionStart、PostToolUse、PostToolUseFailure、Stop 候选适配器；每次调用前复核活动二进制，不从 PATH 随机选择 `codeguard`，缺运行时时报告未完成而不回退 Python。当前 [`hooks/hooks.json`](hooks/hooks.json) 仍使用旧 Python 钩子；Rust 候选尚未成为默认入口，未接严格 Git 门禁，也未在 Codex/ZCode/Kimi 完成宿主验收。见[候选验收记录](tests/rust-runtime-candidate.md)和[钩子协议](hooks/__protocol__.md)。
+离线安装可执行 `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.2.tgz`，仍须满足同一锁定摘要。安装器先在暂存目录核验包，再切换活动收据。[`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) 是 Claude Code 的 SessionStart、UserPromptSubmit、PostToolUse、PostToolUseFailure、Stop 候选适配器；每次调用前复核活动二进制，不从 PATH 随机选择 `codeguard`，缺运行时时报告未完成而不回退 Python。UserPromptSubmit 仅返回固定、非阻断的检查时机建议，不运行 lint，也不把提示词当作 Git 门禁。当前 [`hooks/hooks.json`](hooks/hooks.json) 仍使用旧 Python 钩子；Rust 候选尚未成为默认入口，未接严格 Git 门禁，也未在 Codex/ZCode/Kimi 完成宿主验收。见[候选验收记录](tests/rust-runtime-candidate.md)和[钩子协议](hooks/__protocol__.md)。
 
 已安装插件的版本以各清单为准。本次架构重构保留现有 68 个受管技能，重点收敛判定证据、模块职责与 Java 项目感知。
 

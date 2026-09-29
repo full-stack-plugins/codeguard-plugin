@@ -11,6 +11,7 @@ const { activeBinary } = require(path.join(pluginRoot, 'runtime', 'codeguard_run
 
 const EVENTS = new Map([
   ['session-start', 'SessionStart'],
+  ['user-prompt-submit', 'UserPromptSubmit'],
   ['post-tool-use', 'PostToolUse'],
   ['post-tool-use-failure', 'PostToolUseFailure'],
   ['stop', 'Stop'],
