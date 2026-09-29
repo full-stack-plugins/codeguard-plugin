@@ -1,6 +1,6 @@
 # hooks/ 与宿主 CLI 之间的契约（canonical cheat-sheet）
 
-> Rust 候选入口：`runtime/codeguard_runtime.cjs` 固定 npm 0.1.1 制品和本机二进制身份；`hooks/rust_runtime_dispatch.cjs` 显式处理 Claude Code 的 SessionStart/PostToolUse/PostToolUseFailure/Stop。候选入口在运行时缺失、摘要或版本失配时返回对话中的“未完成”，不执行 PATH 上的 `codeguard`，也不回退到 Python。它尚未写入 `hooks/hooks.json`，以下旧协议表仍描述默认 Python 运行时。Rust 严格交付门禁与其它宿主接线尚未完成，不能把候选保存反馈当作通过。
+> Rust 候选入口：`runtime/codeguard_runtime.cjs` 固定 npm 0.1.2 制品和本机二进制身份；`hooks/rust_runtime_dispatch.cjs` 显式处理 Claude Code 的 SessionStart/UserPromptSubmit/PostToolUse/PostToolUseFailure/Stop。UserPromptSubmit 只输出固定的非阻断检查时机建议，源码检查未运行、交付未评估；提示词不能触发 lint 或替代真实 Git 门禁。候选入口在运行时缺失、摘要或版本失配时返回对话中的“未完成”，不执行 PATH 上的 `codeguard`，也不回退到 Python。它尚未写入 `hooks/hooks.json`，以下旧协议表仍描述默认 Python 运行时。Rust 严格交付门禁与其它宿主接线尚未完成，不能把候选保存反馈当作通过。
 
 > 这份文档是 codeguard-plugin 与 Codex CLI / ZCode / Kimi Code 三端宿主
 > 交互契约的**单源事实**。所有 hook 脚本（`hooks/*.py`）的实现都必须与本文件

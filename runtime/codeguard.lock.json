@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
   "package": "@partme.ai/codeguard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "platform": "macos_arm64",
-  "source_commit": "f8311d63f29b76f7740e37d6689884f9ac490ca4",
+  "source_commit": "d2ae54355ea0e8b67b7fa42fc66829656db9de01",
   "check_protocol_major": 1,
-  "tarball_url": "https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.1.tgz",
-  "tarball_sha256": "65bcca8d5647d3618d8795970fe689ffabd76ecc835cf5dd3e2b63084fa8be83",
-  "tarball_integrity": "sha512-NdhFwz7zGwfZEtxUzGh95eZ3aQraoZDvkqC7SoK2v5rD1bSBt9WodU6TDauU0nCObIxj3SqhWQsnrjkXlPQjGA==",
-  "binary_sha256": "0399ed58ca602c37fc7b1a7bf98803166a5a9271481d842da615acf3e7767671"
+  "tarball_url": "https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.2.tgz",
+  "tarball_sha256": "4411136f2cdf678615335a6a9fe4f3435fe87f82e789b98a1e07be4518587401",
+  "tarball_integrity": "sha512-3ae3OIZDzqZaoNv2/W3a/Uq4rMMthjpjts/RQvKI5envR+NbyKOD4NTS/w645QFSw8ZDzHUWsnD7DObWFQAEpw==",
+  "binary_sha256": "785d8b9abb685ce5a3f4c1de0697d67a669394160bd7fb9a3554019d1d223bca"
 }

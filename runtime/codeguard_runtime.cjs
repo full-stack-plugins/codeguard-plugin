@@ -32,10 +32,10 @@ function readLock() {
   const lock = JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
   const hex = (value, length) => typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`).test(value);
   if (lock.schema_version !== '1.0.0' || lock.package !== '@partme.ai/codeguard'
-      || lock.version !== '0.1.1' || lock.platform !== 'macos_arm64'
+      || lock.version !== '0.1.2' || lock.platform !== 'macos_arm64'
       || lock.check_protocol_major !== 1 || !hex(lock.source_commit, 40)
       || !hex(lock.tarball_sha256, 64) || !hex(lock.binary_sha256, 64)
-      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.1.tgz'
+      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.2.tgz'
       || typeof lock.tarball_integrity !== 'string'
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(lock.tarball_integrity)) {
     fail('runtime_lock_invalid');
