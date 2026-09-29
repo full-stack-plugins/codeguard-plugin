@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "package": "@partme.ai/codeguard",
+  "version": "0.1.1",
+  "platform": "macos_arm64",
+  "source_commit": "f8311d63f29b76f7740e37d6689884f9ac490ca4",
+  "check_protocol_major": 1,
+  "tarball_url": "https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.1.tgz",
+  "tarball_sha256": "65bcca8d5647d3618d8795970fe689ffabd76ecc835cf5dd3e2b63084fa8be83",
+  "tarball_integrity": "sha512-NdhFwz7zGwfZEtxUzGh95eZ3aQraoZDvkqC7SoK2v5rD1bSBt9WodU6TDauU0nCObIxj3SqhWQsnrjkXlPQjGA==",
+  "binary_sha256": "0399ed58ca602c37fc7b1a7bf98803166a5a9271481d842da615acf3e7767671"
+}
