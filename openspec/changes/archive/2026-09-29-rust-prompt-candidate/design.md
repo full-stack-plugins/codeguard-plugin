@@ -1,6 +1,6 @@
 ## Context
 
-See [proposal.md](proposal.md). The current plugin default uses five Python Hooks. The separate Rust candidate resolves only a locally installed, digest-pinned 0.1.1 binary and maps four Claude lifecycle events. Rust CLI 0.1.2 adds `UserPromptSubmit` as a no-check event; this plugin change exposes that candidate without changing default Hook behavior.
+See [proposal.md](proposal.md). The current plugin default uses five Python Hooks. The separate Rust candidate resolves only a locally installed, digest-pinned 0.1.2 binary and maps five Claude lifecycle events, including `UserPromptSubmit`. That prompt event gives fixed no-check guidance without changing default Hook behavior.
 
 ## Goals / Non-Goals
 
