@@ -16,7 +16,7 @@
         "authentication": "ON_USE"
       },
       "category": "Developer Tools",
-      "version": "0.18.1",
+      "version": "0.3.9",
       "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
       "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.18.1/assets/official-logo.png",
       "interface": {
