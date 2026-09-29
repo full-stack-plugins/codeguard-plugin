@@ -15,7 +15,6 @@
     ],
     "UserPromptSubmit": [
       {
-        "matcher": "提交|commit|push|提交代码|部署|deploy",
         "hooks": [
           {
             "type": "command",

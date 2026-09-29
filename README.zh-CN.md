@@ -35,6 +35,8 @@ node runtime/codeguard_runtime.cjs verify
 
 钩子不会自动覆盖宿主的每个命令入口。历史 V0.5.4 安装证据不能代表当前版本已在 Codex、ZCode、Kimi 验收。
 
+Claude Code 的 `UserPromptSubmit` 不支持 matcher：每次提交提示都会启动旧 Python Hook。内部意图过滤未命中时，Hook 会在环境或仓库探测前退出；提交意图仍可能执行旧软检查，实际 Git 命令才进入 PreToolUse 门禁。清单无法消除每条提示的进程启动，已安装宿主的延迟尚未实测。
+
 ### 判定契约
 
 | 状态 | 含义 | passed |
