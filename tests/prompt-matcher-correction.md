@@ -7,3 +7,5 @@
 最终本地证据：目标测试通过；`tests/run_all.py` 144/144 通过、零跳过；Python 3.13.5 `unittest discover` 654 项通过；`tests.test_readme_parity` 7 项通过；真实候选 tarball 的 Node runtime 测试 5/5 通过。Ruff、OpenSpec strict、vendor 离线/在线 check、协议文档三份镜像比较、市场定向生成校验和 `git diff --check` 均退出 0。在线 vendor 对照 `codeguard-skills@v0.1.3` 提交 `33d737f4cf46e5d6d1d1f8dce85d7923e4ad626f`。
 
 本次减少的是普通提示进入仓库观察的工作量，并纠正无效配置；**宿主仍会为每条提示启动 Hook 进程**。未在已安装 Claude Code 中测量启动延迟，未切换默认 Rust 候选，也未证明完整交付门禁或 Rust OpenSpec 总计划已完成。
+
+远端验收：插件 [PR #88](https://github.com/full-stack-plugins/codeguard-plugin/pull/88) 的 `rust-runtime-contract` 与 Python 3.11、3.12、3.13 三组 vendor 检查全部通过，合并提交为 `82b82c1ca86c64d6a8112b93e0ac401ba6a23448`。[v0.18.1 Release](https://github.com/full-stack-plugins/codeguard-plugin/releases/tag/v0.18.1) 指向该提交。市场 `sync-marketplaces --plugin=codeguard --remote` 通过；仅 CodeGuard 元数据提交并推送为 `bf9433dc8dea39a9d8bbf929b5b3fa322bcb72ce`，仓库中原有 CodeReview 未提交修改仍保留。Rust 候选真实 tarball 的 5 项 Node 测试通过，但默认钩子仍是 Python。
