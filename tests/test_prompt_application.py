@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,31 @@ sys.path[:0] = [str(ROOT / "scripts"), str(ROOT / "hooks")]
 
 
 class PromptApplicationTests(unittest.TestCase):
+    def test_prompt_hook_is_matcherless_and_non_trigger_exits_before_probing(self):
+        import user_prompt_validator
+
+        for name in ("hooks", "com.github.copilot/hooks", "dev.openhands/hooks"):
+            manifest = json.loads((ROOT / name / "hooks.json").read_text())
+            with self.subTest(manifest=name):
+                entries = manifest["hooks"]["UserPromptSubmit"]
+                self.assertEqual(1, len(entries))
+                self.assertNotIn("matcher", entries[0])
+
+        output = io.StringIO()
+        with patch.object(user_prompt_validator, "read_payload",
+                          return_value={"prompt": "解释这段代码", "session_id": "session-1"}), \
+                patch.object(user_prompt_validator, "session_scope",
+                             side_effect=AssertionError("普通问题不应解析会话仓库")), \
+                patch.object(user_prompt_validator, "ensure_user_path",
+                             side_effect=AssertionError("普通问题不应探测环境")), \
+                patch.object(user_prompt_validator, "find_project_root",
+                             side_effect=AssertionError("普通问题不应发现仓库")), \
+                patch.object(user_prompt_validator.prompt_application, "evaluate_prompt",
+                             side_effect=AssertionError("普通问题不应启动软检查")), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(0, user_prompt_validator.main())
+        self.assertEqual("", output.getvalue())
+
     def test_hook_does_not_acknowledge_before_stdout_flush(self):
         import user_prompt_validator
         from codeguard.prompt_application import PromptResult

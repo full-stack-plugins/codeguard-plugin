@@ -35,6 +35,8 @@ The installed plugin version is recorded in its manifests. The architecture refa
 
 Hooks do not run in every host command surface automatically. Historical V0.5.4 installation evidence is not acceptance of this version in Codex, ZCode or Kimi.
 
+Claude Code does not support a matcher on `UserPromptSubmit`: it starts the legacy Python Hook for every submitted prompt. The Hook returns before environment or repository work when its own intent filter does not match. A commit-intent prompt may still run the legacy soft check; only the actual Git command reaches the PreToolUse gate. The manifest cannot avoid per-prompt process startup, and installed-host latency has not been measured.
+
 ### Verdict contract
 
 | Status | Meaning | passed |

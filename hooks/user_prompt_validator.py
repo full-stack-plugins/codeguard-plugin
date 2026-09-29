@@ -80,6 +80,10 @@ def read_user_text() -> str:
 
 def main() -> int:
     payload = read_payload()
+    user_text = str(payload.get("user_prompt") or payload.get("prompt") or "")
+    # 宿主对 UserPromptSubmit 不支持 matcher；普通提示不应解析会话仓库。
+    if not is_trigger(user_text):
+        return 0
     with session_scope(payload):
         return _main(payload)
 

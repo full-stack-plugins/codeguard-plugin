@@ -20,6 +20,8 @@
 | PostToolUse `Write\|Edit\|MultiEdit` | `post_tool_lint.py` | JSON `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}, "systemMessage":"..."}` | 仅内部错误时 | 0 | 否 |
 | Stop | `stop_summary.py` | 人类可读会话摘要 | 仅内部错误时 | 0 | 否 |
 
+[Claude Code Hooks reference](https://code.claude.com/docs/en/hooks) 说明 `UserPromptSubmit` 不支持 matcher，宿主每次收到用户提示都会启动该 Hook。三份 `hooks.json` 因此不声明关键词 matcher；`user_prompt_validator.py::main` 先执行 `is_trigger`，未命中时在会话/worktree 归属、PATH 探测、仓库发现和原生门禁前退出且无对话输出。命中时旧软门禁仍可能运行；真实提交/推送只能由 PreToolUse 的命令时门禁判断。此变更不证明宿主进程启动开销已经消失或已实测。
+
 实现定位（**符号而非行号**——行号随每次重构腐烂，符号不腐；v0.8.0 起弃用行号指针）：
 - SessionStart 摘要：`hooks/env_check.py::main`（含双副本告警段）。
 - UserPromptSubmit JSON：`hooks/user_prompt_validator.py::main`（非 git 目录跳过说明 `_non_git_note`）与 `::is_trigger`。
