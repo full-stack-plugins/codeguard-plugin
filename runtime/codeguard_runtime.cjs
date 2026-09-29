@@ -127,6 +127,12 @@ function installTarball(file, root = cacheRoot()) {
           || JSON.stringify(list.stdout.trim().split('\n').sort()) !== JSON.stringify(EXPECTED_MEMBERS)) {
         fail('tarball_members_invalid');
       }
+      const kinds = spawnSync(SYSTEM_TAR, ['-tvzf', file], { encoding: 'utf8', shell: false, timeout: 10000, maxBuffer: 8192 });
+      if (kinds.error || kinds.status !== 0 || kinds.signal
+          || kinds.stdout.trim().split('\n').length !== EXPECTED_MEMBERS.length
+          || kinds.stdout.trim().split('\n').some((entry) => !entry.startsWith('-'))) {
+        fail('tarball_member_type_invalid');
+      }
       const unpack = spawnSync(SYSTEM_TAR, ['-xzf', file, '-C', staging], { shell: false, timeout: 10000, maxBuffer: 8192 });
       if (unpack.error || unpack.status !== 0 || unpack.signal) fail('tarball_extract_failed');
       verifyPackage(path.join(staging, 'package'), lock);
