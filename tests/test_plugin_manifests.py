@@ -11,6 +11,25 @@ MANIFESTS = (
 
 
 class PluginManifestTest(unittest.TestCase):
+    def test_portable_mcp_config_discovers_the_existing_server(self):
+        config = json.loads((ROOT / "mcp.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", config["$schema"])
+        self.assertEqual({"$schema", "mcpServers"}, set(config))
+        server = config["mcpServers"]["codeguard"]
+        self.assertEqual("stdio", server["type"])
+        self.assertIn(server["command"], ("python", "python3"))
+        self.assertEqual("./", server["cwd"])
+        self.assertIn("--mcp", server["args"])
+        scripts = [arg for arg in server["args"] if arg.endswith(".py")]
+        self.assertEqual(1, len(scripts))
+        script = (ROOT / scripts[0]).resolve()
+        self.assertTrue(script.is_relative_to(ROOT.resolve()))
+        self.assertTrue(script.is_file())
+        self.assertEqual(ROOT / "scripts" / "run_check.py", script)
+        self.assertNotIn("PLUGIN_ROOT", server.get("env", {}))
+        self.assertNotIn("PLUGIN_DATA", server.get("env", {}))
+
     def test_released_manifests_do_not_publish_placeholder_mcp_server(self):
         self.assertFalse((ROOT / ".mcp.json").exists())
         for manifest in MANIFESTS:

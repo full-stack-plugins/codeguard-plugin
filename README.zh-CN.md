@@ -117,6 +117,8 @@ CVE 退出码：0 通过、1 未验证、2 发现漏洞、3 非法生态。Maven
 
 ### MCP 服务
 
+根目录 `mcp.json` 按 Agent Plugins 1.0.0 声明已有 CodeGuard stdio 服务。宿主需要 Python 及 `requirements.txt` 中的依赖，插件不会自动安装。配置工作目录是插件根目录；调用 `check_code_style`、`auto_fix`、`analyze_java_impact` 时必须显式传入目标项目的绝对 `path`，不得把插件目录当作用户项目。`list_languages` 不需要项目路径。
+
 ```bash
 # 需要 requirements.txt 已声明的依赖。
 python3 scripts/run_check.py --mcp /path/to/project

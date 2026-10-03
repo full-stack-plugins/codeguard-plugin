@@ -52,3 +52,13 @@ auto_fix MUST 默认仅处理 Git 改动文件并按相同范围复检；无法�
 
 - **WHEN** the client calls `list_languages`
 - **THEN** the response enumerates every entry in `scripts/languages.json` with exactly two fields (`id`, `name`) per record
+
+### Requirement: Portable MCP discovery SHALL use root mcp.json
+
+提供已有 MCP 服务的发布包 MUST 在根目录包含标准 `mcp.json`，声明 Agent Plugins 1.0.0 MCP Schema、`stdio` 传输、单独的 Python 可执行命令与参数，指向包内 `scripts/run_check.py --mcp`。不得在可移植 `plugin.json` 中内嵌 `mcpServers`。
+
+#### Scenario: A portable client discovers CodeGuard
+- **WHEN** 客户端读取根目录 `mcp.json`
+- **THEN** 可发现 `codeguard` stdio 服务，配置中的脚本存在于插件包内，Schema 版本与 `plugin.json` 一致
+- **AND** 项目工具调用由客户端显式传入目标项目的绝对 `path`；配置工作目录为插件根，不代表用户项目
+- **AND** MCP SDK 依赖仍通过 `requirements.txt` 声明，不自动安装

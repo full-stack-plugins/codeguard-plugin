@@ -1,7 +1,7 @@
 {
   "name": "partme-ai-codeguard",
   "interface": {
-    "displayName": "代码规范守卫"
+    "displayName": "CodeGuard"
   },
   "plugins": [
     {
@@ -20,7 +20,7 @@
       "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
       "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.19.0/assets/official-logo.png",
       "interface": {
-        "displayName": "代码规范守卫",
+        "displayName": "CodeGuard",
         "shortDescription": "Trustworthy code checks and Java impact analysis",
         "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.19.0/assets/official-logo.png"
       }

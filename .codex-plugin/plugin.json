@@ -1,6 +1,6 @@
 {
   "name": "codeguard",
-  "version": "0.19.0+codex.20261003",
+  "version": "0.19.0+codex.20261004",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
@@ -23,7 +23,7 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "代码规范守卫",
+    "displayName": "CodeGuard",
     "shortDescription": "Trustworthy code checks and Java impact analysis",
     "longDescription": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit. Java planning is read-only; executing project checks runs trusted build/test commands, not a security sandbox.",
     "developerName": "Full Stack Skills / PartMe.AI",

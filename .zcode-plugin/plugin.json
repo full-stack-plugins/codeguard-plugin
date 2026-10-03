@@ -1,8 +1,8 @@
 {
   "name": "codeguard",
-  "displayName": "代码规范守卫",
+  "displayName": "CodeGuard",
   "displayName_i18n": {
-    "en": "代码规范守卫",
+    "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
   "version": "0.19.0",
