@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// Candidate Claude Code binding. It never resolves `codeguard` from PATH or falls back to Python.
+// Canonical non-blocking Claude-shape lifecycle binding. It never resolves `codeguard` from PATH or falls back to Python.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -19,7 +19,7 @@ const EVENTS = new Map([
 
 function incomplete(event, reason) {
   const safe = /^[a-z_]+$/.test(reason) ? reason : 'runtime_unavailable';
-  const message = `CodeGuard Rust 运行时未完成（${safe}）；本次源码检查未运行，交付未评估。请执行插件 runtime/codeguard_runtime.cjs verify 或修复安装。`;
+  const message = `CodeGuard Rust 运行时未完成（${safe}）；本次源码检查未运行，交付未评估。请用 Node 18+ 执行 node runtime/codeguard_runtime.cjs verify；支持的 macOS arm64 上显式运行 node runtime/codeguard_runtime.cjs install --download。运行时可用后，使用同一入口 exec init ABS_PROJECT --apply 初始化修复任务，或 exec next ABS_PROJECT 获取指引。`;
   return event === 'stop'
     ? { systemMessage: message }
     : { hookSpecificOutput: { hookEventName: EVENTS.get(event), additionalContext: message } };

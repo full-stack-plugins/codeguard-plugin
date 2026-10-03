@@ -25,7 +25,7 @@ function invoke(script, args, env, input = '') {
 
 test('the plugin lock pins a single published runtime', () => {
   const lock = runtime.readLock();
-  assert.equal(lock.version, '0.1.3');
+  assert.equal(lock.version, '0.1.4');
   assert.equal(lock.platform, 'macos_arm64');
   assert.equal(lock.check_protocol_major, 1);
   assert.equal(Object.keys(lock.grammar_licenses).length, 32);

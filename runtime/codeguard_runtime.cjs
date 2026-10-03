@@ -38,10 +38,10 @@ function readLock() {
   const lock = JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
   const hex = (value, length) => typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`).test(value);
   if (lock.schema_version !== '1.0.0' || lock.package !== '@partme.ai/codeguard'
-      || lock.version !== '0.1.3' || lock.platform !== 'macos_arm64'
+      || lock.version !== '0.1.4' || lock.platform !== 'macos_arm64'
       || lock.check_protocol_major !== 1 || !hex(lock.source_commit, 40)
       || !hex(lock.tarball_sha256, 64) || !hex(lock.binary_sha256, 64)
-      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.3.tgz'
+      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.4.tgz'
       || typeof lock.tarball_integrity !== 'string'
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(lock.tarball_integrity)
       || !lock.grammar_licenses || typeof lock.grammar_licenses !== 'object'
@@ -236,11 +236,16 @@ if (require.main === module) {
     } else if (action === 'exec' && ((process.argv[3] === 'grammar'
         && ['status', 'probe'].includes(process.argv[4]))
         || (process.argv[3] === 'check' && process.argv[4] === 'all'
-          && path.isAbsolute(process.argv[5] || '')))) {
+          && path.isAbsolute(process.argv[5] || ''))
+        || (['init', 'next'].includes(process.argv[3])
+          && path.isAbsolute(process.argv[4] || ''))
+        || (process.argv[3] === 'task' && ['show', 'verify'].includes(process.argv[4])
+          && /^CG-[A-Z]-[0-9a-f]{32}$/.test(process.argv[5] || '')
+          && path.isAbsolute(process.argv[6] || '')))) {
       const args = process.argv.slice(3);
       const result = spawnSync(activeBinary(), args, {
         encoding: 'utf8', shell: false,
-        timeout: args[0] === 'check' ? 120000 : 30000,
+        timeout: ['check', 'task'].includes(args[0]) ? 120000 : 30000,
         maxBuffer: args[0] === 'check' ? 4 * 1024 * 1024 : 1024 * 1024,
         env: { ...process.env, CODEGUARD_SKIP_GATE: '' },
       });
@@ -249,7 +254,7 @@ if (require.main === module) {
       process.stderr.write(result.stderr);
       process.exitCode = result.status;
     } else {
-      fail('usage: verify | install --download | install --tarball ABS_PATH | exec grammar status|probe ... | exec check all ABS_PROJECT ...');
+      fail('usage: verify | install --download | install --tarball ABS_PATH | exec grammar status|probe ... | exec check all ABS_PROJECT ... | exec init|next ABS_PROJECT ... | exec task show|verify TASK_ID ABS_PROJECT ...');
     }
   })().catch((error) => {
     process.stderr.write(`${error.message}\n`);

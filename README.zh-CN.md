@@ -10,34 +10,43 @@
 
 CodeGuard 为 AI 编程助手提供原生检查证据，守护已支持的 Git 提交/推送调用。PostToolUse 只反馈、不阻断；确定违规会拦截 Git 调用；检查无法完成时明确 UNVERIFIED。某项检查通过，不等于代码完全正确。
 
-### Rust 运行时候选（macOS arm64）
+### Rust 生命周期运行时（macOS arm64）
 
-插件新增**显式候选** Rust 运行时绑定。[`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) 固定 `@partme.ai/codeguard@0.1.3`、注册表 tarball 和原生二进制摘要、32 份 grammar 许可证摘要、候选源码提交、平台及检查协议主版本。仅在 Apple Silicon macOS 上安装：
+Canonical [`hooks/hooks.json`](hooks/hooks.json) 现将 SessionStart、UserPromptSubmit、PostToolUse、PostToolUseFailure、Stop 经 [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) 接到固定 `@partme.ai/codeguard@0.1.4`。[`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) 锁定公开 tarball、程序、源码提交和 32 份 grammar 许可证摘要。Node 18+ 仅绑定宿主；发现、原生检查、WASM 解析和任务同步由 Rust 执行。
+
+在 Apple Silicon macOS 上显式安装，再初始化指定项目：
 
 ```bash
 node runtime/codeguard_runtime.cjs install --download
 node runtime/codeguard_runtime.cjs verify
+node runtime/codeguard_runtime.cjs exec init /absolute/project --apply --format=json
+node runtime/codeguard_runtime.cjs exec next /absolute/project --format=json
 node runtime/codeguard_runtime.cjs exec grammar status --format=json
 node runtime/codeguard_runtime.cjs exec check all /absolute/project --format=json
+# TASK_ID 使用 next 返回的真实 ID：
+node runtime/codeguard_runtime.cjs exec task show TASK_ID /absolute/project --format=json
+node runtime/codeguard_runtime.cjs exec task verify TASK_ID /absolute/project --zig-tool /absolute/zig --format=json
 ```
 
-离线安装可执行 `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.3.tgz`，仍须满足同一锁定摘要。安装器先在暂存目录核验包，再切换活动收据。包内有 32 份可调用的 WASM grammar 候选；`grammar status` 明确报告尚未验收，`grammar probe <language> <absolute-file> --format=json` 提供显式、非门禁的观察。候选通过不能代替原生 lint 或完整项目检查。[`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) 是 Claude Code 的 SessionStart、UserPromptSubmit、PostToolUse、PostToolUseFailure、Stop 候选适配器；每次调用前复核活动二进制，不从 PATH 随机选择 `codeguard`，缺运行时时报告未完成而不回退 Python。UserPromptSubmit 仅返回固定、非阻断的检查时机建议，不运行 lint，也不把提示词当作 Git 门禁。当前 [`hooks/hooks.json`](hooks/hooks.json) 仍使用旧 Python 钩子；Rust 候选尚未成为默认入口，未接 WASM 自动反馈或严格 Git 门禁，也未在 Codex/ZCode/Kimi 完成宿主验收。见[候选验收记录](tests/rust-runtime-candidate.md)、[32 语法运行时验收](tests/rust-wasm-runtime-candidate.md)和[钩子协议](hooks/__protocol__.md)。
+离线安装使用 `install --tarball /absolute/path/to/codeguard-public-0.1.4-darwin-arm64.tgz`，仍核对相同摘要。普通 Hook 不下载包；运行时缺失或平台不支持时给出明确未完成与准备指引，不执行 PATH codeguard，不回退 Python。成功保存仅检查本次文件：已接入的 Ruff/ESLint 原生检查优先，再对未覆盖文件执行有界 WASM；疑似语法问题在已初始化工作区形成稳定原生确认任务。零恢复仅推荐原生检查，不能关闭旧任务。包内全部 32 份 grammar 可执行但**未完成精度验收**，包含 Dart、Zig。
 
-显式 `exec check all` 先运行适用的原生检查，再对未覆盖文件执行有界 WASM 候选检查；报告仍是不完整状态。已安装插件的版本以各清单为准。本次架构重构保留现有 68 个受管技能，重点收敛判定证据、模块职责与 Java 项目感知。
+提示事件只给固定时机指引，失败保存不扫描，Stop 提供有界 next 指引并处理重入。内部检查预算 5 秒、子进程超时 8 秒、宿主超时 10 秒；不表示所有文件系统 I/O 硬期限和真实宿主延迟已验收。auto_fix_on_save 与旧超时配置仅保留兼容含义，Rust 不静默修复源码；未初始化工作区须先显式 init 才能持久任务。
+
+PreToolUse Git 门禁与旧 CLI/MCP 暂留 Python 兼容入口，Copilot/OpenHands 镜像与 canonical 绑定保持字节一致，不等于对应宿主验收完成。真实 Claude/Codex/ZCode/Kimi 自动触发、可信关闭策略、完整原生优先、多平台与精度仍缺。见[默认生命周期验收](tests/rust-lifecycle-default.md)、[历史候选证据](tests/rust-runtime-candidate.md)、[历史 32 语法验收](tests/rust-wasm-runtime-candidate.md)与[钩子协议](hooks/__protocol__.md)。
 
 ### 运行边界
 
 | 入口 | 检查对象 | 结果 |
 |---|---|---|
 | PostToolUse | 文件型工具检查本次编辑文件 | 反馈、exit 0；项目级检查延后 |
-| UserPromptSubmit | 与提交意图相关的工作树变更 | 建议，不阻断用户消息 |
+| UserPromptSubmit | 固定检查时机指引，不扫描源码 | 建议，不阻断用户消息 |
 | PreToolUse Git 门禁 | 拟提交 index 快照或推送 HEAD 快照 | 确定违规 exit 2；不确定项明确 UNVERIFIED 并 fail-open |
 | CLI check / MCP check_code_style | 项目检查，含 Java 构建验证 | 明确状态、原因、原始退出码、顺序执行证据和日志 |
 | pre-commit / CI | 独立配置的检查 | 单独验收，不能由钩子成功代替 |
 
 钩子不会自动覆盖宿主的每个命令入口。历史 V0.5.4 安装证据不能代表当前版本已在 Codex、ZCode、Kimi 验收。
 
-Claude Code 的 `UserPromptSubmit` 不支持 matcher：每次提交提示都会启动旧 Python Hook。内部意图过滤未命中时，Hook 会在环境或仓库探测前退出；提交意图仍可能执行旧软检查，实际 Git 命令才进入 PreToolUse 门禁。清单无法消除每条提示的进程启动，已安装宿主的延迟尚未实测。
+Claude Code 每次 UserPromptSubmit 都启动 canonical Rust 提示绑定，不依赖关键词 matcher，也不因提示词启动 lint。Copilot/OpenHands 同步相同绑定镜像，其实际宿主协议仍待独立验收；实际 Git 命令仍由 PreToolUse 检查。真实宿主延迟尚未测量。
 
 ### 判定契约
 

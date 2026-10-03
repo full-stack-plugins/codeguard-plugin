@@ -1,9 +1,9 @@
 # hooks/ 与宿主 CLI 之间的契约（canonical cheat-sheet）
 
-> Rust 候选入口：`runtime/codeguard_runtime.cjs` 固定 npm 0.1.2 制品和本机二进制身份；`hooks/rust_runtime_dispatch.cjs` 显式处理 Claude Code 的 SessionStart/UserPromptSubmit/PostToolUse/PostToolUseFailure/Stop。UserPromptSubmit 只输出固定的非阻断检查时机建议，源码检查未运行、交付未评估；提示词不能触发 lint 或替代真实 Git 门禁。候选入口在运行时缺失、摘要或版本失配时返回对话中的“未完成”，不执行 PATH 上的 `codeguard`，也不回退到 Python。它尚未写入 `hooks/hooks.json`，以下旧协议表仍描述默认 Python 运行时。Rust 严格交付门禁与其它宿主接线尚未完成，不能把候选保存反馈当作通过。
+> 当前 canonical 默认：Node 18+ 宿主绑定固定 npm 0.1.4 Rust 程序，非阻断生命周期不回退 Python；安装显式、失败明确未完成。真实 Git PreToolUse 仍为 Python 兼容门禁，Copilot/OpenHands 镜像同步同一绑定，实际宿主另行验收。CLI/脚本重放不等于实际宿主验收，保存反馈退出 0 不代表质量通过。
 
 > 这份文档是 codeguard-plugin 与 Codex CLI / ZCode / Kimi Code 三端宿主
-> 交互契约的**单源事实**。所有 hook 脚本（`hooks/*.py`）的实现都必须与本文件
+> 交互契约的**单源事实**。所有 Hook 脚本（Rust 绑定与 `hooks/*.py` 兼容入口）的实现都必须与本文件
 > 一致；若未来调整任何退出码或 JSON schema，**同一 commit 内**必须更新本文件。
 >
 > 对应的 OpenSpec 规范是 `hook-protocol`（见 `openspec/specs/hook-protocol/spec.md`）。
@@ -11,6 +11,25 @@
 ---
 
 ## 1. 协议总表
+
+当前 `hooks/hooks.json` 的默认入口：
+
+| 事件 | 默认指令 | 输出与检查范围 | 宿主超时/退出 |
+|---|---|---|---|
+| SessionStart | `node hooks/rust_runtime_dispatch.cjs session-start` | 只读发现；未安装明确准备动作 | 10 秒 / 0 |
+| UserPromptSubmit | `node hooks/rust_runtime_dispatch.cjs user-prompt-submit` | 固定时机指引；不运行 lint | 10 秒 / 0 |
+| PostToolUse | `node hooks/rust_runtime_dispatch.cjs post-tool-use` | 成功编辑范围；原生优先、有界 WASM、稳定任务和复检指引 | 10 秒 / 0 |
+| PostToolUseFailure | `node hooks/rust_runtime_dispatch.cjs post-tool-use-failure` | 明示未执行源码检查 | 10 秒 / 0 |
+| Stop | `node hooks/rust_runtime_dispatch.cjs stop` | next 指引；重入不阻断 | 10 秒 / 0 |
+| PreToolUse Bash | `python3 hooks/pre_tool_git_guard.py` | 既有真实 Git 内容及原生兼容门禁 | 120 秒 / 0 或 2 |
+
+上表指令在清单中使用绝对插件根。Rust 内部预算 5 秒、宿主子进程上限 8 秒、摘要限 1200 字符；事件失败、输入超限、范围异常、运行时缺失均给脱敏未完成摘要。stdout 使用 `hookSpecificOutput` 对应事件的 additionalContext；Stop 使用 systemMessage 或 Stop 事件输出。适配能力不足、未初始化和持久化失败保留未完成，不自批任务或签发交付许可。
+
+修复指引通过同一固定程序执行：`node runtime/codeguard_runtime.cjs exec init ABS_PROJECT --apply`、`exec next ABS_PROJECT --format=json`、`exec task show TASK_ID ABS_PROJECT --format=json`、`exec task verify TASK_ID ABS_PROJECT --zig-tool ABS_ZIG --format=json`。可查询命令退出 0 仍不代表质量 allow；原生复检结果保持现有未完成语义。普通 Hook 不联网安装。
+
+### 1.1 旧兼容入口协议
+
+以下表格、Python 符号和异常约定描述保留的旧 CLI/MCP、显式 Python Hook 与显式旧 Python Hook；不描述上表当前 canonical Rust 生命周期。
 
 | 事件 | Hook 脚本 | stdout | stderr | exit | 阻断? |
 |---|---|---|---|---|---|
@@ -20,7 +39,7 @@
 | PostToolUse `Write\|Edit\|MultiEdit` | `post_tool_lint.py` | JSON `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}, "systemMessage":"..."}` | 仅内部错误时 | 0 | 否 |
 | Stop | `stop_summary.py` | 人类可读会话摘要 | 仅内部错误时 | 0 | 否 |
 
-[Claude Code Hooks reference](https://code.claude.com/docs/en/hooks) 说明 `UserPromptSubmit` 不支持 matcher，宿主每次收到用户提示都会启动该 Hook。三份 `hooks.json` 因此不声明关键词 matcher；`user_prompt_validator.py::main` 先执行 `is_trigger`，未命中时在会话/worktree 归属、PATH 探测、仓库发现和原生门禁前退出且无对话输出。命中时旧软门禁仍可能运行；真实提交/推送只能由 PreToolUse 的命令时门禁判断。此变更不证明宿主进程启动开销已经消失或已实测。
+[Claude Code Hooks reference](https://code.claude.com/docs/en/hooks) 说明 `UserPromptSubmit` 不支持 matcher，宿主每次收到用户提示都会启动该 Hook。三份 `hooks.json` 均不声明关键词 matcher；当前默认不运行旧过滤逻辑，以下 Python 符号仅描述显式兼容入口；`user_prompt_validator.py::main` 先执行 `is_trigger`，未命中时在会话/worktree 归属、PATH 探测、仓库发现和原生门禁前退出且无对话输出。命中时旧软门禁仍可能运行；真实提交/推送只能由 PreToolUse 的命令时门禁判断。此变更不证明宿主进程启动开销已经消失或已实测。
 
 实现定位（**符号而非行号**——行号随每次重构腐烂，符号不腐；v0.8.0 起弃用行号指针）：
 - SessionStart 摘要：`hooks/env_check.py::main`（含双副本告警段）。
@@ -54,7 +73,7 @@ CLI/MCP 明确返回 UNVERIFIED，自动修复不执行。门禁以未验证说�
 | ZCode | 同 Codex | 同 Codex，additionalContext 进 systemMessage | 同 Codex | 同 Codex | 同 Codex |
 | Kimi Code CLI | stdout 摘要注入会话上下文 | stdout JSON 注入上下文（观察型，**不阻断用户消息**） | exit 2 拦截 + stderr 指令；exit 0 静默 | stdout JSON 注入上下文 | stdout 摘要 |
 
-所有三端在所有事件上，**内部错误都走 fail-open**（见 §3），hook bug 永远不阻断工作流。
+旧兼容三端在所有事件上，**内部错误都走 fail-open**（见 §3），hook bug 永远不阻断工作流。
 
 ---
 
