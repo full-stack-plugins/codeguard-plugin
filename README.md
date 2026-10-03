@@ -12,16 +12,18 @@ CodeGuard provides native check evidence and guards supported Git commit/push ca
 
 ### Rust runtime candidate (macOS arm64)
 
-The plugin now contains a **candidate**, explicit Rust runtime binding. It pins `@partme.ai/codeguard@0.1.2`, its registry tarball and native binary hashes, candidate source commit, platform, and check protocol major in [`runtime/codeguard.lock.json`](runtime/codeguard.lock.json). Install only on Apple Silicon macOS:
+The plugin now contains a **candidate**, explicit Rust runtime binding. It pins `@partme.ai/codeguard@0.1.3`, its registry tarball and native binary hashes, 32 grammar-license hashes, candidate source commit, platform, and check protocol major in [`runtime/codeguard.lock.json`](runtime/codeguard.lock.json). Install only on Apple Silicon macOS:
 
 ```bash
 node runtime/codeguard_runtime.cjs install --download
 node runtime/codeguard_runtime.cjs verify
+node runtime/codeguard_runtime.cjs exec grammar status --format=json
+node runtime/codeguard_runtime.cjs exec check all /absolute/project --format=json
 ```
 
-For offline installation, use `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.2.tgz`; the same lock hashes are enforced. Installation stages and verifies the package before switching the active receipt. [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) is a candidate Claude Code adapter for SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, and Stop. It rechecks the active binary before each call, never selects a random `codeguard` on `PATH`, and reports an incomplete runtime instead of falling back to Python. UserPromptSubmit returns fixed, non-blocking timing guidance; it does not run lint or treat prompt words as a Git gate. The current [`hooks/hooks.json`](hooks/hooks.json) still uses the legacy Python hooks; the Rust candidate has not been made the default, connected to a strict Git gate, or accepted on Codex/ZCode/Kimi. See the [candidate acceptance record](tests/rust-runtime-candidate.md) and [hook protocol](hooks/__protocol__.md).
+For offline installation, use `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.3.tgz`; the same lock hashes are enforced. Installation stages and verifies the package before switching the active receipt. The package contains 32 callable WASM grammar candidates; `grammar status` reports them as unqualified, and `grammar probe <language> <absolute-file> --format=json` provides explicit, non-gating observations. A candidate pass cannot replace native lint or a complete project check. [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) is a candidate Claude Code adapter for SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, and Stop. It rechecks the active binary before each call, never selects a random `codeguard` on `PATH`, and reports an incomplete runtime instead of falling back to Python. UserPromptSubmit returns fixed, non-blocking timing guidance; it does not run lint or treat prompt words as a Git gate. The current [`hooks/hooks.json`](hooks/hooks.json) still uses the legacy Python hooks; the Rust candidate has not been made the default, connected to automatic WASM feedback or a strict Git gate, or accepted on Codex/ZCode/Kimi. See the [candidate acceptance record](tests/rust-runtime-candidate.md), [32-grammar runtime acceptance](tests/rust-wasm-runtime-candidate.md), and [hook protocol](hooks/__protocol__.md).
 
-The installed plugin version is recorded in its manifests. The architecture refactor keeps the existing 68 managed skills and focuses on reliable evidence, clear module ownership and Java project awareness.
+Explicit `exec check all` runs applicable native checks first, then bounded WASM candidates for uncovered files; its report stays incomplete. The installed plugin version is recorded in its manifests. The architecture refactor keeps the existing 68 managed skills and focuses on reliable evidence, clear module ownership and Java project awareness.
 
 ### Runtime boundaries
 

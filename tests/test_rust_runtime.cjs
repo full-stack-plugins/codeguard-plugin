@@ -19,15 +19,16 @@ function temporaryRoot() {
 function invoke(script, args, env, input = '') {
   return spawnSync(process.execPath, [script, ...args], {
     cwd: plugin, env: { ...process.env, ...env }, input,
-    encoding: 'utf8', timeout: 15000, maxBuffer: 16384,
+    encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024,
   });
 }
 
 test('the plugin lock pins a single published runtime', () => {
   const lock = runtime.readLock();
-  assert.equal(lock.version, '0.1.2');
+  assert.equal(lock.version, '0.1.3');
   assert.equal(lock.platform, 'macos_arm64');
   assert.equal(lock.check_protocol_major, 1);
+  assert.equal(Object.keys(lock.grammar_licenses).length, 32);
 });
 
 test('missing runtime returns incomplete without executing PATH codeguard or Python', (context) => {
@@ -99,8 +100,36 @@ test('locked candidate installs, dispatches, and rejects a later binary mutation
   assert.equal(installed.status, 0, installed.stderr);
   const binary = runtime.activeBinary(cache);
   assert.equal(path.basename(binary), 'codeguard');
+  const inventory = spawnSync(binary, ['grammar', 'status', '--format=json'], { encoding: 'utf8', timeout: 30000 });
+  assert.equal(inventory.status, 3, inventory.stderr);
+  const grammarStatus = JSON.parse(inventory.stdout);
+  assert.equal(grammarStatus.candidate_count, 32);
+  assert.equal(grammarStatus.released_count, 0);
+  assert.equal(grammarStatus.delivery_decision, 'not_evaluated');
+  const inventoryViaPlugin = invoke(path.join(__dirname, '..', 'runtime', 'codeguard_runtime.cjs'),
+    ['exec', 'grammar', 'status', '--format=json'], { CODEGUARD_RUNTIME_CACHE: cache });
+  assert.equal(inventoryViaPlugin.status, 3, inventoryViaPlugin.stderr);
+  assert.equal(JSON.parse(inventoryViaPlugin.stdout).candidate_count, 32);
   const project = path.join(root, 'project');
   fs.mkdirSync(project);
+  const zigFile = path.join(project, 'sample.zig');
+  fs.writeFileSync(zigFile, 'const Empty = struct {};\n');
+  const checked = invoke(manager, ['exec', 'check', 'all', fs.realpathSync(project), '--format=json', '--timeout', '30s'], {
+    CODEGUARD_RUNTIME_CACHE: cache,
+  });
+  assert.equal(checked.status, 3, checked.stderr);
+  const checkReport = JSON.parse(checked.stdout);
+  assert.equal(checkReport.delivery_decision, 'incomplete');
+  assert.equal(checkReport.syntax_candidates.observations.some(item => item.language === 'zig'
+    && item.status === 'candidate_observed'), true);
+  const probe = spawnSync(binary, ['grammar', 'probe', 'zig', fs.realpathSync(zigFile), '--format=json'], {
+    encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(probe.status, 3, probe.stderr);
+  const candidate = JSON.parse(probe.stdout);
+  assert.equal(candidate.report_type, 'grammar_candidate_probe');
+  assert.equal(candidate.grammar_qualified, false);
+  assert.equal(candidate.delivery_decision, 'not_evaluated');
   const event = JSON.stringify({ hook_event_name: 'SessionStart', cwd: project, source: 'startup' });
   const result = invoke(dispatcher, ['session-start'], {
     CODEGUARD_RUNTIME_CACHE: cache, CLAUDE_PROJECT_DIR: project,
@@ -126,6 +155,12 @@ test('locked candidate installs, dispatches, and rejects a later binary mutation
   }, JSON.stringify({ ...prompt, prompt: '解释这个项目' }));
   assert.equal(ordinaryResult.status, 0, ordinaryResult.stderr);
   assert.deepEqual(JSON.parse(ordinaryResult.stdout), promptOutput);
+  const license = path.join(path.dirname(binary), '..', 'grammar-licenses', 'zig', 'LICENSE');
+  const originalLicense = fs.readFileSync(license);
+  fs.appendFileSync(license, '\nmodified\n');
+  assert.throws(() => runtime.activeBinary(cache), /grammar_license_digest_mismatch/);
+  fs.writeFileSync(license, originalLicense);
+  assert.equal(runtime.activeBinary(cache), binary);
   fs.appendFileSync(binary, '\nmodified\n');
   assert.throws(() => runtime.activeBinary(cache), /binary_digest_mismatch/);
   const rejected = invoke(dispatcher, ['session-start'], {

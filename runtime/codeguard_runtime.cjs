@@ -11,14 +11,20 @@ const { spawnSync } = require('node:child_process');
 
 const LOCK_PATH = path.join(__dirname, 'codeguard.lock.json');
 const SYSTEM_TAR = '/usr/bin/tar';
-const EXPECTED_MEMBERS = [
+const FIXED_MEMBERS = [
   'package/LICENSE',
   'package/NOTICE',
   'package/README.md',
   'package/codeguard.cjs',
   'package/native/codeguard',
   'package/package.json',
-].sort();
+];
+const MAX_TARBALL_BYTES = 16 * 1024 * 1024;
+const MAX_BINARY_BYTES = 128 * 1024 * 1024;
+
+function expectedMembers(lock) {
+  return [...FIXED_MEMBERS, ...Object.keys(lock.grammar_licenses).map(name => `package/grammar-licenses/${name}`)].sort();
+}
 
 function fail(reason) {
   throw new Error(`codeguard runtime incomplete: ${reason}`);
@@ -32,14 +38,20 @@ function readLock() {
   const lock = JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
   const hex = (value, length) => typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`).test(value);
   if (lock.schema_version !== '1.0.0' || lock.package !== '@partme.ai/codeguard'
-      || lock.version !== '0.1.2' || lock.platform !== 'macos_arm64'
+      || lock.version !== '0.1.3' || lock.platform !== 'macos_arm64'
       || lock.check_protocol_major !== 1 || !hex(lock.source_commit, 40)
       || !hex(lock.tarball_sha256, 64) || !hex(lock.binary_sha256, 64)
-      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.2.tgz'
+      || lock.tarball_url !== 'https://registry.npmjs.org/@partme.ai/codeguard/-/codeguard-0.1.3.tgz'
       || typeof lock.tarball_integrity !== 'string'
-      || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(lock.tarball_integrity)) {
+      || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(lock.tarball_integrity)
+      || !lock.grammar_licenses || typeof lock.grammar_licenses !== 'object'
+      || Array.isArray(lock.grammar_licenses)) {
     fail('runtime_lock_invalid');
   }
+  const licenseNames = Object.keys(lock.grammar_licenses);
+  if (licenseNames.length !== 32 || !licenseNames.includes('LICENSE.codegraph')
+      || licenseNames.some(name => !/^(?:LICENSE\.codegraph|[a-z0-9_-]+\/LICENSE)$/.test(name)
+        || !hex(lock.grammar_licenses[name], 64))) fail('runtime_lock_invalid');
   return lock;
 }
 
@@ -83,8 +95,13 @@ function verifyPackage(root, lock = readLock()) {
       || JSON.stringify(manifest.os) !== '["darwin"]'
       || JSON.stringify(manifest.cpu) !== '["arm64"]') fail('package_identity_mismatch');
   const binary = path.join(root, 'native', 'codeguard');
-  if (regularFile(binary).size > 32 * 1024 * 1024) fail('binary_too_large');
+  if (regularFile(binary).size > MAX_BINARY_BYTES) fail('binary_too_large');
   if (sha256(fs.readFileSync(binary)) !== lock.binary_sha256) fail('binary_digest_mismatch');
+  for (const [name, digest] of Object.entries(lock.grammar_licenses)) {
+    const license = path.join(root, 'grammar-licenses', name);
+    if (regularFile(license).size > 16 * 1024) fail('grammar_license_too_large');
+    if (sha256(fs.readFileSync(license)) !== digest) fail('grammar_license_digest_mismatch');
+  }
   const result = spawnSync(binary, ['--version', '--format=json'], {
     encoding: 'utf8', shell: false, timeout: 3000, maxBuffer: 8192,
     env: { ...process.env, CODEGUARD_SKIP_GATE: '' },
@@ -100,7 +117,7 @@ function verifyPackage(root, lock = readLock()) {
 
 function verifyTarball(file, lock) {
   const info = regularFile(file);
-  if (info.size > 8 * 1024 * 1024) fail('tarball_too_large');
+  if (info.size > MAX_TARBALL_BYTES) fail('tarball_too_large');
   const bytes = fs.readFileSync(file);
   if (sha256(bytes) !== lock.tarball_sha256
       || `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}` !== lock.tarball_integrity) {
@@ -110,6 +127,7 @@ function verifyTarball(file, lock) {
 
 function installTarball(file, root = cacheRoot()) {
   const lock = readLock();
+  const members = expectedMembers(lock);
   checkPlatform(lock);
   ensureCache(root);
   verifyTarball(file, lock);
@@ -124,12 +142,12 @@ function installTarball(file, root = cacheRoot()) {
       fs.chmodSync(staging, 0o700);
       const list = spawnSync(SYSTEM_TAR, ['-tzf', file], { encoding: 'utf8', shell: false, timeout: 10000, maxBuffer: 8192 });
       if (list.error || list.status !== 0 || list.signal
-          || JSON.stringify(list.stdout.trim().split('\n').sort()) !== JSON.stringify(EXPECTED_MEMBERS)) {
+          || JSON.stringify(list.stdout.trim().split('\n').sort()) !== JSON.stringify(members)) {
         fail('tarball_members_invalid');
       }
       const kinds = spawnSync(SYSTEM_TAR, ['-tvzf', file], { encoding: 'utf8', shell: false, timeout: 10000, maxBuffer: 8192 });
       if (kinds.error || kinds.status !== 0 || kinds.signal
-          || kinds.stdout.trim().split('\n').length !== EXPECTED_MEMBERS.length
+          || kinds.stdout.trim().split('\n').length !== members.length
           || kinds.stdout.trim().split('\n').some((entry) => !entry.startsWith('-'))) {
         fail('tarball_member_type_invalid');
       }
@@ -181,7 +199,7 @@ function downloadTarball(lock) {
       let size = 0;
       response.on('data', (chunk) => {
         size += chunk.length;
-        if (size > 8 * 1024 * 1024) { request.destroy(new Error('tarball_too_large')); return; }
+        if (size > MAX_TARBALL_BYTES) { request.destroy(new Error('tarball_too_large')); return; }
         chunks.push(chunk);
       });
       response.on('end', () => resolve(Buffer.concat(chunks)));
@@ -215,8 +233,23 @@ if (require.main === module) {
       process.stdout.write(JSON.stringify({ status: 'installed', root: await installFromRegistry() }) + '\n');
     } else if (action === 'install' && process.argv[3] === '--tarball' && path.isAbsolute(process.argv[4] || '') && process.argv.length === 5) {
       process.stdout.write(JSON.stringify({ status: 'installed', root: installTarball(process.argv[4]) }) + '\n');
+    } else if (action === 'exec' && ((process.argv[3] === 'grammar'
+        && ['status', 'probe'].includes(process.argv[4]))
+        || (process.argv[3] === 'check' && process.argv[4] === 'all'
+          && path.isAbsolute(process.argv[5] || '')))) {
+      const args = process.argv.slice(3);
+      const result = spawnSync(activeBinary(), args, {
+        encoding: 'utf8', shell: false,
+        timeout: args[0] === 'check' ? 120000 : 30000,
+        maxBuffer: args[0] === 'check' ? 4 * 1024 * 1024 : 1024 * 1024,
+        env: { ...process.env, CODEGUARD_SKIP_GATE: '' },
+      });
+      if (result.error || result.signal) fail('grammar_command_failed');
+      process.stdout.write(result.stdout);
+      process.stderr.write(result.stderr);
+      process.exitCode = result.status;
     } else {
-      fail('usage: verify | install --download | install --tarball ABS_PATH');
+      fail('usage: verify | install --download | install --tarball ABS_PATH | exec grammar status|probe ... | exec check all ABS_PROJECT ...');
     }
   })().catch((error) => {
     process.stderr.write(`${error.message}\n`);
