@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "codeguard": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-X",
+        "utf8",
+        "./scripts/run_check.py",
+        "--mcp"
+      ],
+      "cwd": "./"
+    }
+  }
+}

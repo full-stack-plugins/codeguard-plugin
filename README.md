@@ -115,6 +115,8 @@ CVE exits: 0 pass, 1 unverified, 2 findings, 3 invalid ecosystem. Maven/npm/pip-
 
 ### MCP server
 
+The root `mcp.json` provides portable Agent Plugins 1.0.0 discovery of the existing CodeGuard stdio server. The host needs Python and the dependencies in `requirements.txt`; installation does not install them automatically. The configured working directory is the plugin root. For `check_code_style`, `auto_fix`, and `analyze_java_impact`, supply the target project’s absolute `path` in each tool call; the plugin directory is not the user project. `list_languages` needs no project path.
+
 ```bash
 # Requires the dependencies declared in requirements.txt.
 python3 scripts/run_check.py --mcp /path/to/project

@@ -1,11 +1,11 @@
 {
   "name": "codeguard",
-  "displayName": "代码规范守卫",
+  "displayName": "CodeGuard",
   "displayName_i18n": {
-    "en": "代码规范守卫",
+    "en": "CodeGuard",
     "zh-CN": "代码规范检查"
   },
-  "version": "0.18.2",
+  "version": "0.18.3",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "description_i18n": {
     "en": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
