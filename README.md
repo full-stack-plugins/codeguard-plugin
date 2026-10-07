@@ -10,32 +10,43 @@
 
 CodeGuard provides native check evidence and guards supported Git commit/push calls from AI coding assistants. PostToolUse gives feedback, not blocking. Verified violations block the Git call; unavailable checks remain explicitly UNVERIFIED. Passing a configured check is not proof of complete code correctness.
 
-### Rust runtime candidate (macOS arm64)
+### Rust lifecycle runtime (macOS arm64)
 
-The plugin now contains a **candidate**, explicit Rust runtime binding. It pins `@partme.ai/codeguard@0.1.2`, its registry tarball and native binary hashes, candidate source commit, platform, and check protocol major in [`runtime/codeguard.lock.json`](runtime/codeguard.lock.json). Install only on Apple Silicon macOS:
+Canonical [`hooks/hooks.json`](hooks/hooks.json) now routes SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure and Stop through [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) to fixed `@partme.ai/codeguard@0.1.4`. [`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) pins the public tarball, binary, source commit and 32 grammar-license hashes. Node 18+ is the thin host binding; Rust performs discovery, native checks, WASM parsing and task synchronization.
+
+Install explicitly on Apple Silicon macOS, then initialize the selected project:
 
 ```bash
 node runtime/codeguard_runtime.cjs install --download
 node runtime/codeguard_runtime.cjs verify
+node runtime/codeguard_runtime.cjs exec init /absolute/project --apply --format=json
+node runtime/codeguard_runtime.cjs exec next /absolute/project --format=json
+node runtime/codeguard_runtime.cjs exec grammar status --format=json
+node runtime/codeguard_runtime.cjs exec check all /absolute/project --format=json
+# Use the real ID returned by next:
+node runtime/codeguard_runtime.cjs exec task show TASK_ID /absolute/project --format=json
+node runtime/codeguard_runtime.cjs exec task verify TASK_ID /absolute/project --zig-tool /absolute/zig --format=json
 ```
 
-For offline installation, use `install --tarball /absolute/path/to/partme.ai-codeguard-0.1.2.tgz`; the same lock hashes are enforced. Installation stages and verifies the package before switching the active receipt. [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) is a candidate Claude Code adapter for SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, and Stop. It rechecks the active binary before each call, never selects a random `codeguard` on `PATH`, and reports an incomplete runtime instead of falling back to Python. UserPromptSubmit returns fixed, non-blocking timing guidance; it does not run lint or treat prompt words as a Git gate. The current [`hooks/hooks.json`](hooks/hooks.json) still uses the legacy Python hooks; the Rust candidate has not been made the default, connected to a strict Git gate, or accepted on Codex/ZCode/Kimi. See the [candidate acceptance record](tests/rust-runtime-candidate.md) and [hook protocol](hooks/__protocol__.md).
+Offline installation uses `install --tarball /absolute/path/to/codeguard-public-0.1.4-darwin-arm64.tgz` with the same digest checks. Hooks do not download packages. An unavailable or unsupported runtime returns visible incomplete/setup guidance, without PATH codeguard or Python fallback. Successful edits select only the changed file: supported native Ruff/ESLint checks precede bounded WASM; suspected syntax creates a stable native-confirmation task in an initialized workspace. Zero recovery nodes only recommend native checking and never close an old task. The program contains all 32 runnable but **unqualified** grammar candidates, including Dart and Zig.
 
-The installed plugin version is recorded in its manifests. The architecture refactor keeps the existing 68 managed skills and focuses on reliable evidence, clear module ownership and Java project awareness.
+Prompt events only give fixed timing guidance, failed edits do not scan source, and Stop gives bounded next-task guidance with reentry handling. Internal check budget is 5 seconds, child-process timeout 8 seconds, host timeout 10 seconds. This does not certify all filesystem I/O deadlines or installed-host latency. `auto_fix_on_save` and legacy timeout settings remain compatibility fields; Rust does not silently apply fixes. An uninitialized workspace needs explicit init before durable tasks exist.
+
+The PreToolUse Git gate and legacy CLI/MCP remain Python compatibility surfaces; Copilot/OpenHands carry identical mirrors of the lifecycle binding for package consistency. Those mirrors are not installed-host acceptance. Installed Claude/Codex/ZCode/Kimi automation, trusted closure policy, full native-first coverage, other platforms and precision remain open. See [default lifecycle acceptance](tests/rust-lifecycle-default.md), [historical candidate evidence](tests/rust-runtime-candidate.md), [historical 32-grammar acceptance](tests/rust-wasm-runtime-candidate.md), and [hook protocol](hooks/__protocol__.md).
 
 ### Runtime boundaries
 
 | Surface | What it checks | Result |
 |---|---|---|
 | PostToolUse | Edited file, for file-scoped tools | Feedback, exit 0; project-level checks deferred |
-| UserPromptSubmit | Working-tree changes relevant to commit intent | Advisory, never blocks the user message |
+| UserPromptSubmit | Fixed checking-time guidance; no source scan | Advisory, never blocks the user message |
 | PreToolUse Git gate | Proposed index snapshot or HEAD snapshot for push | Verified violations exit 2; uncertain checks report UNVERIFIED and fail open |
 | CLI check / MCP check_code_style | Project checks, including Java build verification | Explicit status, reason, raw exit code, ordered execution trace and output log |
 | pre-commit / CI | Independently configured checks | Separate acceptance; not replaced by hook success |
 
 Hooks do not run in every host command surface automatically. Historical V0.5.4 installation evidence is not acceptance of this version in Codex, ZCode or Kimi.
 
-Claude Code does not support a matcher on `UserPromptSubmit`: it starts the legacy Python Hook for every submitted prompt. The Hook returns before environment or repository work when its own intent filter does not match. A commit-intent prompt may still run the legacy soft check; only the actual Git command reaches the PreToolUse gate. The manifest cannot avoid per-prompt process startup, and installed-host latency has not been measured.
+Claude Code invokes the canonical Rust prompt binding on every UserPromptSubmit; no keyword matcher or prompt-triggered lint is used. Copilot/OpenHands carry the same mirror; their actual host protocol compatibility still needs separate acceptance. Actual Git commands still reach PreToolUse. Installed-host latency has not been measured.
 
 ### Verdict contract
 
