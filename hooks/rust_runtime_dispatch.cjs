@@ -17,11 +17,17 @@ const EVENTS = new Map([
   ['stop', 'Stop'],
 ]);
 
+// 恢复命令是给用户直接复制执行的；插件路径可能含空格（macOS 的 Application Support）
+// 或单引号，未转义会被 shell 拆成多个参数。按 POSIX 规则用单引号包裹，内部单引号转义。
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
 function incomplete(event, reason) {
   const safe = /^[a-z_]+$/.test(reason) ? reason : 'runtime_unavailable';
   // hooks 在用户 workspace 里运行，而管理器位于已安装插件根目录；相对路径会让照抄的用户
   // 得到 MODULE_NOT_FOUND，生命周期就永久卡在未完成。必须给出可直接执行的绝对路径。
-  const manager = path.join(pluginRoot, 'runtime', 'codeguard_runtime.cjs');
+  const manager = shellQuote(path.join(pluginRoot, 'runtime', 'codeguard_runtime.cjs'));
   const message = `CodeGuard Rust 运行时未完成（${safe}）；本次源码检查未运行，交付未评估。请用 Node 18+ 执行 node ${manager} verify；支持的 macOS arm64 上显式运行 node ${manager} install --download。运行时可用后，使用同一入口 exec init ABS_PROJECT --apply 初始化修复任务，或 exec next ABS_PROJECT 获取指引。`;
   return event === 'stop'
     ? { systemMessage: message }
