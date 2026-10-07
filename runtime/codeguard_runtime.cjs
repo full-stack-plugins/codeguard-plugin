@@ -125,6 +125,12 @@ function verifyTarball(file, lock) {
   }
 }
 
+// 非失败式核验：只回答「这个已安装目录是否仍然完好」，供重装路径判断能否复用。
+// 不吞掉真实结论——调用方仍会用 verifyPackage 做最终复核。
+function packageIntact(dir, lock) {
+  try { verifyPackage(dir, lock); return true; } catch { return false; }
+}
+
 function installTarball(file, root = cacheRoot()) {
   const lock = readLock();
   const members = expectedMembers(lock);
@@ -137,6 +143,12 @@ function installTarball(file, root = cacheRoot()) {
   try { leaseFd = fs.openSync(lease, 'wx', 0o600); } catch { fail('installation_busy'); }
   let staging;
   try {
+    // 内容寻址目录存在但核验失败时（例如 grammar 许可被改动或删除），binary-distribution
+    // 规范要求「已存在但内容不同的目录 MUST 保留且拒绝，不得替换」——不能静默重建覆盖。
+    // 但也不能只留一个无法自查的失败：把确切的缓存目录写进原因，用户据此移除后重试。
+    if (fs.existsSync(final) && !packageIntact(final, lock)) {
+      fail(`cached_package_corrupt_remove_then_reinstall (remove: ${final})`);
+    }
     if (!fs.existsSync(final)) {
       staging = fs.mkdtempSync(path.join(root, '.stage-'));
       fs.chmodSync(staging, 0o700);
