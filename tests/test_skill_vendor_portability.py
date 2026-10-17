@@ -62,7 +62,7 @@ class SkillVendorCheckoutTest(unittest.TestCase):
             (upstream / "SKILL.md").write_bytes(text)
             (upstream / "data.bin").write_bytes(binary)
             def git(*arguments):
-                result = subprocess.run(["git", "-c", "core.autocrlf=false", "-C", str(upstream), *arguments], capture_output=True, text=True)
+                result = subprocess.run(["git", "-c", "core.autocrlf=false", "-C", str(upstream), *arguments], capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr)
             git("init", "--quiet")
             git("add", "SKILL.md", "data.bin")
@@ -76,7 +76,7 @@ class SkillVendorCheckoutTest(unittest.TestCase):
                       "s=importlib.util.spec_from_file_location('vendor',sys.argv[1]);"
                       "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
                       "m.fetch_checkout(sys.argv[2],'v1.0.0',Path(sys.argv[3]))")
-            result = subprocess.run([sys.executable, "-B", "-c", runner, str(ROOT / "scripts/vendor/skill_vendor.py"), str(upstream), str(root / "fetch")], env=environment, capture_output=True, text=True)
+            result = subprocess.run([sys.executable, "-B", "-c", runner, str(ROOT / "scripts/vendor/skill_vendor.py"), str(upstream), str(root / "fetch")], env=environment, capture_output=True, text=True, check=False)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((root / "fetch/checkout/SKILL.md").read_bytes(), text)
             self.assertEqual((root / "fetch/checkout/data.bin").read_bytes(), binary)
@@ -95,7 +95,7 @@ class SkillVendorCheckoutTest(unittest.TestCase):
             (repo / "skills/example/SKILL.md").write_bytes(text)
             (repo / "skills/example/data.bin").write_bytes(binary)
             for arguments in [["init", "--quiet"], ["add", ".gitattributes", "skills"], ["checkout-index", "--all", "--prefix=" + (root / "export").as_posix() + "/"]]:
-                result = subprocess.run(["git", "-c", "core.autocrlf=true", "-C", str(repo), *arguments], capture_output=True, text=True)
+                result = subprocess.run(["git", "-c", "core.autocrlf=true", "-C", str(repo), *arguments], capture_output=True, text=True, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / "export/skills/example/SKILL.md").read_bytes(), text)
             self.assertEqual((root / "export/skills/example/data.bin").read_bytes(), binary)
