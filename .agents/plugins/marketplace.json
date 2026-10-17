@@ -22,7 +22,7 @@
       "interface": {
         "displayName": "CodeGuard",
         "shortDescription": "Trustworthy code checks and Java impact analysis",
-        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.20.0/assets/official-logo.png"
+        "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.21.0/assets/official-logo.png"
       }
     }
   ]
