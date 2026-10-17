@@ -1,5 +1,14 @@
 # CodeGuard plugin
 
+## Plugin marketplaces
+
+This plugin belongs to **Full-stack development**.
+
+| Category | Marketplace | Purpose |
+| --- | --- | --- |
+| Full-stack development | [Full Stack Plugins](https://github.com/partme-ai/full-stack-plugins) | Architecture and UI design, code understanding, quality checks, code review, workflow governance, and server operations |
+| AIGC content creation | [Full AIGC Plugins](https://github.com/partme-ai/full-aigc-plugins) | Image, video, audio, music, 3D, and multimodal content creation |
+
 > Parity: README.md and README.zh-CN.md must keep the same heading structure, local links and version strings; enforced by tests/test_readme_parity.py.
 
 [English](README.md) · [简体中文](README.zh-CN.md)

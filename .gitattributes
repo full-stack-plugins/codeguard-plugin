@@ -1,0 +1,3 @@
+# Vendored text bytes must remain identical to the LF source snapshots.
+# Auto detection keeps binary skill artifacts byte-for-byte unchanged.
+skills/** text=auto eol=lf

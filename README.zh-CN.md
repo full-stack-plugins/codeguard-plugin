@@ -1,5 +1,14 @@
 # CodeGuard 插件
 
+## 插件市场导航
+
+本插件所属分类：**全栈开发**。
+
+| 分类 | 插件市场入口 | 用途 |
+| --- | --- | --- |
+| 全栈开发 | [Full Stack Plugins](https://github.com/partme-ai/full-stack-plugins) | 架构与 UI 设计、代码理解、质量检查、代码审查、流程治理与服务器运维 |
+| AIGC 内容创作 | [Full AIGC Plugins](https://github.com/partme-ai/full-aigc-plugins) | 图像、视频、音频、音乐、3D 与多模态内容创作 |
+
 > 结构对齐：README.md 与 README.zh-CN.md 的标题层级、本地链接和版本串必须一致，由 tests/test_readme_parity.py 检查。
 
 [English](README.md) · [简体中文](README.zh-CN.md)
