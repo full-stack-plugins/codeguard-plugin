@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/env_check.py\"",
-            "timeout": 30,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rust_runtime_dispatch.cjs\" session-start",
+            "timeout": 10,
             "statusMessage": "codeguard: 检测项目语言与现有 linter 配置…"
           }
         ]
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_validator.py\"",
-            "timeout": 120
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rust_runtime_dispatch.cjs\" user-prompt-submit",
+            "timeout": 10
           }
         ]
       }
@@ -42,8 +42,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_tool_lint.py\"",
-            "timeout": 180
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rust_runtime_dispatch.cjs\" post-tool-use",
+            "timeout": 10
           }
         ]
       }
@@ -53,8 +53,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_summary.py\"",
-            "timeout": 15
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rust_runtime_dispatch.cjs\" stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rust_runtime_dispatch.cjs\" post-tool-use-failure",
+            "timeout": 10
           }
         ]
       }

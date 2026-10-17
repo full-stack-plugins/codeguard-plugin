@@ -18,7 +18,7 @@ jobs:
         run: |
           node --check runtime/codeguard_runtime.cjs
           node --check hooks/rust_runtime_dispatch.cjs
-          node --test tests/test_rust_runtime.cjs
+          node --test --test-concurrency=1 tests/test_rust_runtime.cjs tests/test_rust_lifecycle.cjs
   vendor-check:
     runs-on: ubuntu-latest
     strategy:
