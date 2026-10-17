@@ -11,8 +11,8 @@
  *
  * 做的事：
  *   1. catalog.json 该插件 version bump
- *   2. 插件仓 4 个 manifest 同步（.zcode-plugin / kimi.plugin.json /
- *      .agents/plugins/marketplace.json 精确改；.codex-plugin 带当日 +codex.日期 后缀）
+ *   2. 插件现有清单与可选[project].version同步；Claude plugin/marketplace分别处理，
+ *      .codex-plugin 带当日 +codex.日期 后缀，所有漂移在写入前拒绝
  *   3. 重跑 sync-marketplaces.mjs --write 重新生成三平台清单并校验
  *   4. 打印两仓待提交提示
  */
@@ -72,17 +72,20 @@ function resolvePluginsRoot() {
 }
 
 
-if (!pluginId || !["major", "minor", "patch"].includes(level)) {
+if (!pluginId || !["major", "minor", "patch"].includes(level)
+    || process.argv.slice(2).length > 3 || (dryRunFlag !== undefined && !dryRun)) {
   console.error("用法: node scripts/bump-plugin.mjs <plugin-id> <major|minor|patch> [--dry-run]");
   process.exit(1);
 }
 
 const bump = (v) => {
-  const [major, minor, patch] = v.split(".").map(Number);
-  if ([major, minor, patch].some(Number.isNaN)) throw new Error(`无法解析版本号: ${v}`);
-  if (level === "major") return `${major + 1}.0.0`;
-  if (level === "minor") return `${major}.${minor + 1}.0`;
-  return `${major}.${minor}.${patch + 1}`;
+  if (typeof v !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(v)) throw new Error(`无法解析版本号: ${v}`);
+  const parts = v.split(".").map(Number);
+  const index = {major: 0, minor: 1, patch: 2}[level];
+  if (parts.some(n => !Number.isSafeInteger(n)) || !Number.isSafeInteger(parts[index] + 1)) throw new Error(`版本号超出安全范围: ${v}`);
+  parts[index] += 1;
+  for (let i = index + 1; i < parts.length; i++) parts[i] = 0;
+  return parts.join(".");
 };
 
 const catalogPath = path.join(root, "catalog.json");
@@ -104,100 +107,151 @@ const today = new Intl.DateTimeFormat("en-CA", {
 }).format(new Date()).replaceAll("-", "");
 const repoDir = path.join(workspace, plugin.localDirectory);
 
-const edits = [{ file: catalogPath, description: `${pluginId}: ${oldVersion} -> ${newVersion}` }];
-const plainManifestRels = [
-  ".zcode-plugin/plugin.json",
-  "kimi.plugin.json",
-  // Claude 宿主市场清单（plugins[0].version 单点，bumpPlain 首个 version 匹配即覆盖）
-  ".claude-plugin/marketplace.json",
-];
-if (fs.existsSync(path.join(repoDir, "plugin.json"))) plainManifestRels.push("plugin.json");
 
-for (const rel of plainManifestRels) {
-  edits.push({ file: path.join(repoDir, rel), description: `${rel}: ${oldVersion} -> ${newVersion}` });
+// 所有目标先解析和核对，再写入任何文件；dry-run也必须拒绝漂移。
+const writes = new Map();
+const checks = [];
+const edits = [];
+const format = value => `${JSON.stringify(value, null, 2)}\n`;
+const parse = file => JSON.parse(fs.readFileSync(file, "utf8"));
+function expectVersion(actual, expected, label) {
+  if (actual !== expected) throw new Error(`${label}: 版本 ${actual ?? "(未找到)"} 与计划 ${expected} 漂移；拒绝写入，请先对齐已发布版本`);
 }
-edits.push({
-  file: path.join(repoDir, ".agents/plugins/marketplace.json"),
-  description: `.agents/plugins/marketplace.json: ${oldVersion} -> ${newVersion} + release URLs`,
-});
-// codex manifest 允许 <version>+codex.<date> 后缀（sync 校验认可的形状）
-edits.push({
-  file: path.join(repoDir, ".codex-plugin/plugin.json"),
-  description: `.codex-plugin/plugin.json: -> ${newVersion}+codex.${today}`,
-});
-
-console.log(`发版计划: ${pluginId} ${oldVersion} -> ${newVersion}${dryRun ? "（dry-run，不写文件）" : ""}`);
-for (const e of edits) console.log(`  - ${path.relative(workspace, e.file)}  ${e.description}`);
-
-if (dryRun) process.exit(0);
-
-// 1) catalog 精确改插件 version（保持文件其余部分不动）
-let catalogText = fs.readFileSync(catalogPath, "utf8");
-const catalogNeedle = `"id": "${pluginId}"`;
-const idx = catalogText.indexOf(catalogNeedle);
-if (idx === -1) throw new Error(`catalog.json 中找不到 ${pluginId}`);
-const segStart = catalogText.indexOf('"version": "', idx);
-const segEnd = catalogText.indexOf('"', segStart + 12);
-catalogText = catalogText.slice(0, segStart) + `"version": "${newVersion}"` + catalogText.slice(segEnd + 1);
-fs.writeFileSync(catalogPath, catalogText);
-
-// 2) 各仓 manifest
-const bumpPlain = (text, rel) => {
-  const updated = text.replace(`"version": "${oldVersion}"`, `"version": "${newVersion}"`);
-  if (updated === text) {
-    const actual = /"version": "([^"]+)"/.exec(text)?.[1] ?? "(未找到)";
-    throw new Error(`${rel}: manifest 版本 ${actual} 与 catalog ${oldVersion} 漂移；拒绝静默跳过，请先对齐版本再发版`);
+function planJson(rel, readVersion, update, expected = oldVersion, target = newVersion) {
+  const file = path.join(repoDir, rel);
+  const value = parse(file);
+  expectVersion(readVersion(value), expected, rel);
+  update(value);
+  expectVersion(readVersion(value), target, rel);
+  writes.set(file, format(value));
+  checks.push(() => expectVersion(readVersion(parse(file)), target, `${rel} 写后回读`));
+  edits.push({file, description: `${rel}: ${expected} -> ${target}`});
+}
+const onePlugin = (value, label) => {
+  if (!Array.isArray(value.plugins) || value.plugins.length !== 1 || !value.plugins[0] || typeof value.plugins[0] !== "object") {
+    throw new Error(`${label}: repository marketplace must contain exactly one plugin`);
   }
-  return updated;
+  return value.plugins[0];
 };
-const bumpCodex = (text) => text.replace(/"version": "\d+\.\d+\.\d+(?:\+codex\.\d+)?"/, `"version": "${newVersion}+codex.${today}"`);
+const plainManifestRels = [".zcode-plugin/plugin.json", "kimi.plugin.json"];
+for (const optional of ["plugin.json", ".claude-plugin/plugin.json"]) {
+  if (fs.existsSync(path.join(repoDir, optional))) plainManifestRels.push(optional);
+}
+for (const rel of plainManifestRels) planJson(rel, v => v.version, v => {v.version = newVersion;});
 
-for (const rel of plainManifestRels) {
-  const manifest = path.join(repoDir, rel);
-  fs.writeFileSync(manifest, bumpPlain(fs.readFileSync(manifest, "utf8"), rel));
+const claudeMarketplace = ".claude-plugin/marketplace.json";
+if (fs.existsSync(path.join(repoDir, claudeMarketplace))) {
+  planJson(claudeMarketplace, v => onePlugin(v, claudeMarketplace).version,
+    v => {onePlugin(v, claudeMarketplace).version = newVersion;});
 }
-const repositoryMarketplace = path.join(repoDir, ".agents/plugins/marketplace.json");
-const marketplace = JSON.parse(fs.readFileSync(repositoryMarketplace, "utf8"));
-if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length !== 1) {
-  throw new Error(`${pluginId}: repository marketplace must contain exactly one plugin`);
+const agents = ".agents/plugins/marketplace.json";
+planJson(agents, v => onePlugin(v, agents).version, v => {
+  const entry = onePlugin(v, agents);
+  if (!entry.source || typeof entry.source !== "object" || !entry.interface || typeof entry.interface !== "object") {
+    throw new Error(`${agents}: source/interface object required`);
+  }
+  entry.version = newVersion;
+  entry.description = plugin.description;
+  entry.interface.shortDescription = plugin.shortDescription;
+  entry.source.ref = `v${newVersion}`;
+  entry.icon = `https://cdn.jsdelivr.net/gh/${plugin.repository}@v${newVersion}/${plugin.logo}`;
+  entry.interface.logo = entry.icon;
+});
+const codex = ".codex-plugin/plugin.json";
+const codexOld = parse(path.join(repoDir, codex)).version;
+const codexPrefix = `${oldVersion}+codex.`;
+if (typeof codexOld !== "string" || !(codexOld === oldVersion || (codexOld.startsWith(codexPrefix) && /^\d{8}$/.test(codexOld.slice(codexPrefix.length))))) {
+  throw new Error(`${codex}: 版本 ${codexOld} 与 catalog ${oldVersion} 漂移；拒绝写入`);
 }
-const marketplacePlugin = marketplace.plugins[0];
-const releaseRef = `v${newVersion}`;
-const logoUrl = `https://cdn.jsdelivr.net/gh/${plugin.repository}@${releaseRef}/${plugin.logo}`;
-marketplacePlugin.version = newVersion;
-marketplacePlugin.description = plugin.description;
-marketplacePlugin.interface.shortDescription = plugin.shortDescription;
-marketplacePlugin.source.ref = releaseRef;
-marketplacePlugin.icon = logoUrl;
-marketplacePlugin.interface.logo = logoUrl;
-fs.writeFileSync(repositoryMarketplace, `${JSON.stringify(marketplace, null, 2)}\n`);
-const codexManifest = path.join(repoDir, ".codex-plugin/plugin.json");
-fs.writeFileSync(codexManifest, bumpCodex(fs.readFileSync(codexManifest, "utf8")));
+planJson(codex, v => v.version, v => {v.version = `${newVersion}+codex.${today}`;}, codexOld, `${newVersion}+codex.${today}`);
 
-// 写后回读：五文件版本必须与计划一致——写后不验等于没写（防半程假成功）
-for (const rel of plainManifestRels) {
-  const data = JSON.parse(fs.readFileSync(path.join(repoDir, rel), "utf8"));
-  // 版本路径按清单形态分流：Claude 市场清单的版本在 plugins[0].version
-  // （bumpPlain 的文本替换同样只改那一处），其余清单在顶层 version。
-  const readback = rel.startsWith(".claude-plugin/")
-    ? data.plugins?.[0]?.version
-    : data.version;
-  if (readback !== newVersion) throw new Error(`${rel}: 写后回读 ${readback} != ${newVersion}`);
+// 只编辑[project]的唯一静态version字符串；保留其他表、引号、注释和换行。
+// 扫描字符串状态，不能将多行description里的伪[project]/version当成元数据。
+function pythonProjectVersion(text) {
+  let offset = 0, project = false, seen = false, seenTable = false, quote = null, depth = 0;
+  const versions = [];
+  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    const eligible = quote === null && depth === 0;
+    if (eligible && /^\s*\[/.test(line)) {
+      seenTable = true;
+      project = /^\s*\[\s*(?:project|"project"|'project')\s*\]\s*(?:#.*)?(?:\r?\n)?$/.test(line);
+      if (project && seen) throw new Error("pyproject.toml: duplicate [project] table");
+      seen ||= project;
+    } else if (eligible && project && /^\s*(?:version|"version"|'version')\s*=/.test(line)) {
+      const match = /^(\s*(?:version|"version"|'version')\s*=\s*)(["'])([^"'\r\n]*)\2\s*(?:#.*)?(?:\r?\n)?$/.exec(line);
+      if (!match) throw new Error("pyproject.toml: one static project version string required");
+      versions.push({value: match[3], start: offset + match[1].length + 1});
+    } else if (eligible && !seenTable && /^\s*(?:project\.|project\s*=|"project"\s*=|'project'\s*=)/.test(line)) {
+      throw new Error("pyproject.toml: unsupported project table form; explicit [project] version required");
+    }
+    for (let i = 0; i < line.length; i++) {
+      if (quote !== null) {
+        if (quote[0] === '"' && line.charCodeAt(i) === 92) { i++; continue; }
+        if (line.startsWith(quote, i)) { i += quote.length - 1; quote = null; }
+      } else {
+        if (line[i] === "#") break;
+        if (line[i] === '"' || line[i] === "'") {
+          const triple = line[i].repeat(3);
+          quote = line.startsWith(triple, i) ? triple : line[i];
+          i += quote.length - 1;
+        } else if (line[i] === "[" || line[i] === "{") depth++;
+        else if (line[i] === "]" || line[i] === "}") depth--;
+      }
+    }
+    if (quote !== null && quote.length === 1) throw new Error("pyproject.toml: malformed single-line string");
+    offset += line.length;
+  }
+  if (quote !== null || depth !== 0) throw new Error("pyproject.toml: unclosed string or collection");
+  if (seen && versions.length !== 1) throw new Error("pyproject.toml: exactly one static [project].version required");
+  return seen ? versions[0] : null;
 }
-const codexReadback = fs.readFileSync(codexManifest, "utf8");
-if (!codexReadback.includes(`"version": "${newVersion}+codex.${today}"`)) {
-  throw new Error(`.codex-plugin/plugin.json: 写后回读版本不符`);
-}
-if (!catalogText.includes(`"version": "${newVersion}"`)) {
-  throw new Error(`catalog.json: 写后回读版本不符`);
+const pyproject = path.join(repoDir, "pyproject.toml");
+if (fs.existsSync(pyproject)) {
+  const original = fs.readFileSync(pyproject, "utf8");
+  const entry = pythonProjectVersion(original);
+  if (entry) {
+    expectVersion(entry.value, oldVersion, "pyproject.toml [project].version");
+    writes.set(pyproject, original.slice(0, entry.start) + newVersion + original.slice(entry.start + entry.value.length));
+    checks.push(() => expectVersion(pythonProjectVersion(fs.readFileSync(pyproject, "utf8"))?.value, newVersion, "pyproject.toml 写后回读"));
+    edits.push({file: pyproject, description: `[project].version: ${oldVersion} -> ${newVersion}`});
+  }
 }
 
-// 3) 重新生成三平台清单 + 全量校验
+// 保留现有catalog文本布局，同时核对改动恰好是目标插件version，避免误改邻项。
+let catalogText = fs.readFileSync(catalogPath, "utf8");
+const needle = `"id": "${pluginId}"`;
+const index = catalogText.indexOf(needle);
+if (index === -1) throw new Error(`catalog.json 中找不到 ${pluginId}`);
+const begin = catalogText.indexOf('"version": "', index);
+const end = catalogText.indexOf('"', begin + 12);
+if (begin === -1 || end === -1) throw new Error("catalog.json: version token unavailable");
+catalogText = catalogText.slice(0, begin) + `"version": "${newVersion}"` + catalogText.slice(end + 1);
+const expectedCatalog = structuredClone(catalog);
+expectedCatalog.plugins.find(p => p.id === pluginId).version = newVersion;
+if (JSON.stringify(JSON.parse(catalogText)) !== JSON.stringify(expectedCatalog)) throw new Error("catalog.json: targeted version edit ambiguous; refusing mutation");
+writes.set(catalogPath, catalogText);
+checks.push(() => expectVersion(parse(catalogPath).plugins.find(p => p.id === pluginId)?.version, newVersion, "catalog.json 写后回读"));
+edits.unshift({file: catalogPath, description: `${pluginId}: ${oldVersion} -> ${newVersion}`});
+
+const bumpReadme = text => {
+  let next = text.split(`v${oldVersion}`).join(`v${newVersion}`);
+  next = next.split(oldVersion).join(newVersion);
+  return next.replace(/(\d+\.\d+\.\d+)\+codex\.\d+/g,
+    (match, version) => version === newVersion ? `${newVersion}+codex.${today}` : match);
+};
+for (const name of ["README.md", "README.zh-CN.md"]) {
+  const file = path.join(repoDir, name);
+  if (fs.existsSync(file)) writes.set(file, bumpReadme(fs.readFileSync(file, "utf8")));
+}
+console.log(`发版计划: ${pluginId} ${oldVersion} -> ${newVersion}${dryRun ? "（dry-run，不写文件）" : ""}`);
+for (const edit of edits) console.log(`  - ${path.relative(workspace, edit.file)}  ${edit.description}`);
+if (dryRun) process.exit(0);
+for (const [file, text] of writes) fs.writeFileSync(file, text);
+for (const check of checks) check();
+
 const pluginFilter = `--plugin=${pluginId}`;
-execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), "--write", pluginFilter], { stdio: "inherit" });
-execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), pluginFilter], { stdio: "inherit" });
-
-// 4) 提交提示
+execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), "--write", pluginFilter], {stdio: "inherit"});
+execFileSync(process.execPath, [path.join(root, "scripts/sync-marketplaces.mjs"), pluginFilter], {stdio: "inherit"});
 console.log(`
 ✅ ${pluginId} ${newVersion} 本地元数据已准备；尚未提交、推送或发布。剩余步骤：
   cd ${root} && git add -A && git commit -m "release: ${pluginId} ${newVersion}" && git push

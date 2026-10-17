@@ -38,9 +38,12 @@ def fail(message: str) -> None:
 
 
 def hash_skill_dir(skill_dir: Path) -> str:
-    """Return a deterministic digest over every file in one skill."""
+    """Hash raw file bytes in case-sensitive POSIX relative-path order."""
     digest = hashlib.sha256()
-    for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
+    for path in sorted(
+        (p for p in skill_dir.rglob("*") if p.is_file()),
+        key=lambda p: p.relative_to(skill_dir).as_posix(),
+    ):
         relative = path.relative_to(skill_dir).as_posix()
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
@@ -81,7 +84,10 @@ def fetch_checkout(repo: str, ref: str, workdir: Path) -> Path:
         check=True,
     )
     subprocess.run(
-        ["git", "-C", str(checkout), "checkout", "--quiet", "--detach", "FETCH_HEAD"],
+        [
+            "git", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+            "-C", str(checkout), "checkout", "--quiet", "--detach", "FETCH_HEAD",
+        ],
         check=True,
     )
     head = subprocess.run(
