@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CodeGuard",
+    "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit."
+  }
+}
