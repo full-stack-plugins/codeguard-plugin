@@ -1,5 +1,5 @@
 {
-  "name": "@partme-dsh/codeguard",
+  "name": "codeguard",
   "version": "0.21.0",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "type": "module",
@@ -36,5 +36,6 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
-  }
+  },
+  "private": true
 }
