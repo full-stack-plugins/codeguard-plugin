@@ -1,7 +1,7 @@
 {
   "name": "codeguard",
   "version": "0.21.0",
-  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+  "description": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"

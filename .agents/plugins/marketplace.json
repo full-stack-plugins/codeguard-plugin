@@ -1,7 +1,7 @@
 {
   "name": "partme-ai-codeguard",
   "interface": {
-    "displayName": "CodeGuard"
+    "displayName": "Code Quality · CodeGuard"
   },
   "plugins": [
     {
@@ -17,11 +17,11 @@
       },
       "category": "Developer Tools",
       "version": "0.21.0",
-      "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+      "description": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",
       "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.21.0/assets/official-logo.png",
       "interface": {
-        "displayName": "CodeGuard",
-        "shortDescription": "Trustworthy code checks and Java impact analysis",
+        "displayName": "Code Quality · CodeGuard",
+        "shortDescription": "Lint, CVE and guided fixes for 60+ languages, commit gates",
         "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.21.0/assets/official-logo.png"
       }
     }
