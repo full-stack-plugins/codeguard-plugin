@@ -1,22 +1,20 @@
 {
   "name": "codeguard",
-  "displayName": "CodeGuard",
+  "displayName": "Code Quality · CodeGuard",
   "displayName_i18n": {
-    "en": "CodeGuard",
-    "zh-CN": "代码规范检查"
+    "en": "Code Quality · CodeGuard"
   },
   "version": "0.21.0",
-  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+  "description": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",
   "description_i18n": {
-    "en": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
-    "zh-CN": "基于证据的代码检查与 Git 内容门禁，含 Java 模块影响分析。保存钩子只反馈，未验证项明确标注。"
+    "en": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned."
   },
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
     "url": "https://github.com/partme-ai"
   },
-  "homepage": "https://github.com/partme-ai/partme-codeguard-plugin",
-  "repository": "https://github.com/partme-ai/partme-codeguard-plugin",
+  "homepage": "https://github.com/full-stack-plugins/codeguard-plugin",
+  "repository": "https://github.com/full-stack-plugins/codeguard-plugin",
   "license": "Apache-2.0",
   "keywords": [
     "java",

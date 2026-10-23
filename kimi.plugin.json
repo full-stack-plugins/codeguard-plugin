@@ -1,11 +1,11 @@
 {
   "name": "codeguard",
   "version": "0.21.0",
-  "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
+  "description": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",
   "author": {
     "name": "Full Stack Skills / PartMe.AI"
   },
-  "homepage": "https://github.com/partme-ai/partme-codeguard-plugin",
+  "homepage": "https://github.com/full-stack-plugins/codeguard-plugin",
   "license": "Apache-2.0",
   "keywords": [
     "java",
@@ -20,11 +20,11 @@
     "pre-commit"
   ],
   "interface": {
-    "displayName": "CodeGuard",
-    "shortDescription": "Trustworthy code checks and Java impact analysis",
+    "displayName": "Code Quality · CodeGuard",
+    "shortDescription": "Lint, CVE and guided fixes for 60+ languages, commit gates",
     "longDescription": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit. Java planning is read-only; executing project checks runs trusted build/test commands, not a security sandbox.",
     "developerName": "Full Stack Skills / PartMe.AI",
-    "websiteURL": "https://github.com/partme-ai/partme-codeguard-plugin"
+    "websiteURL": "https://github.com/full-stack-plugins/codeguard-plugin"
   },
   "skills": "./skills/",
   "commands": "./commands/",
