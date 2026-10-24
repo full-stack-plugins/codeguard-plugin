@@ -1,176 +1,183 @@
-# CodeGuard (Code Quality)
+# CodeGuard plugin
 
-> Evidence-backed lint, CVE scanning, controlled fixes, and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified, and planned.
+> Parity: README.md and README.zh-CN.md must keep the same heading structure, local links and version strings; enforced by tests/test_readme_parity.py.
 
-**Version**: 0.21.0 · **License**: Apache-2.0 · **Skills**: 68
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-[简体中文](README.md) · [Install](#installation) · [Quick start](#quick-start) · [Project layout](#project-layout)
+![CodeGuard](assets/banner.svg)
 
 ## Positioning
 
-CodeGuard is for teams that need a verifiable quality result before commit, push, or release. It does not stop at "lint ran"; it identifies the repository language and toolchain, runs the checks that actually exist, records command, version, dependency path, and result, and separates pass, fail, unverified, and planned.
+CodeGuard provides native check evidence and guards supported Git commit/push calls from AI coding assistants. PostToolUse gives feedback, not blocking. Verified violations block the Git call; unavailable checks remain explicitly UNVERIFIED. Passing a configured check is not proof of complete code correctness.
 
-Use it for:
+### Rust lifecycle runtime (macOS arm64)
 
-- Multi-language lint and formatting gates
-- Dependency CVE scanning and thresholds
-- Controlled autofix and re-verification
-- Maven/Gradle change-impact analysis
-- Commit message, branch flow, and pre-release checks
-- Explaining and reproducing CI failures
+Canonical [`hooks/hooks.json`](hooks/hooks.json) now routes SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure and Stop through [`hooks/rust_runtime_dispatch.cjs`](hooks/rust_runtime_dispatch.cjs) to fixed `@partme.ai/codeguard@0.1.4`. [`runtime/codeguard.lock.json`](runtime/codeguard.lock.json) pins the public tarball, binary, source commit and 32 grammar-license hashes. Node 18+ is the thin host binding; Rust performs discovery, native checks, WASM parsing and task synchronization.
 
-Do not use it for:
+Install explicitly on Apple Silicon macOS, then initialize the selected project:
 
-- Claiming a check passed when the tool is not installed
-- Changing business semantics through autofix
-- Bypassing branch protection or commit hooks
-
-## At a glance
-
-```text
-repository / change / dependency manifest
-        │
-        ▼
-CodeGuard skill (detect → select chain → execute → verify)
-        │
-        ├── language linter / formatter
-        ├── CVE scanner
-        └── architecture and impact analysis
-        │
-        ▼
-PASS / FAIL / UNVERIFIED / PLANNED + evidence
+```bash
+node runtime/codeguard_runtime.cjs install --download
+node runtime/codeguard_runtime.cjs verify
+node runtime/codeguard_runtime.cjs exec init /absolute/project --apply --format=json
+node runtime/codeguard_runtime.cjs exec next /absolute/project --format=json
+node runtime/codeguard_runtime.cjs exec grammar status --format=json
+node runtime/codeguard_runtime.cjs exec check all /absolute/project --format=json
+# Use the real ID returned by next:
+node runtime/codeguard_runtime.cjs exec task show TASK_ID /absolute/project --format=json
+node runtime/codeguard_runtime.cjs exec task verify TASK_ID /absolute/project --zig-tool /absolute/zig --format=json
 ```
 
-## Capabilities and boundaries
+Offline installation uses `install --tarball /absolute/path/to/codeguard-public-0.1.4-darwin-arm64.tgz` with the same digest checks. Hooks do not download packages. An unavailable or unsupported runtime returns visible incomplete/setup guidance, without PATH codeguard or Python fallback. Successful edits select only the changed file: supported native Ruff/ESLint checks precede bounded WASM; suspected syntax creates a stable native-confirmation task in an initialized workspace. Zero recovery nodes only recommend native checking and never close an old task. The program contains all 32 runnable but **unqualified** grammar candidates, including Dart and Zig.
 
-| Capability | What it does | Boundary |
+Prompt events only give fixed timing guidance, failed edits do not scan source, and Stop gives bounded next-task guidance with reentry handling. Internal check budget is 5 seconds, child-process timeout 8 seconds, host timeout 10 seconds. This does not certify all filesystem I/O deadlines or installed-host latency. `auto_fix_on_save` and legacy timeout settings remain compatibility fields; Rust does not silently apply fixes. An uninitialized workspace needs explicit init before durable tasks exist.
+
+The PreToolUse Git gate and legacy CLI/MCP remain Python compatibility surfaces; Copilot/OpenHands carry identical mirrors of the lifecycle binding for package consistency. Those mirrors are not installed-host acceptance. Installed Claude/Codex/ZCode/Kimi automation, trusted closure policy, full native-first coverage, other platforms and precision remain open. See [default lifecycle acceptance](tests/rust-lifecycle-default.md), [historical candidate evidence](tests/rust-runtime-candidate.md), [historical 32-grammar acceptance](tests/rust-wasm-runtime-candidate.md), and [hook protocol](hooks/__protocol__.md).
+
+### Runtime boundaries
+
+| Surface | What it checks | Result |
 |---|---|---|
-| Detection | Identify stack from extensions and project markers | Does not guess unconfigured languages |
-| Lint | Run the checks actually available | Mark unverified when tools are missing |
-| Fix | Reversible formatting and static-rule fixes | Never change business logic automatically |
-| CVE | Scan dependencies and apply thresholds | Never hide HIGH/CRITICAL |
-| Impact | Maven/Gradle module and call impact | Static inference is not runtime fact |
-| Commit/branch | Validate messages and branch flow | Not a substitute for human review |
+| PostToolUse | Edited file, for file-scoped tools | Feedback, exit 0; project-level checks deferred |
+| UserPromptSubmit | Fixed checking-time guidance; no source scan | Advisory, never blocks the user message |
+| PreToolUse Git gate | Proposed index snapshot or HEAD snapshot for push | Verified violations exit 2; uncertain checks report UNVERIFIED and fail open |
+| CLI check / MCP check_code_style | Project checks, including Java build verification | Explicit status, reason, raw exit code, ordered execution trace and output log |
+| pre-commit / CI | Independently configured checks | Separate acceptance; not replaced by hook success |
 
-## Architecture and core flow
+Hooks do not run in every host command surface automatically. Historical V0.5.4 installation evidence is not acceptance of this version in Codex, ZCode or Kimi.
 
-```text
-Host / agent
-   │  invokes codeguard-* skills
-   ▼
-skills/codeguard-*  ──►  CodeGuard engine
-                              │
-                              ├── linter / formatter
-                              ├── CVE scanner
-                              └── impact analyzer
-                              │
-                              ▼
-                     result + command + version + evidence
-```
+Claude Code invokes the canonical Rust prompt binding on every UserPromptSubmit; no keyword matcher or prompt-triggered lint is used. Copilot/OpenHands carry the same mirror; their actual host protocol compatibility still needs separate acceptance. Actual Git commands still reach PreToolUse. Installed-host latency has not been measured.
 
-Rules:
+### Verdict contract
 
-1. Detect the repository and available tools before choosing a chain.
-2. When a tool is missing, report "unverified"; never claim pass.
-3. Re-run the original command after every fix.
-4. Never use `--no-verify` or admin rights to bypass a gate.
+| Status | Meaning | passed |
+|---|---|---|
+| PASS | An actual check completed successfully | true |
+| FAIL | The checker reported a violation | false |
+| UNVERIFIED | Missing tool, timeout, invalid configuration, unavailable evidence | false |
+| SKIPPED | No applicable changed files | false |
+| PLANNED | A plan exists or no executable adapter is configured | false |
 
-## Compatibility
+CLI exit priority: FAIL → 2; otherwise UNVERIFIED/PLANNED → 1; verified success or no applicable changes → 0. Never interpret “not exit 2” as “passed”. Tools have different exit-code contracts: pylint 2 is not ESLint 2.
 
-| Item | Status |
-|---|---|
-| Host | Coding hosts with MCP support |
-| Languages | 60+ languages, based on installed linters |
-| Runtime | Follow the plugin manifest and repository environment |
+## Java project awareness
 
-## Installation
+The legacy import facades under `scripts/` (`verdict.py`, `user_config.py`, `run_per_language.py`) are Deprecated compatibility shims: new code must import from the `codeguard` package. They are scheduled for removal in the next major version.
+
+### Read-only planning
 
 ```bash
-codex plugin marketplace add partme-ai/full-stack-plugins
-codex plugin add codeguard@full-stack-plugins
+codeguard java-plan /path/to/project --json
+codeguard java-plan /path/to/project --json --changed api/src/main/java/Api.java
+codeguard check --lang java /path/to/project
 ```
 
-Restart the host and start read-only:
+The planner reads Maven POM / Gradle Groovy or Kotlin DSL, prefers project wrappers, maps files to modules and computes reverse transitive dependencies. Changing api can require checking service and app even if their files did not change. Deletions, resources and build descriptors are included.
 
-> Detect this repository's languages and available checks. Do not modify files.
+Maven plans use verify with -DskipTests (test code still compiles; only execution is skipped), with -pl and -am for a safe subset. Gradle plans use root check or affected :module:check tasks with -x test. The default level checks compilation, packaging and lifecycle-bound static checks; test execution belongs to CI or an explicit java.commands declaration. Profiles, unresolved properties, inherited dependencies or recognized dynamic/composite Gradle builds expand the plan conservatively. Planning never executes a build, downloads dependencies, installs tools or initializes CodeGraph.
 
-## Quick start
+### Explicit project commands
 
-1. Detect language, build system, and existing configuration.
-2. Run read-only lint and record command and version.
-3. Separate PASS, FAIL, UNVERIFIED, and PLANNED.
-4. Fix only reversible issues and keep a baseline.
-5. Re-run the original command and report remaining risk.
+A root codeguard.json can declare authoritative argv lists:
 
-## Configuration
+```json
+{
+  "java": {
+    "commands": [
+      ["./mvnw", "verify", "-Pquality"]
+    ]
+  }
+}
+```
 
-Follow the repository's existing configuration; do not overwrite user files. Read credentials from secure environment only; never write them into `codeguard.json`.
+Commands run in order, stopping on failure. They are trusted project configuration, not shell strings. Declaring commands is also how a project opts into a stronger level than the default — for example the full verify including test execution shown above. Running check or the Git gate executes project builds and may run project plugins; the default level skips test execution (-DskipTests / -x test), but configured commands or plugin-bound tasks may run tests, and package registries may be accessed — this is **not a sandbox**.
 
-## Extension contract
+Coverage is module-level, not a symbol call graph or business-semantic proof. A successful verify/check does not establish that Checkstyle, PMD, SpotBugs or tests are configured comprehensively. Inspect the plan's gaps and reasons.
 
-New language skills use the `codeguard-` prefix and declare the check command, missing-tool state, fix boundary, and re-verification requirement.
+## Git content integrity
 
-## Retry, idempotency, and recovery
+A plain commit checks the index, not an unstaged repair. Supported preceding git add operations overlay predicted worktree paths; in a direct command chain without shell substitution, an add after the final commit is not projected backward into that commit or a following push. Pure push checks HEAD and upstream differences. Without a resolvable upstream, the HEAD tree is checked. Sensitive-file rules use the same proposed scope; removing a sensitive file is not treated as introducing it.
 
-- Read the log first: missing tool, bad configuration, or real code issue.
-- Keep a baseline before fixing; re-verify after.
-- Do not loop on unexplained failures.
+Checks materialize temporary Git blobs without stash, checkout or modifying the real index. The exact-content gate does not reuse the soft working-tree cache. Missing ignored dependencies remain UNVERIFIED rather than silently falling back to different source content.
 
-## Data and state
+Limits: 20,000 tracked files / 256 MiB Git content / 32 MiB per overlay file. Symlinks, submodules, conflicts and unsupported content need separate validation. Complex shell rewrites, arbitrary Git refspecs, dynamic aliases and concurrent edits are not a fully modeled transaction. A hook is not a replacement for protected-branch CI.
+One statically readable layer of bash/sh/zsh `-c` or script execution is included in repository and staging analysis; unmodelled indirect Git operations are blocked as UNVERIFIED. Dynamic scripts and subprocess calls assembled by Python/Node remain outside this static model.
 
-- Checks write reports, not source changes.
-- Fixes touch only allowed files.
-- Reports keep command, version, path, and conclusion.
+There is no “historical debt” exemption based only on an unchanged diagnostic filename; a modified API can break an unchanged caller.
 
-## Security
+## CLI and MCP
 
-- Never write tokens into the repository or reports.
-- Apply CVE thresholds honestly.
-- On a suspected leak, rotate before cleaning.
-
-## Observability and operation
-
-Record check command, tool version, dependency path, exit code, and conclusion; review once before release.
-
-## Development and verification
+### CLI
 
 ```bash
-node --test
-python3 -m pytest
+# Run directly from this checkout; no global installation required.
+./bin/codeguard detect /path/to/project
+./bin/codeguard check /path/to/project
+./bin/codeguard fix /path/to/project --dry-run
+./bin/codeguard fix /path/to/project
+./bin/codeguard fix /path/to/project --all
+./bin/codeguard cve /path/to/project --json
+./bin/codeguard cve /path/to/project --ecosystem universal --severity HIGH
 ```
 
-## Packaging and release
+fix defaults to Git-changed files; project-wide formatters require explicit --all. A non-Git CLI directory retains the legacy full-scope behavior. --fix may modify files; it is not a preview.
 
-Version matches manifests, marketplace, and tag; after release, reinstall and run one read-only check.
+CVE exits: 0 pass, 1 unverified, 2 findings, 3 invalid ecosystem. Maven/npm/pip-audit/cargo-audit/Trivy results require structured report evidence. Network failures are not vulnerabilities. npm moderate maps to MEDIUM; after npm audit fix the new scan controls the verdict. Native Python/Rust findings without comparable severity remain UNVERIFIED above LOW, with findings preserved; explicitly select Trivy to assess severity. Python audits project requirements/pyproject, not the host environment.
 
-## Upgrade and migration
+### MCP server
 
-Confirm new language chains and tool versions before upgrading; re-run the baseline and compare conclusions.
+The root `mcp.json` provides portable Agent Plugins 1.0.0 discovery of the existing CodeGuard stdio server. The host needs Python and the dependencies in `requirements.txt`; installation does not install them automatically. The configured working directory is the plugin root. For `check_code_style`, `auto_fix`, and `analyze_java_impact`, supply the target project’s absolute `path` in each tool call; the plugin directory is not the user project. `list_languages` needs no project path.
 
-## Troubleshooting
+```bash
+# Requires the dependencies declared in requirements.txt.
+python3 scripts/run_check.py --mcp /path/to/project
+```
 
-| Symptom | Check |
+| Tool | Contract |
 |---|---|
-| Check did not run | Tool installed, command exists |
-| Result unverified | Dependencies, network, permissions, config |
-| Still failing after fix | Re-run original command and inspect diff |
-| CI differs from local | Tool versions, lockfile, environment |
+| check_code_style | Per-language status/reason/passed/raw exit code, per-command status metadata and full failure log path |
+| auto_fix | Format Git-changed files and recheck the same scope; refuse unbounded project formatters; fixed means actual modifications |
+| list_languages | Registry ids and display names |
+| analyze_java_impact | Read-only plan; accepts path and optional changed array |
 
-## Project layout
+Output logs default to <project>/out/.codeguard-last.log; CLI --quiet disables log writing. A failed multi-command check logs output from every executed check. Diagnostic logs, including truncated PostToolUse output, are replaced atomically with owner-only file permissions on POSIX; a symlinked output directory disables log writing without changing the check verdict. The MCP execution trace reports phase, sequence, program, exit/failure and output lengths; it does not echo argv, environment overrides or captured output. MCP auto_fix also keeps formatter argv/stderr out of its JSON result; available formatter diagnostics are written to a private <project>/out/.codeguard-fix.log and returned by path. Local logs can contain sensitive checker output: keep them out of version control. MCP auto_fix does not write when a Git scope cannot be established.
 
-```text
-codeguard-plugin/
-├── .zcode-plugin/      # ZCode manifest
-├── .codex-plugin/      # Codex manifest
-├── skills/             # 68 skills
-├── docs/               # check chains and verification
-└── assets/             # icons and static assets
+## Configuration and coverage
+
+Root codeguard.json may set gate_scope to delta or repo and customize extension/exclusion detection. User settings retain enabled_languages, auto_fix_on_save and lint_timeout_seconds. See the [hook protocol](hooks/__protocol__.md).
+
+The registry contains **54 Stable adapters and 3 Planned entries**. “Stable” does not certify every toolchain or project. Markdown/YAML require project configuration; missing configuration is UNVERIFIED. Markdown findings are advisory. Generated and dependency directories are excluded from ordinary lint scope, not automatically accepted for commit. Python checks honor the project's own ruff configuration (ruff.toml / .ruff.toml / [tool.ruff]); when none exists, codeguard injects a default rule set pinned to the CI baseline (ruff==0.16.8) so verdicts do not drift with whichever ruff version a machine happens to have. Full command inventory: [languages](docs/LANGUAGES.md).
+
+The explicit escape hatch git config codeguard.skipGate true bypasses the hook's language gate and is recorded in session summaries. It does not cover the commit-content safety scan (secret/credential path patterns): that scan runs regardless of config, inline `-c codeguard.skipGate=true` or chained escapes — only the process environment variable `CODEGUARD_SKIP_GATE` (1/true/yes, set by the user; inline assignment does not reach the hook process) suppresses it. Shared hook state lives under CODEGUARD_HOME (default ~/.codeguard).
+The Git gate statically inspects one readable shell-wrapper layer, including bare assignment, env, command and sudo prefixes; the same prefix rules apply to skipGate changes and one-shot bypasses. It does not execute or fully interpret shell scripts.
+
+## External skills
+
+The **68** portable skills are authored in [full-stack-skills/codeguard-skills](https://github.com/full-stack-skills/codeguard-skills). This plugin packages immutable **v0.1.2** through skills.lock.json, pinning tag, commit and per-skill digests.
+
+Do not edit locked skill directories. Update/release the source skills, update the lock and run the vendor tool. Only declared entries in plugin-local-skills.json may be plugin-owned; currently none are declared. See [authoring rules](docs/CODEGUARD_SKILLS_SPEC.md).
+
+```bash
+python3 scripts/vendor/skill_vendor.py check --offline
+python3 scripts/vendor/skill_vendor.py check
 ```
 
-## Contributing and support
+## Verification and remaining work
 
-Include repository language, tool version, command, log, and conclusion. Do not attach credentials or production code.
+```bash
+python3 -m unittest discover -s tests -q
+python3 tests/run_all.py
+python3 scripts/validate_languages_json.py
+python3 scripts/check_architecture.py
+ruff check hooks scripts tests
+```
 
-## License
+Tests include real temporary Git repositories, native subprocess fixtures and official-SDK stdio MCP calls. Fixture wrapper success is not a real Maven/Gradle integration build. Live Codex/ZCode/Kimi loading, real project builds, online CVE scanner runs and precision/recall benchmarks require separate acceptance.
 
-Apache-2.0. See [LICENSE](LICENSE).
+Current implementation and evidence: [architecture and extension guide](docs/current-architecture.md), [refactor verification](openspec/changes/archive/2026-09-23-refactor-codeguard-architecture/verification.md). Earlier documents remain historical context: [verdict and Java architecture](docs/verdict-java-architecture.md), [prior verification](docs/verification-verdict-java.md), [original architecture](docs/partme-codeguard-plugin-Architecture.zh_CN.md), [roadmap](docs/technical-roadmap.zh_CN.md).
+
+Version history: see [CHANGELOG.md](CHANGELOG.md) for release highlights by version.
+
+## License and privacy
+
+Apache-2.0 — [LICENSE](./LICENSE). Native build/scanning tools may access dependency registries and vulnerability databases; review [PRIVACY.md](./PRIVACY.md) and [TERMS.md](./TERMS.md).
