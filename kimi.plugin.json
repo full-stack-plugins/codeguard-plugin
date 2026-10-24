@@ -1,6 +1,6 @@
 {
   "name": "codeguard",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。",
   "author": {
     "name": "Full Stack Skills / PartMe.AI"
