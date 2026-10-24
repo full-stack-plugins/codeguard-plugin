@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "codeguard",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "description": "证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。",
   "author": {
     "name": "Full Stack Skills / PartMe.AI",
@@ -54,9 +54,9 @@
       "agentName": "CodeGuard"
     }
   },
-  "displayName": "CodeGuard（代码质量检查）",
+  "displayName": "CodeGuard（代码质量防护）",
   "displayName_i18n": {
-    "zh-CN": "CodeGuard（代码质量检查）"
+    "zh-CN": "CodeGuard（代码质量防护）"
   },
   "description_i18n": {
     "zh-CN": "证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。"

@@ -1,11 +1,11 @@
 {
   "name": "codeguard",
-  "displayName": "CodeGuard（代码质量检查）",
+  "displayName": "CodeGuard（代码质量防护）",
   "displayName_i18n": {
     "en": "CodeGuard · Code Quality",
-    "zh-CN": "CodeGuard（代码质量检查）"
+    "zh-CN": "CodeGuard（代码质量防护）"
   },
-  "version": "0.21.1",
+  "version": "0.21.2",
   "description": "证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。",
   "description_i18n": {
     "en": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",

@@ -9,18 +9,18 @@
       "source": {
         "source": "url",
         "url": "https://github.com/full-stack-plugins/codeguard-plugin.git",
-        "ref": "v0.21.1"
+        "ref": "v0.21.2"
       },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_USE"
       },
       "category": "Developer Tools",
-      "version": "0.21.1",
+      "version": "0.21.2",
       "description": "证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。",
       "icon": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.21.0/assets/official-logo.png",
       "interface": {
-        "displayName": "CodeGuard（代码质量检查）",
+        "displayName": "CodeGuard（代码质量防护）",
         "shortDescription": "60+ 语言 lint、CVE 与受控修复，提交门禁",
         "logo": "https://cdn.jsdelivr.net/gh/full-stack-plugins/codeguard-plugin@v0.21.0/assets/official-logo.png"
       },
@@ -29,7 +29,7 @@
         "skills",
         "mcp"
       ],
-      "displayName": "CodeGuard（代码质量检查）"
+      "displayName": "CodeGuard（代码质量防护）"
     }
   ]
 }
