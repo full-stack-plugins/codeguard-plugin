@@ -21,6 +21,7 @@ SCRIPT_ROLES = {
     "detect_lang.py": "entry",
     "dockerfile_security.py": "entry",
     "guard_cli.py": "entry",
+    "hooks_cli.py": "entry",
     "engine_report.py": "entry",
     "fix.py": "entry",
     "gen_language_docs.py": "entry",
