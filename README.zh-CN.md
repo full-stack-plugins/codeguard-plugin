@@ -1,10 +1,8 @@
-# CodeGuard（代码质量检查）
+# CodeGuard（代码质量防护）
 
-> 证据化 lint、CVE 扫描、受控修复与 Maven/Gradle 影响分析；结论区分通过、失败、无法验证与计划中。
+> 19 条 CLI 已实现；check/fix/cve/dockerfile/impact 有真实执行入口。
 
 **版本**：0.21.1 · **许可证**：Apache-2.0 · **技能**：68 个
-
-[English](README.en.md) · [安装](#安装) · [快速开始](#快速开始) · [项目结构](#项目结构)
 
 > README parity note: tests/test_readme_parity.py
 
@@ -12,173 +10,75 @@
 
 54 个 Stable 适配器和 3 个 Planned 适配器记录在 scripts/languages.json.
 
+[English](README.en.md)
+
 ## 项目定位
 
-CodeGuard 面向需要在提交、推送和发布前得到可核验质量结论的团队。它不是“跑一个 lint 就报通过”，而是识别仓库语言与工具链，执行真实检查，记录命令、版本、依赖路径和结果，并把结论明确分为通过、失败、无法验证和计划中。
+CodeGuard 是 Partme Guard 研发防护体系中的独立插件，命令前缀为 codeguard。它不依赖统一总命令，可独立安装、独立发版、独立执行。
 
-适用场景：
+## CLI 命令
 
-- 多语言仓库的 lint 与格式门禁
-- 依赖 CVE 扫描与阈值判断
-- 受控自动修复与复验
-- Maven/Gradle 变更影响分析
-- 提交信息、分支流向和发布前检查
-- CI 失败原因解释与复现
+退出码：0 通过 / 1 无法验证 / 2 存在漏洞 / 3 参数错误。
 
-不适用：
-
-- 没有安装检查工具却宣称已通过
-- 用自动修复改变业务语义
-- 绕过分支保护或提交钩子
-
-## 一眼看懂
-
-```text
-仓库 / 变更 / 依赖清单
-        │
-        ▼
-CodeGuard 技能（识别 → 选择检查链 → 执行 → 复验）
-        │
-        ├── 语言 linter / 格式化工具
-        ├── CVE 扫描器
-        └── 架构与影响分析
-        │
-        ▼
-PASS / FAIL / UNVERIFIED / PLANNED + 证据
-```
-
-## 能力与边界
-
-| 能力 | 说明 | 边界 |
-|---|---|---|
-| 语言识别 | 按扩展名与项目标记识别技术栈 | 不猜测未配置的语言 |
-| lint | 执行仓库真实可用的检查链 | 工具缺失时标记无法验证 |
-| 修复 | 只做可逆格式和静态规则修复 | 不自动改业务逻辑 |
-| CVE | 扫描依赖并应用阈值 | 不隐瞒 HIGH/CRITICAL |
-| 影响分析 | Maven/Gradle 模块与调用影响 | 不把静态推断当运行时事实 |
-| 提交/分支 | 校验提交信息与分支流向 | 不替代人工评审 |
-
-## 架构与核心流程
-
-```text
-宿主 / Agent
-   │  调用 codeguard-* 技能
-   ▼
-skills/codeguard-*  ──►  CodeGuard 引擎
-                              │
-                              ├── linter / formatter
-                              ├── CVE scanner
-                              └── impact analyzer
-                              │
-                              ▼
-                     结论 + 命令 + 版本 + 证据
-```
-
-原则：
-
-1. 先识别仓库和可用工具，再选择检查链。
-2. 工具缺失时报告“无法验证”，不冒充通过。
-3. 修复后必须用原命令复验。
-4. 不用 `--no-verify` 或管理员权限绕过门禁。
-
-## 兼容性
-
-| 项目 | 状态 |
-|---|---|
-| 宿主 | 支持 MCP 的编码宿主 |
-| 语言 | 60+ 语言，按实际安装的 linter |
-| 运行时 | 以插件清单与仓库环境为准 |
+| 命令 | 类型 |
+| :--- | :--- |
+| install | 独立入口 |
+| uninstall | 独立入口 |
+| upgrade | 独立入口 |
+| version | 独立入口 |
+| doctor | 独立入口 |
+| status | 独立入口 |
+| discover | 独立入口 |
+| init | 独立入口 |
+| check | 独立入口 |
+| fix | 独立入口 |
+| cve | 独立入口 |
+| dockerfile | 独立入口 |
+| impact | 独立入口 |
+| explain | 独立入口 |
+| report | 独立入口 |
+| hooks install | 独立入口 |
+| hooks status | 独立入口 |
+| engine | 独立入口 |
+| completion | 独立入口 |
 
 ## 安装
 
-```bash
+~~~bash
 codex plugin marketplace add partme-ai/full-stack-plugins
-codex plugin add codeguard@full-stack-plugins
-```
-
-安装后重启宿主，先做只读识别：
-
-> 识别这个仓库的语言和可用检查工具，不要修改文件。
-
-退出码：0 表示通过，1 表示无法验证或配置错误，2 表示检查失败，3 保留。
+codex plugin add codeguard-plugin@full-stack-plugins
+~~~
 
 ## 快速开始
 
-1. 识别语言、构建系统和现有配置。
-2. 运行只读 lint，记录命令与版本。
-3. 区分 PASS、FAIL、UNVERIFIED、PLANNED。
-4. 只修复可逆问题，保留基线。
-5. 用原命令复验，并报告剩余风险。
+~~~bash
+codeguard version
+codeguard doctor
+codeguard status
+~~~
 
-## 配置
+## 当前状态
 
-按仓库现有配置执行，不覆盖用户文件。凭据只从安全环境读取，不写入 `codeguard.json`。
+19 条 CLI 已实现；check/fix/cve/dockerfile/impact 有真实执行入口。
 
-## 扩展契约
+没有真实执行证据时，不报告 PASS；未实现能力报告 DESIGN_ONLY 或 UNVERIFIED。
 
-新增语言技能时应使用 `codeguard-` 前缀，声明检查命令、工具缺失时的状态、修复边界和复验要求。
+## 架构
 
-## 重试、幂等与恢复
+命令入口、生命周期、只读检查和证据边界见 product-docs/CodeGuard/ 与 docs/。
 
-- 失败后先读日志，确认是工具缺失、配置错误还是代码问题。
-- 修复前保留基线，修复后复验。
-- 不在未确认原因时反复重跑。
+## 边界
 
-## 数据与状态
+- 不合并为 Partme Guard 总命令。
+- 不替代其他 Guard 的专业判断。
+- 不自动提交、推送或修改用户代码。
 
-- 检查结果写入报告，不改源码。
-- 修复只改允许的文件。
-- 报告保留命令、版本、路径和结论。
+## 验证
 
-## 安全
-
-- 不把令牌写入仓库或报告。
-- CVE 结论按阈值处理，不隐瞒。
-- 发现凭据泄露先轮换，再清理。
-
-## 可观测性与运行
-
-记录检查命令、工具版本、依赖路径、退出码和结论；发布前复核一次。
-
-## 开发与验证
-
-```bash
-node --test
-python3 -m pytest
-```
-
-## 打包与发布
-
-版本与清单、市场、tag 一致；发布后重新安装并跑一次只读检查。
-
-## 升级与迁移
-
-升级前确认新语言链和工具版本；迁移后复跑基线，比较结论变化。
-
-## 故障排查
-
-| 现象 | 检查 |
-|---|---|
-| 检查未执行 | 工具是否安装、命令是否存在 |
-| 结果无法验证 | 依赖、网络、权限或配置 |
-| 修复后仍失败 | 用原命令复验并查看 diff |
-| CI 与本地不一致 | 工具版本、锁文件、环境变量 |
-
-## 项目结构
-
-```text
-codeguard-plugin/
-├── .zcode-plugin/      # ZCode 清单
-├── .codex-plugin/      # Codex 清单
-├── skills/             # 68 个技能
-├── docs/               # 检查链与验证记录
-└── assets/             # 图标与静态资源
-```
-
-## 贡献与支持
-
-提交问题时附上仓库语言、工具版本、命令、日志和结论。不要附凭据或生产代码。
+~~~bash
+python3 -m pytest -q
+~~~
 
 ## 许可证
 
-Apache-2.0，见 [LICENSE](LICENSE)。
+Apache-2.0
