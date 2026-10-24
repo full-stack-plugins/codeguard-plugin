@@ -23,7 +23,7 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Code Quality · CodeGuard",
+    "displayName": "CodeGuard · Code Quality",
     "shortDescription": "Lint, CVE and guided fixes for 60+ languages, commit gates",
     "longDescription": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit. Java planning is read-only; executing project checks runs trusted build/test commands, not a security sandbox.",
     "developerName": "Full Stack Skills / PartMe.AI",

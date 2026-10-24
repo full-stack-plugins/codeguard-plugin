@@ -1,8 +1,8 @@
 {
   "name": "codeguard",
-  "displayName": "Code Quality · CodeGuard",
+  "displayName": "CodeGuard · Code Quality",
   "displayName_i18n": {
-    "en": "Code Quality · CodeGuard"
+    "en": "CodeGuard · Code Quality"
   },
   "version": "0.21.0",
   "description": "Evidence-backed lint, CVE scanning, guided fixes and Maven/Gradle impact analysis. Results distinguish pass, fail, unverified and planned.",
