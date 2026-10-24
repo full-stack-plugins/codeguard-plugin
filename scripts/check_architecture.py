@@ -20,6 +20,7 @@ SCRIPT_ROLES = {
     "cve_check.py": "entry",
     "detect_lang.py": "entry",
     "dockerfile_security.py": "entry",
+    "guard_cli.py": "entry",
     "engine_report.py": "entry",
     "fix.py": "entry",
     "gen_language_docs.py": "entry",
