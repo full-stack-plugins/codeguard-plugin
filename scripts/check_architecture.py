@@ -23,6 +23,7 @@ SCRIPT_ROLES = {
     "guard_cli.py": "entry",
     "hooks_cli.py": "entry",
     "install_cli.py": "entry",
+    "explain_cli.py": "entry",
     "engine_report.py": "entry",
     "fix.py": "entry",
     "gen_language_docs.py": "entry",
