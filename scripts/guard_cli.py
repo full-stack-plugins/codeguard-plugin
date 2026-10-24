@@ -111,6 +111,9 @@ def cmd_impact(args):
 COMMANDS={"version":cmd_version,"discover":cmd_discover,"doctor":cmd_doctor,"status":cmd_status,"report":cmd_report,"init":cmd_init,"impact":cmd_impact}
 
 def main(argv):
+    if argv and argv[0] in ("install", "uninstall", "upgrade", "completion"):
+        from install_cli import main as install_main
+        return install_main(argv)
     if argv and argv[0] == "hooks":
         from hooks_cli import main as hooks_main
         return hooks_main(argv[1:])
