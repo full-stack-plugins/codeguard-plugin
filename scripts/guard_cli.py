@@ -98,6 +98,9 @@ def cmd_init(args):
 COMMANDS={"version":cmd_version,"discover":cmd_discover,"doctor":cmd_doctor,"status":cmd_status,"report":cmd_report,"init":cmd_init}
 
 def main(argv):
+    if argv and argv[0] == "hooks":
+        from hooks_cli import main as hooks_main
+        return hooks_main(argv[1:])
     if not argv or argv[0] not in COMMANDS:
         print("usage: codeguard version|discover|doctor|status|report|init [--json] [path]",file=sys.stderr);return 2
     return COMMANDS[argv[0]](argv[1:])
