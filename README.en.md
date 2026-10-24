@@ -2,7 +2,7 @@
 
 > 19 条 CLI 已实现；check/fix/cve/dockerfile/impact 有真实执行入口。
 
-**Version**: 0.21.1 · **License**: Apache-2.0 · **Skills**: 68
+**Version**: 0.21.2 · **License**: Apache-2.0 · **Skills**: 68
 
 [简体中文](README.md)
 

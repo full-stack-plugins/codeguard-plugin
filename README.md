@@ -2,7 +2,7 @@
 
 > 19 条 CLI 已实现；check/fix/cve/dockerfile/impact 有真实执行入口。
 
-**版本**：0.21.1 · **许可证**：Apache-2.0 · **技能**：68 个
+**版本**：0.21.2 · **许可证**：Apache-2.0 · **技能**：68 个
 
 > README parity note: tests/test_readme_parity.py
 
