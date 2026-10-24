@@ -43,7 +43,7 @@ case "$cmd" in
   engine)
     exec python3 "$ROOT/scripts/engine_report.py" "$@"
     ;;
-  init|version|discover|doctor|status|report|hooks)
+  init|version|discover|doctor|status|report|hooks|impact)
     exec python3 "$ROOT/scripts/guard_cli.py" "$cmd" "$@"
     ;;
   *)

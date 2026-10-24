@@ -95,7 +95,20 @@ def cmd_init(args):
     print(json.dumps({"decision":"allow","created":str(target)},ensure_ascii=False))
     return 0
 
-COMMANDS={"version":cmd_version,"discover":cmd_discover,"doctor":cmd_doctor,"status":cmd_status,"report":cmd_report,"init":cmd_init}
+def cmd_impact(args):
+    root=project_root(".")
+    changed=None
+    if "--changed" in args:
+        i=args.index("--changed"); changed=[a for a in args[i+1:] if not a.startswith("-")]
+    from codeguard.java_analysis import analyze
+    plan=analyze(str(root),changed)
+    status=plan.get("status","UNVERIFIED")
+    decision="allow" if status=="PASS" else ("unverified" if status=="UNVERIFIED" else "deny")
+    result=envelope("codeguard.impact",decision,project={"root":str(root)},analysis=plan)
+    print(json.dumps(result,ensure_ascii=False,indent=2) if "--json" in args else json.dumps(plan,ensure_ascii=False,indent=2))
+    return result["exitCode"]
+
+COMMANDS={"version":cmd_version,"discover":cmd_discover,"doctor":cmd_doctor,"status":cmd_status,"report":cmd_report,"init":cmd_init,"impact":cmd_impact}
 
 def main(argv):
     if argv and argv[0] == "hooks":
