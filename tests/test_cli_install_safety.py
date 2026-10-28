@@ -111,3 +111,36 @@ class InstallSafetyTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertEqual("not_managed", json.loads(result.stdout)["error"])
         self.assertEqual([], list(self.root.iterdir()))
+
+    def test_missing_bin_directory_value_returns_structured_error_without_writes(self):
+        for command in ("install", "uninstall", "upgrade"):
+            for suffix in ((), ("--dry-run",), ("--json",), ("",)):
+                with self.subTest(command=command, suffix=suffix):
+                    result = self.run_cli(command, "--bin-dir", *suffix)
+                    self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+                    data = json.loads(result.stdout)
+                    self.assertEqual("error", data["decision"])
+                    self.assertEqual(2, data["exitCode"])
+                    self.assertEqual("invalid_arguments", data["error"])
+                    self.assertEqual([], list(self.root.iterdir()))
+
+    def test_unknown_install_argument_is_rejected_before_any_changes(self):
+        for command in ("install", "uninstall", "upgrade"):
+            with self.subTest(command=command):
+                result = self.run_cli(command, "--bin-dir", str(self.bin_dir), "--unknown")
+                self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+                self.assertEqual("error", json.loads(result.stdout)["decision"])
+                self.assertEqual([], list(self.root.iterdir()))
+
+    def test_invalid_uninstall_argument_preserves_managed_link(self):
+        self.install()
+        result = self.run_cli("uninstall", "--bin-dir", str(self.bin_dir), "--unknown")
+        self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+        self.assertTrue(self.target.is_symlink())
+
+    def test_json_flag_and_relative_directory_with_spaces_remain_supported(self):
+        result = self.run_cli("install", "--json", "--bin-dir", "./user bin")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual("allow", json.loads(result.stdout)["decision"])
+        self.assert_version(self.target)

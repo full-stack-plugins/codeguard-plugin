@@ -12,9 +12,17 @@ DEFAULT_BIN = Path.home() / ".local" / "bin"
 
 
 def target(argv):
-    if "--bin-dir" in argv:
-        return Path(argv[argv.index("--bin-dir") + 1]).expanduser().resolve() / "codeguard"
-    return DEFAULT_BIN / "codeguard"
+    directory = DEFAULT_BIN
+    arguments = iter(argv[1:])
+    for argument in arguments:
+        if argument == "--bin-dir":
+            value = next(arguments, None)
+            if not value or value.startswith("-"):
+                raise ValueError("--bin-dir requires a directory path")
+            directory = Path(value).expanduser().resolve()
+        elif argument not in ("--dry-run", "--json"):
+            raise ValueError(f"unknown argument: {argument}")
+    return directory / "codeguard"
 
 
 def payload(command, decision, **extra):
@@ -25,7 +33,6 @@ def payload(command, decision, **extra):
 
 def main(argv):
     command = argv[0] if argv else "install"
-    path = target(argv)
     if command == "completion":
         shell = argv[1] if len(argv) > 1 else "bash"
         if shell not in ("bash", "zsh", "fish"):
@@ -41,6 +48,11 @@ def main(argv):
         return 0
     if command not in ("install", "uninstall", "upgrade"):
         print("usage: codeguard install|uninstall|upgrade [--bin-dir DIR] [--dry-run]", file=sys.stderr)
+        return 2
+    try:
+        path = target(argv)
+    except ValueError as error:
+        print(json.dumps(payload(command, "error", error="invalid_arguments", message=str(error)), ensure_ascii=False))
         return 2
     if command == "uninstall":
         if not path.is_symlink() or path.resolve() != SOURCE.resolve():
