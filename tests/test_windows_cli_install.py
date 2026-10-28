@@ -87,6 +87,14 @@ class WindowsInstallFileTests(unittest.TestCase):
 
 
 class PythonLauncherTests(unittest.TestCase):
+    def test_version_reads_utf8_manifest_without_utf8_locale(self):
+        result = subprocess.run(
+            [sys.executable, "-X", "utf8=0", str(PLUGIN / "scripts/cli_entry.py"), "version", "--json"],
+            env={**os.environ, "LC_ALL": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"},
+            capture_output=True, text=True, timeout=15, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("codeguard.version", json.loads(result.stdout)["command"])
+
     def test_python_entry_preserves_version_and_unknown_command_exit(self):
         for args, expected in [(["version", "--json"], 0), (["unknown-command"], 1)]:
             result = subprocess.run([sys.executable, str(PLUGIN / "scripts/cli_entry.py"), *args],

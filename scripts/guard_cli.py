@@ -15,7 +15,7 @@ def envelope(command, decision, findings=None, **extra):
             "findings":findings or [], "evidence":{}, **extra}
 
 def load_manifest():
-    return json.loads((ROOT/"plugin.json").read_text())
+    return json.loads((ROOT/"plugin.json").read_text(encoding="utf-8"))
 
 def project_root(path="."):
     from detect_lang import find_project_root
