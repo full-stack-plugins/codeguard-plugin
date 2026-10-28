@@ -1,0 +1,43 @@
+name: CLI installation candidate
+
+on:
+  push:
+    branches: [fix/cli-install-safety-20261028]
+  pull_request:
+    paths:
+      - bin/codeguard
+      - scripts/cli_entry.py
+      - scripts/install_cli.py
+      - tests/test_cli_install_safety.py
+      - tests/test_cli_contracts.py
+      - tests/test_windows_cli_install.py
+      - .github/workflows/cli-install-candidate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher:
+    name: Launcher contract (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Record actual runner and interpreter
+        run: python -c "import platform, sys; print(platform.platform(), platform.machine(), sys.version)"
+      - name: Windows file contracts and actual cmd when on Windows
+        run: python -m unittest discover -s tests -p test_windows_cli_install.py -v
+      - name: Existing POSIX installation and CLI contracts
+        if: runner.os != 'Windows'
+        run: |
+          python -m unittest discover -s tests -p test_cli_install_safety.py -v
+          python -m unittest discover -s tests -p test_cli_contracts.py -v

@@ -19,40 +19,4 @@ set -eu
 
 # Follow installed and chained symlinks without relying on GNU readlink -f.
 ROOT="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True).parent.parent)' "$0")"
-cmd="${1:-check}"
-[ $# -gt 0 ] && shift || true
-
-case "$cmd" in
-  java-plan)
-    exec python3 "$ROOT/scripts/java_project.py" "$@"
-    ;;
-  check)
-    exec python3 "$ROOT/scripts/run_check.py" "$@"
-    ;;
-  fix)
-    exec python3 "$ROOT/scripts/fix.py" "$@"
-    ;;
-  cve)
-    exec python3 "$ROOT/scripts/cve_check.py" "$@"
-    ;;
-  dockerfile)
-    exec python3 "$ROOT/scripts/dockerfile_security.py" "$@"
-    ;;
-  detect)
-    exec python3 "$ROOT/scripts/detect_lang.py" "${1:-.}"
-    ;;
-  engine)
-    exec python3 "$ROOT/scripts/engine_report.py" "$@"
-    ;;
-  init|version|discover|doctor|status|report|hooks|impact|install|uninstall|upgrade|completion)
-    exec python3 "$ROOT/scripts/guard_cli.py" "$cmd" "$@"
-    ;;
-  explain)
-    exec python3 "$ROOT/scripts/explain_cli.py" "$@"
-    ;;
-  *)
-    echo "codeguard: 未知子命令 '$cmd'" >&2
-    echo "可用: check | fix | cve | dockerfile | detect | java-plan | engine | init" >&2
-    exit 1
-    ;;
-esac
+exec python3 "$ROOT/scripts/cli_entry.py" "$@"
