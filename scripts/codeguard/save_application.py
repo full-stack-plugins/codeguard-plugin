@@ -137,7 +137,10 @@ def evaluate_save(file_path: str, project_root: Path, cfg: dict,
         return SaveResult()
 
     timeout = cfg.get("lint_timeout_seconds", 120)
-    lint_plan = scoped_plan(lint_cmd, project_root, scope="save", files=[str(file_path)])
+    try:
+        lint_plan = scoped_plan(lint_cmd, project_root, scope="save", files=[str(file_path)])
+    except ValueError as exc:
+        return SaveResult(f"codeguard: UNVERIFIED [{lang}] {exc}；不自动修复。")
     lint_argv = list(lint_plan.commands[0].argv)
     store = store or dedup_path()
 
@@ -159,7 +162,10 @@ def evaluate_save(file_path: str, project_root: Path, cfg: dict,
         fmt_cmd = cmd_def.get("format")
         if fmt_cmd:
             before = _porcelain(project_root)
-            fix_plan = scoped_plan(fmt_cmd, project_root, scope="save", files=[str(file_path)])
+            try:
+                fix_plan = scoped_plan(fmt_cmd, project_root, scope="save", files=[str(file_path)])
+            except ValueError as exc:
+                return SaveResult(f"codeguard: UNVERIFIED [{lang}] 修复配置不可用：{exc}；未执行 formatter。")
             fix_rc, _, _ = run(list(fix_plan.commands[0].argv), cwd=fix_plan.cwd, timeout=timeout + 60)
             if fix_rc == 0:
                 auto_fixed = True

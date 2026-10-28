@@ -41,3 +41,51 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_cli_install_safety.py -v
           python -m unittest discover -s tests -p test_cli_contracts.py -v
+  language-batch:
+    name: Real language batch (Python ${{ matrix.python }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      CARGO_NET_OFFLINE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install existing SDK and pinned checker baseline
+        run: python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-dev.txt
+      - name: Verify actual Linux x64 and existing formatter
+        run: |
+          python -c "import platform; assert platform.system() == 'Linux' and platform.machine() == 'x86_64'"
+          cargo fmt --version
+          ruff --version
+      - name: Real Ruff configuration and isolated check-format batch
+        shell: python
+        run: |
+          import pathlib, subprocess, sys
+          evidence = pathlib.Path('candidate-evidence')
+          evidence.mkdir(exist_ok=True)
+          commands = [
+              ('ruff-config', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_ruff_project_config.py', '-v']),
+              ('language-batch', [sys.executable, 'tests/acceptance_language_batch.py', '--plugin', '.', '--output', str(evidence / 'language-batch.json')]),
+          ]
+          for name, command in commands:
+              result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+              (evidence / (name + '.log')).write_bytes(result.stdout)
+              if result.returncode:
+                  tail = result.stdout[-4000:].decode('utf-8', 'replace')
+                  print('::error title=' + name + '::' + tail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+                  sys.exit(result.returncode)
+              print(name + ': passed')
+      - name: Preserve scoped language evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: language-batch-py${{ matrix.python }}-${{ github.sha }}
+          path: candidate-evidence/
+          if-no-files-found: warn

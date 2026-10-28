@@ -17,6 +17,7 @@ from pathlib import Path
 # 本表只管包外顶层脚本；两者共同构成可检查的分层边界。
 SCRIPT_ROLES = {
     "check_architecture.py": "entry",
+    "cli_entry.py": "entry",
     "cve_check.py": "entry",
     "detect_lang.py": "entry",
     "dockerfile_security.py": "entry",

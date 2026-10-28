@@ -133,7 +133,7 @@ def _project_python_target(root: Path) -> str | None:
 def ruff_config_args(cmd: list, project_root: str | Path) -> list:
     """ruff 命令注入 codeguard 默认配置——仅当项目没有自己的 ruff 配置时。
 
-    按 ruff 的配置发现顺序判定：ruff.toml / .ruff.toml / 含 [tool.ruff] 的
+    按 ruff 的配置发现顺序判定：ruff.toml / .ruff.toml / 含 tool.ruff 配置的
     pyproject.toml；存在自有配置则完全不动（项目规则优先）。注入的文件必须是
     ruff 原生格式——指向带 [tool.ruff] 包装的 pyproject 片段会 TOML 解析失败。
     没有这层注入，门禁规则集取决于机器上恰好装了哪个 ruff 及其默认值，
@@ -148,10 +148,25 @@ def ruff_config_args(cmd: list, project_root: str | Path) -> list:
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
         try:
-            if "[tool.ruff]" in pyproject.read_text(encoding="utf-8", errors="ignore"):
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib
+            except ImportError as exc:
+                from codeguard.config import ConfigurationError
+                raise ConfigurationError(
+                    "TOML 配置解析器不可用；请按 requirements.txt 安装依赖（Python 3.10 需要 tomli）。"
+                    "未验证配置，不执行检查或修复。"
+                ) from exc
+        try:
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            tool = data.get("tool", {})
+            if not isinstance(tool, dict) or "ruff" in tool:
                 return []
-        except OSError:
-            pass
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+            # An unreadable or invalid project config is not "no config".
+            # Do not mask the native Ruff configuration error with defaults.
+            return []
     args = ["--config", str(_RUFF_SNIPPET)]
     target = _project_python_target(root)
     if target:

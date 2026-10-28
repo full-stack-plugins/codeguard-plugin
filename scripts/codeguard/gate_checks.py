@@ -74,8 +74,11 @@ def check_language(root: Path, cfg: dict, lang: str, *, scope: str,
     if not available:
         return GateOutcome(notes=tuple(notes + [f"{lang} 工具链不可用未验证：{reason}（安装: {hint}）"]))
 
-    plan = scoped_plan(base, root, scope="delta" if delta else "repo", files=files if delta else None,
-                       append_files=definition.get("append_files", True))
+    try:
+        plan = scoped_plan(base, root, scope="delta" if delta else "repo", files=files if delta else None,
+                           append_files=definition.get("append_files", True))
+    except ValueError as exc:
+        return GateOutcome(notes=tuple(notes + [f"{lang} UNVERIFIED：{exc}"]))
     decisions = []
     stale_notes = []
     timeout = cfg.get("lint_timeout_seconds", 120)

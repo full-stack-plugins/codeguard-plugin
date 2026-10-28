@@ -107,8 +107,12 @@ def run_check(languages: list[str], project_root: Path,
             if "{file}" in " ".join(lint_cmd) and lang_files is None:
                 results.append(result(lang, UNVERIFIED, "只有单文件命令，未配置项目 gate"))
                 continue
-            plan = scoped_plan(lint_cmd, project_root, scope="repo" if lang_files is None else "delta",
-                               files=lang_files, append_files=cmd_def.get("append_files", True))
+            try:
+                plan = scoped_plan(lint_cmd, project_root, scope="repo" if lang_files is None else "delta",
+                                   files=lang_files, append_files=cmd_def.get("append_files", True))
+            except ConfigurationError as exc:
+                results.append(result(lang, UNVERIFIED, str(exc), exit_code=1))
+                continue
         execution = execute_plan(plan, timeout)
         check_executions = [("check", execution)]
         trace = _execution_trace(execution, "check")
@@ -212,8 +216,13 @@ def run_fix(languages: list[str], project_root: Path,
             results.append({"language": lang, "fixed": False, "status": "UNVERIFIED",
                             "note": "formatter 需要明确文件列表", "exit_code": 1})
             continue
-        plan = scoped_plan(fmt, project_root, scope="repo" if lang_files is None else "delta",
-                           files=lang_files, append_files=cmd_def.get("append_files", True))
+        try:
+            plan = scoped_plan(fmt, project_root, scope="repo" if lang_files is None else "delta",
+                               files=lang_files, append_files=cmd_def.get("append_files", True))
+        except ConfigurationError as exc:
+            results.append({"language": lang, "fixed": False, "status": "UNVERIFIED", "exit_code": 1,
+                            "note": str(exc), "reason": str(exc), "stderr_tail": f"UNVERIFIED: {exc}"})
+            continue
         execution = execute_plan(plan, timeout)
         rc, _out, err = execution.terminal.as_tuple()
         results.append({
