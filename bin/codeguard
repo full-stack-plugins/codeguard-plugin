@@ -17,7 +17,8 @@
 
 set -eu
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Follow installed and chained symlinks without relying on GNU readlink -f.
+ROOT="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True).parent.parent)' "$0")"
 cmd="${1:-check}"
 [ $# -gt 0 ] && shift || true
 

@@ -46,6 +46,9 @@ def main(argv):
         if not path.is_symlink() or path.resolve() != SOURCE.resolve():
             print(json.dumps(payload("uninstall", "deny", error="not_managed", path=str(path)), ensure_ascii=False))
             return 1
+        if "--dry-run" in argv:
+            print(json.dumps(payload("uninstall", "allow", dryRun=True, path=str(path)), ensure_ascii=False))
+            return 0
         path.unlink()
         print(json.dumps(payload("uninstall", "allow", removed=str(path)), ensure_ascii=False))
         return 0
