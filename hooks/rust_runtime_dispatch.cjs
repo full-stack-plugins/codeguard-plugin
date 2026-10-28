@@ -4,7 +4,7 @@
 // Canonical non-blocking Claude-shape lifecycle binding. It never resolves `codeguard` from PATH or falls back to Python.
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { invokeVerifiedRuntime } = require('./rust_runtime_adapter.cjs');
 const pluginRoot = fs.existsSync(path.join(__dirname, '..', 'runtime', 'codeguard_runtime.cjs'))
   ? path.resolve(__dirname, '..') : path.resolve(__dirname, '..', '..');
 const { activeBinary } = require(path.join(pluginRoot, 'runtime', 'codeguard_runtime.cjs'));
@@ -59,23 +59,7 @@ function run(event) {
   const input = readInput();
   const binary = activeBinary();
   const root = projectRoot();
-  const result = spawnSync(binary, ['hook', 'claude', event, root, '--timeout=5s', '--format=json'], {
-    input, encoding: 'utf8', shell: false, timeout: 8000, maxBuffer: 16 * 1024,
-    env: process.env,
-  });
-  if (result.error || result.signal || result.status !== 0) throw new Error('runtime_execution_failed');
-  let output;
-  try { output = JSON.parse(result.stdout); } catch { throw new Error('runtime_response_invalid'); }
-  if (event === 'stop') {
-    if (typeof output.systemMessage !== 'string'
-        && output.hookSpecificOutput?.hookEventName !== 'Stop') {
-      throw new Error('runtime_response_invalid');
-    }
-  } else if (output.hookSpecificOutput?.hookEventName !== EVENTS.get(event)
-             || typeof output.hookSpecificOutput.additionalContext !== 'string') {
-    throw new Error('runtime_response_invalid');
-  }
-  return output;
+  return invokeVerifiedRuntime(event, binary, root, input);
 }
 
 if (require.main === module) {

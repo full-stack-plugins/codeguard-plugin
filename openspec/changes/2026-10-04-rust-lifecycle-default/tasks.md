@@ -28,3 +28,4 @@
 - [ ] 4.4 在实际 Codex 中验收插件发现、MCP/命令可达性、对话可见结果、权限和失败恢复；直接 stdio 或 Hook 事件重放只作为前置证据。
 - [ ] 4.5 在三平台分别核对发布包、源码构建、CLI/MCP/Hook 和远端 CI 的范围；仅在对应证据齐备后关闭相应验收项，发行仍需独立授权。
 - [ ] 4.6 原生 Windows CLI 安装候选：共享 Python 分派入口，受管 `.cmd` 不需要 symlink 权限；验证精确所有权、参数错误、元字符路径拒绝、dry-run 和真实 cmd 调用。Linux 文件模拟与分派回归已提供，真实 Windows 用例及定向三平台 workflow 待授权执行/核验；不据此关闭 4.1 或发布验收。
+- [ ] 4.7 隔离源码候选装配：固定 CodeGuard `cc7b907f6ba22b61bc19e5371df31d03ee72f452`，三平台源码构建、严格 checksum/version/source/offline 安装及同一内部插件 adapter 调用。验收脚本见 `tests/isolated-runtime-candidate.md`；默认公开锁保持不变，不据候选重放关闭 2.4/4.4 的真实宿主触发项。等待最终插件提交的原生候选 CI 证据。
