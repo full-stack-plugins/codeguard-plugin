@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ sys.path.insert(0, str(PLUGIN / "hooks"))
 import gate_lib
 import pre_tool_git_guard as guard
 import scope
+from codeguard.discovery import find_project_root
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -243,6 +245,11 @@ class UserPromptSubmitScopeTests(unittest.TestCase):
 
     def test_non_git_dir_is_skipped_with_note(self) -> None:
         bare = Path(tempfile.mkdtemp(prefix="cg-nogit-"))
+        self.addCleanup(shutil.rmtree, bare)
+        # An explicit non-Git project stops discovery before any host ancestor.
+        (bare / "pyproject.toml").write_text("[project]\nname = 'non-git-fixture'\nversion = '0.0.0'\n")
+        self.assertEqual(bare.resolve(), find_project_root(bare))
+        self.assertFalse((bare / ".git").exists())
         r = _run_hook(
             "user_prompt_validator.py", {"user_prompt": "提交代码"}, bare,
             env_extra=self.env,

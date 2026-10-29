@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -27,6 +28,8 @@ class CheckPlanIntegrationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="cg-plans-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        # MCP resolves a project root; never inherit a host ancestor repository.
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
 
     def put(self, path, content):
         dest = self.root / path

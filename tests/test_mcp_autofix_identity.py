@@ -1,6 +1,7 @@
 """MCP 自动修复只能在有界、仓内、可复核的文件面执行。"""
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,8 @@ class McpAutoFixIdentityTests(unittest.TestCase):
         base = Path(temporary.name).resolve()
         self.root = base / "repo"
         self.root.mkdir()
+        # Bind relative changed paths to this fixture, not a host ancestor .git.
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         self.external = base / "external"
         self.external.mkdir()
 
