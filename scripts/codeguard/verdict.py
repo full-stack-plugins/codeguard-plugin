@@ -131,6 +131,13 @@ def lint_verdict(rc: int, command: list[str], output: str = "", *,
         reason = {124: "检查超时", 127: "工具不存在"}.get(rc, "工具链执行异常")
         return UNVERIFIED, reason
     tool = Path(command[0]).name if command else ""
+    # Exact rustup startup failure observed with an absent Clippy component.
+    # Do not match arbitrary source diagnostics or mixed lint output.
+    if (rc == 1 and tool in ("cargo", "cargo.exe") and command[1:2] == ["clippy"]
+            and re.fullmatch(
+                r"error: 'cargo-clippy' is not installed for the toolchain '[^'\r\n]+'\.\r?\n"
+                r"help: run `rustup component add clippy` to install it\r?\n?", output)):
+        return UNVERIFIED, "Rust 工具链未安装 Clippy 组件"
     # pylint 的 2 为 error 位；不得沿用 ESLint/ruff 的配置错误语义。
     if tool == "pylint":
         return (UNVERIFIED, "pylint 用法错误") if rc & 32 else (FAIL, "pylint 发现违规")
