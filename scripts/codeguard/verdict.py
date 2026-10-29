@@ -138,10 +138,21 @@ def lint_verdict(rc: int, command: list[str], output: str = "", *,
                 r"error: 'cargo-clippy' is not installed for the toolchain '[^'\r\n]+'\.\r?\n"
                 r"help: run `rustup component add clippy` to install it\r?\n?", output)):
         return UNVERIFIED, "Rust 工具链未安装 Clippy 组件"
+    # Cargo's TOML parser emits one self-contained manifest diagnostic before
+    # compiling. Match the entire block, never a substring of mixed findings.
+    # Unknown/semantic diagnostics retain the conservative existing FAIL path.
+    if (rc == 101 and tool in ("cargo", "cargo.exe") and command[1:2] == ["clippy"]
+            and re.fullmatch(
+                r"error: [^\r\n]+\r?\n"
+                r"[ ]*--> Cargo\.toml:[0-9]+:[0-9]+\r?\n"
+                r"[ ]*\|\r?\n"
+                r"[0-9]+[ ]*\|[^\r\n]*\r?\n"
+                r"[ ]*\|[ ]*\^+[ ]*(?:\r?\n)?", output)):
+        return UNVERIFIED, "Cargo.toml 解析失败，未执行代码检查"
     # pylint 的 2 为 error 位；不得沿用 ESLint/ruff 的配置错误语义。
     if tool == "pylint":
         return (UNVERIFIED, "pylint 用法错误") if rc & 32 else (FAIL, "pylint 发现违规")
-    if rc == 1 or (tool == "cargo" and rc == 101):
+    if rc == 1 or (tool in ("cargo", "cargo.exe") and rc == 101):
         return FAIL, "检查发现违规"
     return UNVERIFIED, f"工具退出 {rc}，没有可确认的检查结论"
 

@@ -74,6 +74,7 @@ jobs:
               ('mcp-check-plans', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_check_plans.py', '-v']),
               ('mcp-autofix-identity', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_mcp_autofix_identity.py', '-v']),
               ('non-git-project', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_hardening_fixes.py', '-k', 'test_non_git_dir_is_skipped_with_note', '-v']),
+              ('cargo-manifest-verdict', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_cargo_manifest_verdict.py', '-v']),
               ('missing-clippy-verdict', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_missing_clippy_verdict.py', '-v']),
               ('ruff-config', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_ruff_project_config.py', '-v']),
               ('language-batch', [sys.executable, 'tests/acceptance_language_batch.py', '--plugin', '.', '--output', str(evidence / 'language-batch.json')]),
