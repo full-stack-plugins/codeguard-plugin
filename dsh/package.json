@@ -1,6 +1,6 @@
 {
   "name": "codeguard",
-  "version": "0.21.0",
+  "version": "0.21.3",
   "description": "Evidence-backed code checks and Git content gates for AI assistants, with Maven/Gradle module impact analysis. Save hooks provide feedback; unverified checks are explicit.",
   "type": "module",
   "main": "lib/index.js",
